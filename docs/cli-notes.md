@@ -26,6 +26,8 @@ claude -p "<промпт>" \
 - Рабочая папка процесса = временная папка с картинками. Картинку модель читает инструментом `Read` по относительному имени из промпта (`./page.png`). Проверено на PNG, ~16 с на страницу (`claude-sysprompt`, `run.7x2L`).
 - Промпт можно передать и через stdin (`echo … | claude -p …` без позиционного аргумента), проверено (`claude-stdin`). Для длинных промптов сборки использовать stdin, чтобы не упираться в длину argv.
 
+- JPEG (как после предобработки, `sips` качество 85) распознаётся так же: страница с пределами, производной, интегралом и рядом — 4.6 с, все формулы в LaTeX верные (`claude-jpeg-math`). Промпт распознавания из ТЗ работает как есть, если в конце указать имя файла (`Изображение: ./page.jpg`), а системный промпт велит читать его инструментом `Read`.
+
 ### Изоляция (раздел 2.3 ТЗ)
 Проверено вопросом «перечисли доступные CLAUDE.md, инструменты, MCP» (`claude-isol-*`):
 - без флагов: подхватывается глобальный `~/.claude/CLAUDE.md` и все инструменты (Bash, Edit, Agent…) — так нельзя;
@@ -78,6 +80,39 @@ claude -p "<промпт>" \
 ### Модели
 `--model` принимает алиасы (`sonnet`, `opus`, `fable`) и полные имена. С `sonnet` фактически отвечает `claude-sonnet-5-5` (видно в `modelUsage`). По умолчанию для распознавания берём `sonnet`.
 
-## Gemini CLI (`gemini`)
+## Gemini CLI (`gemini`), версия 0.64.0 — не используется
 
-_Не установлен: на машине нет `node` и `npm`. Раздел будет дописан после установки (`npm install -g @google/gemini-cli`) и входа через Google-аккаунт._
+Установлен через `npm install -g @google/gemini-cli` (node 26 из Homebrew). Итог: **с подпиской Google AI Pro не работает**, в v1 не используется.
+
+- Бинарник `/opt/homebrew/bin/gemini` — симлинк на `…/@google/gemini-cli/bundle/gemini.js` с `#!/usr/bin/env node`. Без каталога `node` в `PATH` запуск падает: exit 127, stderr `env: node: No such file or directory` (`gemini-nonode`). Гипотеза ТЗ подтверждена.
+- Без выбранного способа входа: exit 41, JSON в **stderr**: `{"session_id":…,"error":{"type":"Error","message":"Please set an Auth method in your ~/.gemini/settings.json or specify one of the following environment variables before running: GEMINI_API_KEY, GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_GENAI_USE_GCA","code":41}}` (`gemini-noauth`).
+- После входа через Google: exit 55, stderr `Error authenticating: IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals. To continue using Gemini, please migrate to the Antigravity suite of products` с `reasonCode: 'UNSUPPORTED_CLIENT'`, `tierId: 'free-tier'` (`gemini-auth-hi`). По [объявлению Google](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/) с 18.06.2026 Gemini CLI не обслуживает Google AI Pro, Ultra и бесплатный тариф; работает только с платным API-ключом или корпоративной лицензией Code Assist.
+- **Доверенные папки:** в недоверенной папке headless-запуск не стартует: `Gemini CLI is not running in a trusted directory. To proceed, either use --skip-trust, set the GEMINI_CLI_TRUST_WORKSPACE=true environment variable, or trust this directory in interactive mode.` Ответ на вопрос ТЗ: да, механизм есть и ломает запуск во временной папке; обход — `--skip-trust`.
+- Модель выбирается `-m`, вывод `-o json`; формат успешного ответа проверить не удалось (нет доступа).
+
+## Antigravity CLI (`agy`), версия 1.3.5 — недоступен
+
+Замена Gemini CLI от Google. Установлен официальным скриптом `curl -fsSL https://antigravity.google/cli/install.sh | bash` (бинарник Go, `~/.local/bin/agy`, сам обновляется в фоне). Установщик дописывает `~/.local/bin` в `PATH` в `.zshrc`, `.zprofile`, `.bash_profile`, `.profile`.
+
+Итог: **аккаунту отказано по стране** — `Eligibility check failed: Your current account is not eligible for Antigravity, because it is not currently available in your location.` (интерактивно и в headless: exit 1, `{"status":"ERROR","error":"Eligibility check failed: …"}` в stdout, `error: …` в stderr; `agy-hi`). Выход в интернет при этом через NL, то есть проверяется страна аккаунта, а не IP. В v1 не используется.
+
+Что выяснено на будущее (по [документации headless](https://antigravity.google/docs/cli/headless/) и опытам):
+- `agy -p "<промпт>" --output-format json [--model <slug>] [--json-schema <схема>] [--print-timeout 5m]`; `agy models` — список моделей.
+- JSON: `conversation_id`, `status` (`SUCCESS`/`ERROR`/`CANCELED`/`INTERRUPTED`/…), `response`, `error`, `duration_seconds`, `num_turns`, `usage`, `structured_output` (с `--json-schema`).
+- Ответ в stdout, диагностика в stderr; ошибки в stderr с префиксом `error:`.
+- Без входа **не завершается сразу**: печатает ссылку `Authentication required. Please visit the URL to log in:` и ждёт 60 с, затем `authentication failed or timed out` (`agy-noauth`). Приложению нужно ловить эту строку в stderr и прерывать запуск.
+- Учётные данные в связке ключей macOS, настройки в `~/.gemini/antigravity-cli/settings.json` (там же `trustedWorkspaces`, `permissions.allow`). Чтение и **запись** файлов в рабочей папке разрешены по умолчанию, запретить запись можно только правилами в глобальном settings.json — изоляция хуже, чем у `claude`.
+- Флага, отключающего пользовательские плагины и MCP, в `--help` нет.
+- Условия Google по использованию входа Antigravity из сторонних приложений не прояснены; это нужно проверить до того, как делать движок.
+
+## Anki: `\ce{}` в MathJax
+
+Anki (2.1+, AnkiMobile, AnkiDroid 2.9+) рендерит формулы встроенным MathJax, и [расширение mhchem в него встроено](https://docs.ankiweb.net/manual/math): `\ce{…}` работает без настройки. Разделители только `\(…\)` и `\[…\]`, `$` не поддерживается — значит, конвертация из раздела 8 ТЗ нужна. Отдельная оговорка в инструкции не требуется.
+
+## Итог для реализации (этап 3)
+
+- Единственный движок v1 — `ClaudeCodeEngine` с командой из раздела «Итоговая команда». Длинные промпты передавать через stdin.
+- Поиск бинарника: `claude` — нативный Mach-O, обычно `~/.local/bin/claude` (симлинк на `~/.local/share/claude/versions/<версия>`); `node` не нужен. Список мест из ТЗ 2.4 подходит, `~/.local/bin` в нём уже есть.
+- Успех: `exit == 0 && is_error == false`. Ошибка: всё остальное; причину брать из `result`, при нечитаемом stdout — из stderr. `subtype` не использовать.
+- Классификация: `Not logged in` → `notAuthenticated`; `api_error_status == 404` или `unrecognized_model` в stderr → ошибка модели (показывать как `processFailed` с понятным текстом «модель недоступна»); шаблоны лимита → `rateLimited(resetAt:)`; exit 127 / нет файла → `binaryNotFound`.
+- Фактическая модель для `meta.json` — ключ из `modelUsage`.
