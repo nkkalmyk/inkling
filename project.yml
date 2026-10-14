@@ -11,10 +11,10 @@ settings:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    # Подпись ad-hoc, пока нет Team ID (SPEC, раздел 13).
+    # Подпись Personal Team (SPEC, раздел 13): стабильная, разрешения не слетают при пересборке.
     CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: "-"
-    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_IDENTITY: "Apple Development"
+    DEVELOPMENT_TEAM: ZSX3ZW9FUR
     ENABLE_HARDENED_RUNTIME: NO
 
 targets:

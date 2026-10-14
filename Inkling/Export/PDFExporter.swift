@@ -74,10 +74,38 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
         operation.showsPrintPanel = false
         operation.showsProgressPanel = false
         operation.jobTitle = title
-        operation.view?.frame = view.bounds
         try? FileManager.default.removeItem(at: url)
-        _ = operation.run()
-        guard FileManager.default.fileExists(atPath: url.path) else { throw PDFExportError.printFailed }
+        // WKWebView печатает асинхронно: синхронный run() зависает. Ждём завершения через делегат.
+        let ok = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            printed.set(continuation)
+            operation.runModal(for: window, delegate: self,
+                               didRun: #selector(printOperationDidRun(_:success:contextInfo:)), contextInfo: nil)
+        }
+        guard ok, FileManager.default.fileExists(atPath: url.path) else { throw PDFExportError.printFailed }
+    }
+
+    private nonisolated let printed = OneShot()
+
+    /// AppKit вызывает это в фоновом потоке, поэтому метод не привязан к главному актору.
+    @objc private nonisolated func printOperationDidRun(_ operation: NSPrintOperation, success: Bool,
+                                                        contextInfo: UnsafeMutableRawPointer?) {
+        printed.resume(success)
+    }
+
+    /// Продолжение, которое можно безопасно возобновить из любого потока, ровно один раз.
+    private final class OneShot: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Bool, Never>?
+
+        func set(_ continuation: CheckedContinuation<Bool, Never>) { lock.withLock { self.continuation = continuation } }
+
+        func resume(_ value: Bool) {
+            let pending = lock.withLock { () -> CheckedContinuation<Bool, Never>? in
+                defer { continuation = nil }
+                return continuation
+            }
+            pending?.resume(returning: value)
+        }
     }
 
     private func finishRender(_ result: Result<Void, Error>) {

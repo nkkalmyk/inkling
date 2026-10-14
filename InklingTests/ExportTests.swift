@@ -45,7 +45,7 @@ struct AnkiExportTests {
     }
 }
 
-@Suite("Экспорт в PDF")
+@Suite("Экспорт в PDF", .timeLimit(.minutes(1)))
 @MainActor
 struct PDFExportTests {
     @Test func a4WithTextAndFormulas() async throws {
@@ -60,9 +60,14 @@ struct PDFExportTests {
         #expect(document.pageCount >= 2, "Длинный конспект разбит на страницы")
         let bounds = try #require(document.page(at: 0)).bounds(for: .mediaBox)
         #expect(abs(bounds.width - 595.28) < 1 && abs(bounds.height - 841.89) < 1, "A4: \(bounds)")
+        // Системный шрифт в PDF отдаёт «к» как похожий глиф «ĸ» при извлечении текста; на вид это та же буква.
         let text = (0..<document.pageCount).compactMap { document.page(at: $0)?.string }.joined()
+            .replacingOccurrences(of: "ĸ", with: "к")
         #expect(text.contains("Окислительно-восстановительные"))
         #expect(text.contains("Конец конспекта"))
         #expect(!text.contains("\\ce{"), "Формулы отрисованы KaTeX, а не напечатаны исходником")
+        if let out = ProcessInfo.processInfo.environment["INKLING_PDF_SAMPLE"] {
+            try? FileManager.default.copyItem(at: url, to: URL(fileURLWithPath: out))
+        }
     }
 }
