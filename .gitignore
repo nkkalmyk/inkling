@@ -1,0 +1,15 @@
+# Пользовательские данные
+TestData/real/
+
+# Xcode / XcodeGen
+*.xcodeproj/
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+
+# macOS
+.DS_Store
+
+# Отладка этапа 0
+docs/cli-experiments/tmp/
