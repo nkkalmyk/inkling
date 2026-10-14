@@ -5,6 +5,7 @@ struct InklingApp: App {
     /// Юнит-тесты запускаются внутри приложения; настоящую папку хранения они трогать не должны.
     static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var settings: AppSettings
     @State private var library: Library
 
@@ -20,7 +21,10 @@ struct InklingApp: App {
                 .environment(library)
                 .environment(settings)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
-                .task { if !Self.isRunningTests { library.open(root: settings.storageRoot) } }
+                .task {
+                    appDelegate.library = library
+                    if !Self.isRunningTests { library.open(root: settings.storageRoot) }
+                }
                 .onChange(of: settings.storageRootPath) { library.open(root: settings.storageRoot) }
         }
         .defaultSize(width: 1100, height: 720)

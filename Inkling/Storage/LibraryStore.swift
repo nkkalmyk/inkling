@@ -201,13 +201,30 @@ struct LibraryStore: Sendable {
     /// Меняет предмет, тему или дату. Папка переименовывается или переносится, `id` не меняется.
     func updateLecture(id: UUID, subject rawSubject: String, topic rawTopic: String, date: CalendarDate,
                        now: Date = Date()) throws -> LectureRecord {
-        guard let current = try findLecture(id: id) else { throw LibraryError.lectureNotFound }
         let topic = rawTopic.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !topic.isEmpty else { throw LibraryError.emptyName }
-        let subjectFolder = try subjectFolderCreatingIfNeeded(rawSubject)
+        return try mutateLecture(id: id, now: now) { meta in
+            meta.subject = rawSubject
+            meta.topic = topic
+            meta.date = date
+        }
+    }
+
+    /// Читает свежий `meta.json`, применяет изменение и записывает. Если изменились предмет, тема или дата,
+    /// папка переносится или переименовывается; `id` не меняется.
+    @discardableResult
+    func mutateLecture(id: UUID, now: Date = Date(), _ change: (inout LectureMeta) throws -> Void) throws -> LectureRecord {
+        guard let current = try findLecture(id: id) else { throw LibraryError.lectureNotFound }
+        var meta = current.meta
+        try change(&meta)
+        meta.id = current.meta.id
+        let subjectFolder = try subjectFolderCreatingIfNeeded(meta.subject)
+        meta.subject = subjectFolder.lastPathComponent
+        meta.topic = meta.topic.trimmingCharacters(in: .whitespacesAndNewlines)
+        if meta.topic.isEmpty { meta.topic = current.meta.topic }
 
         var folder = current.folder
-        let baseName = FolderNaming.lectureFolderName(date: date, topic: topic)
+        let baseName = FolderNaming.lectureFolderName(date: meta.date, topic: meta.topic)
         let movesSubject = !FolderNaming.samePath(subjectFolder, current.folder.deletingLastPathComponent())
         if movesSubject || !folderName(current.folder.lastPathComponent, matchesBase: baseName) {
             let target = FolderNaming.uniqueURL(in: subjectFolder, baseName: baseName, excluding: current.folder)
@@ -217,10 +234,6 @@ struct LibraryStore: Sendable {
             }
         }
 
-        var meta = current.meta
-        meta.subject = subjectFolder.lastPathComponent
-        meta.topic = topic
-        meta.date = date
         meta.touch(now)
         try writeMeta(meta, in: folder)
         return LectureRecord(meta: meta, folder: folder)
