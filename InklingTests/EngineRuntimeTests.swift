@@ -189,8 +189,8 @@ struct EngineRouterTests {
         private var current = 0
         private let delay: Duration
 
-        init(_ script: [Result<String, AIError>], delay: Duration = .zero) {
-            id = .claude
+        init(_ script: [Result<String, AIError>], delay: Duration = .zero, id: EngineID = .claude) {
+            self.id = id
             self.script = script
             self.delay = delay
         }

@@ -17,6 +17,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency NSServ
         }
     }
 
+    /// Сервер Ollama, запущенный приложением, гасится вместе с ним (SPEC, раздел 13, этап 8).
+    func applicationWillTerminate(_ notification: Notification) {
+        OllamaServer.shared.stopIfOwned()
+    }
+
     private func ensureImportMenuItem() {
         guard let fileMenu = NSApp.mainMenu?.items.compactMap(\.submenu)
             .first(where: { menu in menu.items.contains { $0.title == "Новая лекция…" } }),

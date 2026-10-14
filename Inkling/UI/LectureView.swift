@@ -46,6 +46,9 @@ struct LectureView: View {
                 .labelsHidden()
             }
             ToolbarItem {
+                EngineModeMenu()
+            }
+            ToolbarItem {
                 ExportMenu(lecture: lecture)
             }
             ToolbarItem {

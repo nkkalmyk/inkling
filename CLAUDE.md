@@ -8,6 +8,7 @@
 - Флаги `gemini` и `claude` бери только из `docs/cli-notes.md`, а не из памяти.
 - Сборка и тесты из консоли: `xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' build test`. Если схема называется иначе, обнови эту строку.
 - Живые тесты с настоящим `claude` (тратят лимит, по умолчанию выключены): `TEST_RUNNER_INKLING_LIVE_CLAUDE=1 xcodebuild -scheme Inkling -destination 'platform=macOS' test -only-testing:InklingTests/ClaudeLiveTests -only-testing:InklingTests/RecognitionLiveTests -only-testing:InklingTests/AssemblyLiveTests -only-testing:InklingTests/StudyLiveTests`.
+- Живые тесты с локальной Ollama (нужна модель `inkling-ocr`, см. `docs/INSTALL.md`; занимают ~9 ГБ памяти): `TEST_RUNNER_INKLING_LIVE_OLLAMA=1 xcodebuild -scheme Inkling -destination 'platform=macOS' test -only-testing:InklingTests/OllamaLiveTests -only-testing:InklingTests/EndToEndTests`. Тестовое приложение при выходе не гасит запущенный им `ollama serve`: после прогона `pkill -f "ollama serve"`.
 - Сторонние зависимости только в виде JS-ассетов (KaTeX, mhchem, markdown-it) в бандле, с зафиксированными версиями.
 - Не коммить пользовательские данные: `TestData/real/`, содержимое `~/Documents/Inkling/`.
 - Интерфейс и сообщения об ошибках на русском, идентификаторы в коде на английском.
