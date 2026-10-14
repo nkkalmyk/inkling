@@ -1,4 +1,5 @@
 import CoreImage
+import CoreServices
 import CoreImage.CIFilterBuiltins
 import Foundation
 import ImageIO
@@ -38,6 +39,48 @@ enum ImageProcessor {
             throw ImageProcessingError.unreadable(url.lastPathComponent)
         }
         return normalized(image)
+    }
+
+    /// Когда снят кадр, для порядка страниц: EXIF → дата в имени файла (скриншоты, `IMG_…`) →
+    /// дата создания из Spotlight → дата создания файла.
+    static func shotDate(of url: URL) -> Date? {
+        if let exif = captureDate(of: url) { return exif }
+        if let named = dateFromFileName(url.deletingPathExtension().lastPathComponent) { return named }
+        if let item = MDItemCreateWithURL(nil, url as CFURL),
+           let date = MDItemCopyAttribute(item, kMDItemContentCreationDate) as? Date { return date }
+        return (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+    }
+
+    /// Дата и время из имени файла: «Снимок экрана 2026-10-14 в 12.30.45», «Screenshot 2026-10-14 at 12.30.45 PM»,
+    /// «IMG_20261014_123045», «PXL_20261014_123045123», «2026-10-14 12-30-45». Время — местное.
+    static func dateFromFileName(_ name: String, timeZone: TimeZone = .current) -> Date? {
+        let patterns = [
+            #"(\d{4})-(\d{2})-(\d{2})\D{1,6}?(\d{1,2})[.:\-](\d{2})[.:\-](\d{2})(?:\s*([AaPp][Mm]))?"#,
+            #"(\d{4})(\d{2})(\d{2})[_\-](\d{2})(\d{2})(\d{2})"#,
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) else { continue }
+            func group(_ i: Int) -> String? {
+                guard i < match.numberOfRanges, let range = Range(match.range(at: i), in: name) else { return nil }
+                return String(name[range])
+            }
+            guard let y = group(1).flatMap(Int.init), let mo = group(2).flatMap(Int.init), let d = group(3).flatMap(Int.init),
+                  var h = group(4).flatMap(Int.init), let mi = group(5).flatMap(Int.init), let se = group(6).flatMap(Int.init)
+            else { continue }
+            if let ampm = group(7)?.lowercased() {
+                if ampm == "pm", h < 12 { h += 12 }
+                if ampm == "am", h == 12 { h = 0 }
+            }
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = timeZone
+            let parts = DateComponents(year: y, month: mo, day: d, hour: h, minute: mi, second: se)
+            guard (2000...2100).contains(y), let date = calendar.date(from: parts),
+                  calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date) == parts
+            else { continue }
+            return date
+        }
+        return nil
     }
 
     /// Дата съёмки из EXIF (`DateTimeOriginal` со смещением `OffsetTimeOriginal`, если оно есть).

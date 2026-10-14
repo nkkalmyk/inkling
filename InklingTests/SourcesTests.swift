@@ -161,7 +161,7 @@ struct LectureSourcesMetaTests {
         m.appendImported(ImportResult(notes: [note("c", captured: "2026-09-01T09:00:00Z")]), calendar: utc)
         #expect(m.date == .d("2026-10-11"))
         #expect(m.dateAdjustment == nil)
-        #expect(m.notes.map(\.id) == ["a", "b", "c"])
+        #expect(m.notes.map(\.id) == ["c", "b", "a"], "Страницы стоят по времени снимка")
     }
 
     @Test func sameDayPhotosDoNotShowBanner() {
@@ -304,4 +304,52 @@ private final class ProgressLog: @unchecked Sendable {
     var values: [Int] { lock.withLock { storage } }
 
     func append(_ value: Int) { lock.withLock { storage.append(value) } }
+}
+
+@Suite("Порядок по времени снимка")
+struct ShotOrderTests {
+    private let moscow = TimeZone(identifier: "Europe/Moscow")!
+    private func iso(_ s: String) -> Date { ISO8601DateFormatter().date(from: s)! }
+
+    @Test(arguments: [
+        ("Снимок экрана 2026-10-14 в 12.30.45", "2026-10-14T09:30:45Z"),
+        ("Screenshot 2026-10-14 at 12.30.45 PM", "2026-10-14T09:30:45Z"),
+        ("Screenshot 2026-10-14 at 12.05.09 AM", "2026-10-13T21:05:09Z"),
+        ("IMG_20261014_123045", "2026-10-14T09:30:45Z"),
+        ("PXL_20261014_123045123", "2026-10-14T09:30:45Z"),
+        ("2026-10-14 12-30-45", "2026-10-14T09:30:45Z"),
+    ])
+    func dateFromFileName(_ name: String, _ expected: String) {
+        #expect(ImageProcessor.dateFromFileName(name, timeZone: moscow) == iso(expected))
+    }
+
+    @Test(arguments: ["IMG_0042", "лекция 5", "2026-13-40 99.99.99", "scan"])
+    func noDateInName(_ name: String) {
+        #expect(ImageProcessor.dateFromFileName(name, timeZone: moscow) == nil)
+    }
+
+    private func page(_ id: String, _ date: String?) -> NotePage {
+        NotePage(id: id, source: .image(file: "\(id).png"), captureDate: date.map(iso), crop: .original, addedAt: Date())
+    }
+
+    @Test func newPagesInsertBetweenExisting() {
+        let existing = [page("a", "2026-10-14T09:00:00Z"), page("c", "2026-10-14T11:00:00Z"), page("scan", nil)]
+        let added = [page("d", "2026-10-14T12:00:00Z"), page("b", "2026-10-14T10:00:00Z"),
+                     page("z", "2026-10-14T08:00:00Z"), page("pdf", nil)]
+        let merged = LectureMeta.mergedByShotTime(existing, added)
+        #expect(merged.map(\.id) == ["z", "a", "b", "c", "scan", "d", "pdf"])
+    }
+
+    @Test func screenshotWithoutExifUsesFileName() throws {
+        let dir = try TempDir()
+        let lecture = dir.url.appendingPathComponent("lecture")
+        let late = Fixtures.write(Fixtures.halfRed(), to: dir.url.appendingPathComponent("Снимок экрана 2026-10-14 в 12.30.45.png"),
+                                  type: .png)
+        let early = Fixtures.write(Fixtures.halfRed(), to: dir.url.appendingPathComponent("Снимок экрана 2026-10-14 в 09.00.00.png"),
+                                   type: .png)
+        let result = SourceImporter(paths: LecturePaths(folder: lecture)).importFiles([late, early], into: .notes)
+        #expect(result.notes.count == 2)
+        #expect(result.notes[0].captureDate! < result.notes[1].captureDate!)
+        #expect(Calendar.current.component(.hour, from: result.notes[0].captureDate!) == 9)
+    }
 }

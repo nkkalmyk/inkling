@@ -80,8 +80,10 @@ struct SourceImporter: Sendable {
         let ext = url.pathExtension.isEmpty ? "jpg" : url.pathExtension.lowercased()
         let source = PageSource.image(file: "\(id).\(ext)")
         let original = paths.original(source, in: .notes)
+        // Дату берём у исходного файла: копия получает служебное имя и новую дату создания.
+        let shot = ImageProcessor.shotDate(of: url)
         try copy(url, to: original)
-        var page = NotePage(id: id, source: source, captureDate: ImageProcessor.captureDate(of: original),
+        var page = NotePage(id: id, source: source, captureDate: shot,
                             crop: .auto(nil), addedAt: now())
         do {
             page.crop = try renderNotePhoto(page)

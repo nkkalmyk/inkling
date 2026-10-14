@@ -6,7 +6,7 @@ extension LectureMeta {
     /// и дата лекции ещё не подстраивалась, дата меняется на день самого раннего снимка (SPEC, раздел 13).
     mutating func appendImported(_ result: ImportResult, calendar: Calendar = .current) {
         let hadDatedPhotos = notes.contains { $0.captureDate != nil }
-        notes += result.notes
+        notes = Self.mergedByShotTime(notes, result.notes)
         slides += result.slides
 
         guard !dateAutoAdjusted, !hadDatedPhotos,
@@ -17,6 +17,21 @@ extension LectureMeta {
             dateAdjustment = DateAdjustment(previousDate: date)
             date = day
         }
+    }
+
+    /// Новые страницы встают среди существующих по времени снимка: перед первой страницей, снятой позже.
+    /// Страницы без даты (сканы PDF) — в конец, в порядке импорта. Порядок уже добавленных страниц не меняется.
+    static func mergedByShotTime(_ existing: [NotePage], _ added: [NotePage]) -> [NotePage] {
+        var result = existing
+        for page in SourceImporter.sortedByCaptureDate(added) {
+            guard let date = page.captureDate,
+                  let index = result.firstIndex(where: { ($0.captureDate ?? .distantPast) > date }) else {
+                result.append(page)
+                continue
+            }
+            result.insert(page, at: index)
+        }
+        return result
     }
 
     /// «Вернуть»: прежняя дата, плашка скрывается.
