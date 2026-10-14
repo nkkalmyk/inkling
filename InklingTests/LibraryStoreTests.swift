@@ -235,3 +235,31 @@ struct LibraryStoreTests {
         }
     }
 }
+
+@Suite("Корзина")
+struct TrashFallbackTests {
+    @Test func moveAsideKeepsFileInHiddenFolder() throws {
+        let dir = try TempDir()
+        let store = LibraryStore(root: dir.url.appendingPathComponent("Inkling"))
+        try store.bootstrap()
+        let file = store.root.appendingPathComponent("Высшая алгебра/страница.png")
+        try Data("x".utf8).write(to: file)
+        try SystemTrasher.moveAside(file, into: store.root, now: Date(timeIntervalSince1970: 0))
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        let kept = store.root.appendingPathComponent("_Удалённое/\(HistoryStore.stamp(Date(timeIntervalSince1970: 0)))/страница.png")
+        #expect(FileManager.default.fileExists(atPath: kept.path))
+        #expect(try store.loadSubjects().map(\.name).allSatisfy { !$0.hasPrefix("_") }, "Папка не видна как предмет")
+    }
+
+    @Test func fallbackIsUsedWhenTrashFails() throws {
+        let dir = try TempDir()
+        // Каталог без прав на запись: корзина и перенос оттуда невозможны — ждём ошибку без запасной папки.
+        let locked = dir.url.appendingPathComponent("locked")
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+        let file = locked.appendingPathComponent("a.txt")
+        try Data("x".utf8).write(to: file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: locked.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+        #expect(throws: (any Error).self) { try SystemTrasher(fallbackRoot: nil).trash(file) }
+    }
+}

@@ -61,8 +61,12 @@ final class Library {
     private var watcher: DirectoryWatcher?
     private var downloadPoll: Task<Void, Never>?
 
-    init(root: URL, trasher: any Trasher = SystemTrasher()) {
-        store = LibraryStore(root: root, trasher: trasher)
+    /// Подменённая корзина (тесты); `nil` — корзина macOS с запасной папкой `_Удалённое`.
+    @ObservationIgnored private let customTrasher: (any Trasher)?
+
+    init(root: URL, trasher: (any Trasher)? = nil) {
+        customTrasher = trasher
+        store = LibraryStore(root: root, trasher: trasher ?? SystemTrasher(fallbackRoot: root))
     }
 
     var root: URL { store.root }
@@ -84,7 +88,7 @@ final class Library {
     func open(root newRoot: URL) {
         watcher?.stop()
         watcher = nil
-        store = LibraryStore(root: newRoot, trasher: store.trasher)
+        store = LibraryStore(root: newRoot, trasher: customTrasher ?? SystemTrasher(fallbackRoot: newRoot))
         perform { try store.bootstrap() }
         perform { try prompts.installMissingDefaults() }
         reload()
