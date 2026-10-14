@@ -1,0 +1,89 @@
+:root {
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --bg: #ffffff;
+  --rule: #d2d2d7;
+  --code-bg: #f2f2f5;
+  --warn-bg: #fff4e0;
+  --warn-border: #f0a020;
+  --slides-bg: #e8f1ff;
+  --slides-border: #3b82f6;
+  --illegible: #ffe066;
+  --error: #c62828;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #f2f2f7;
+    --muted: #a1a1a6;
+    --bg: #1e1e1e;
+    --rule: #3a3a3c;
+    --code-bg: #2c2c2e;
+    --warn-bg: #3a2c12;
+    --warn-border: #d48a10;
+    --slides-bg: #172a45;
+    --slides-border: #5b9bff;
+    --illegible: #7a6200;
+    --error: #ff6b6b;
+  }
+}
+
+html { background: var(--bg); }
+
+body {
+  margin: 0;
+  color: var(--text);
+  background: var(--bg);
+  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 24px 32px 64px;
+}
+
+h1, h2, h3, h4 { line-height: 1.25; margin: 1.4em 0 0.5em; }
+h1 { font-size: 1.7em; margin-top: 0.2em; }
+h2 { font-size: 1.35em; border-bottom: 1px solid var(--rule); padding-bottom: 0.2em; }
+h3 { font-size: 1.15em; }
+p, ul, ol { margin: 0.6em 0; }
+li { margin: 0.2em 0; }
+
+code {
+  font: 0.9em ui-monospace, "SF Mono", Menlo, monospace;
+  background: var(--code-bg);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+pre { background: var(--code-bg); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+
+table { border-collapse: collapse; margin: 0.8em 0; }
+th, td { border: 1px solid var(--rule); padding: 4px 10px; }
+
+blockquote {
+  margin: 0.8em 0;
+  padding: 0.4em 1em;
+  border-left: 4px solid var(--rule);
+  color: var(--muted);
+}
+blockquote.callout { color: var(--text); border-radius: 0 6px 6px 0; }
+blockquote.warn { background: var(--warn-bg); border-left-color: var(--warn-border); }
+blockquote.slides { background: var(--slides-bg); border-left-color: var(--slides-border); }
+
+mark.illegible { background: var(--illegible); color: inherit; padding: 0 2px; border-radius: 3px; }
+
+.math-display { margin: 0.8em 0; overflow-x: auto; overflow-y: hidden; }
+.katex { font-size: 1.08em; }
+.katex-error { color: var(--error) !important; font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; }
+
+/* Печать в PDF A4 (этап экспорта). */
+@page { size: A4; margin: 18mm 16mm; }
+@media print {
+  :root { --bg: #ffffff; --text: #000000; }
+  main { max-width: none; padding: 0; }
+  h1, h2, h3 { break-after: avoid; }
+  .math-display, blockquote, table, pre { break-inside: avoid; }
+}

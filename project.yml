@@ -25,8 +25,13 @@ targets:
       - path: Inkling
         excludes:
           - Resources/Prompts
+          - Resources/Web
       # Промпты по умолчанию копируются в бандл папкой, со структурой (SPEC, раздел 5).
       - path: Inkling/Resources/Prompts
+        type: folder
+        buildPhase: resources
+      # Рендер конспекта: HTML, CSS, render.js и зафиксированные KaTeX, mhchem, markdown-it.
+      - path: Inkling/Resources/Web
         type: folder
         buildPhase: resources
     settings:

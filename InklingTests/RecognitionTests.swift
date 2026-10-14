@@ -78,7 +78,7 @@ struct PageTextStoreTests {
         let entries = store.history("p", in: .notes).entries()
         #expect(entries.count == 1)
         #expect(try String(contentsOf: entries[0].file, encoding: .utf8) == "версия 1")
-        #expect(entries[0].info == first)
+        #expect(entries[0].info(PageText.self) == first)
         #expect(entries[0].date == Date(timeIntervalSince1970: 200))
         #expect(store.read("p", in: .notes) == "версия 2")
     }
@@ -139,7 +139,7 @@ struct PageTextStoreTests {
         slide.mode = .textLayer
         let info = try importer.syncSlideFiles(slide)
         #expect(info?.origin == .textLayer)
-        #expect(store.history(slide.id, in: .slides).entries().first?.info?.origin == .model)
+        #expect(store.history(slide.id, in: .slides).entries().first?.info(PageText.self)?.origin == .model)
     }
 }
 
@@ -234,7 +234,7 @@ struct RecognitionCenterTests {
         let history = env.textStore.history(page, in: .notes).entries()
         #expect(history.count == 2)
         #expect(try String(contentsOf: history[0].file, encoding: .utf8) == "моя правка 2")
-        #expect(history[0].info?.manuallyEdited == true)
+        #expect(history[0].info(PageText.self)?.manuallyEdited == true)
         #expect(env.lecture.meta.pageText(page)?.manuallyEdited == false)
 
         env.library.restoreVersion(history[0], pageID: page, lectureID: env.lectureID)

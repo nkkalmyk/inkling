@@ -281,7 +281,7 @@ private struct HistoryPopover: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(entry.date.formatted(.dateTime.day().month().hour().minute().second()
                                 .locale(Locale(identifier: "ru_RU"))))
-                            Text(describe(entry.info)).font(.caption).foregroundStyle(.secondary)
+                            Text(describe(entry.info(PageText.self))).font(.caption).foregroundStyle(.secondary)
                         }
                         .tag(entry.id)
                     }

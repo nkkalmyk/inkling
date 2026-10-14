@@ -60,10 +60,9 @@ struct LectureView: View {
     private var content: some View {
         switch tab {
         case .sources:
-            SourcesView(lecture: lecture)
+            SourcesView(lecture: lecture, showNotes: { tab = .notes })
         case .notes:
-            ContentUnavailableView("Конспекта пока нет", systemImage: "doc.richtext",
-                                   description: Text("Конспект собирается из распознанных страниц."))
+            NotesView(lecture: lecture)
         case .questions:
             ContentUnavailableView("Вопросов пока нет", systemImage: "questionmark.bubble",
                                    description: Text("Вопросы готовятся по готовому конспекту."))

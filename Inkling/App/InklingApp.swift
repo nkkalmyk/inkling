@@ -10,6 +10,7 @@ struct InklingApp: App {
     @State private var library: Library
     @State private var engines: EngineCenter
     @State private var recognition: RecognitionCenter
+    @State private var assembly: AssemblyCenter
 
     init() {
         let settings = AppSettings()
@@ -23,6 +24,8 @@ struct InklingApp: App {
         _library = State(initialValue: library)
         _engines = State(initialValue: engines)
         _recognition = State(initialValue: recognition)
+        _assembly = State(initialValue: AssemblyCenter(library: library, router: { engines.router },
+                                                       threshold: { settings.chunkThresholdChars }))
     }
 
     var body: some Scene {
@@ -32,6 +35,7 @@ struct InklingApp: App {
                 .environment(settings)
                 .environment(engines)
                 .environment(recognition)
+                .environment(assembly)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
                 .task {
                     appDelegate.library = library

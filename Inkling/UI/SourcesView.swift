@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct SourcesView: View {
     @Environment(Library.self) private var library
     let lecture: LectureRecord
+    var showNotes: () -> Void = {}
 
     @State private var selection: String?
     @State private var activeSection: SourceSection = .notes
@@ -14,7 +15,7 @@ struct SourcesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            RecognitionBar(lecture: lecture)
+            RecognitionBar(lecture: lecture, showNotes: showNotes)
             content
         }
     }
@@ -336,8 +337,10 @@ struct SlidePageMenu: View {
 /// Полоса над источниками: прогресс распознавания, отмена, остановившая очередь ошибка, «Распознать нераспознанные».
 private struct RecognitionBar: View {
     @Environment(RecognitionCenter.self) private var recognition
+    @Environment(AssemblyCenter.self) private var assembly
     @Environment(\.openSettings) private var openSettings
     let lecture: LectureRecord
+    let showNotes: () -> Void
     @State private var showDetails = false
 
     var body: some View {
@@ -348,8 +351,34 @@ private struct RecognitionBar: View {
                 blocked(error)
             } else if !pending.isEmpty {
                 idle
+            } else if canAssemble {
+                readyToAssemble
             }
         }
+    }
+
+    /// Всё распознано, а конспекта нет или он устарел.
+    private var canAssemble: Bool {
+        guard !assembly.isRunning(lecture.id) else { return false }
+        let readiness = assembly.readiness(lecture)
+        return readiness.plan != nil && (lecture.meta.konspekt == nil || readiness.isStale)
+    }
+
+    private var readyToAssemble: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle").foregroundStyle(.green)
+            Text(lecture.meta.konspekt == nil ? "Все страницы распознаны." : "Страницы изменились после сборки конспекта.")
+            Spacer()
+            Button(lecture.meta.konspekt == nil ? "Собрать конспект" : "Пересобрать конспект") {
+                showNotes()
+                if lecture.meta.konspekt?.manuallyEdited != true { assembly.assemble(lecture.id) }
+            }
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var pending: [String] { recognition.pendingPages(in: lecture) }
