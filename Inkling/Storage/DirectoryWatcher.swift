@@ -1,0 +1,37 @@
+import CoreServices
+import Foundation
+
+/// Следит за папкой хранения (включая вложенные) через FSEvents и сообщает об изменениях
+/// на главном потоке, с задержкой, чтобы пачка событий давала один вызов.
+final class DirectoryWatcher: @unchecked Sendable {
+    private var stream: FSEventStreamRef?
+    private let onChange: @MainActor () -> Void
+
+    init?(url: URL, latency: TimeInterval = 0.5, onChange: @escaping @MainActor () -> Void) {
+        self.onChange = onChange
+        var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
+                                           retain: nil, release: nil, copyDescription: nil)
+        let callback: FSEventStreamCallback = { _, info, _, _, _, _ in
+            guard let info else { return }
+            let watcher = Unmanaged<DirectoryWatcher>.fromOpaque(info).takeUnretainedValue()
+            MainActor.assumeIsolated { watcher.onChange() }
+        }
+        let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagNoDefer | kFSEventStreamCreateFlagWatchRoot)
+        guard let stream = FSEventStreamCreate(nil, callback, &context, [url.path] as CFArray,
+                                               FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags)
+        else { return nil }
+        self.stream = stream
+        FSEventStreamSetDispatchQueue(stream, .main)
+        FSEventStreamStart(stream)
+    }
+
+    func stop() {
+        guard let stream else { return }
+        FSEventStreamStop(stream)
+        FSEventStreamInvalidate(stream)
+        FSEventStreamRelease(stream)
+        self.stream = nil
+    }
+
+    deinit { stop() }
+}
