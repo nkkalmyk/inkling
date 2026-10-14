@@ -184,6 +184,7 @@ struct EngineRouterTests {
         nonisolated let id: EngineID
         private var script: [Result<String, AIError>]
         private(set) var calls = 0
+        private(set) var requests: [AIRequest] = []
         private(set) var maxConcurrent = 0
         private var current = 0
         private let delay: Duration
@@ -196,10 +197,13 @@ struct EngineRouterTests {
 
         func run(_ request: AIRequest) async throws(AIError) -> AIResponse {
             calls += 1
+            requests.append(request)
             current += 1
             maxConcurrent = max(maxConcurrent, current)
             defer { current -= 1 }
-            if delay > .zero { try? await Task.sleep(for: delay) }
+            if delay > .zero {
+                do { try await Task.sleep(for: delay) } catch { throw .cancelled }
+            }
             let next = script.isEmpty ? .success("ok") : script.removeFirst()
             switch next {
             case .success(let text): return AIResponse(text: text, json: nil, engine: id, model: "fake", duration: 0)

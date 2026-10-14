@@ -85,6 +85,7 @@ struct SourceImporter: Sendable {
                             crop: .auto(nil), addedAt: now())
         do {
             page.crop = try renderNotePhoto(page)
+            page.imageHash = FileHash.sha256(paths.notePhoto(id))
         } catch {
             try? FileManager.default.removeItem(at: original)
             throw error
@@ -100,9 +101,10 @@ struct SourceImporter: Sendable {
         var pages: [NotePage] = []
         for index in 0..<count {
             // Скан уже плоский: автообрезка по умолчанию выключена, её можно включить вручную.
-            let page = NotePage(id: PageID.make(), source: .pdfPage(file: source, index: index), captureDate: nil,
+            var page = NotePage(id: PageID.make(), source: .pdfPage(file: source, index: index), captureDate: nil,
                                 crop: .original, addedAt: now())
-            _ = try renderNotePhoto(page)
+            try renderNotePhoto(page)
+            page.imageHash = FileHash.sha256(paths.notePhoto(page.id))
             pages.append(page)
             step()
         }
@@ -135,10 +137,10 @@ struct SourceImporter: Sendable {
         var pages: [SlidePage] = []
         for (index, text) in texts.enumerated() {
             let verdict = SlideTextHeuristic.analyze(text)
-            let page = SlidePage(id: PageID.make(), source: .pdfPage(file: file, index: index),
+            var page = SlidePage(id: PageID.make(), source: .pdfPage(file: file, index: index),
                                  heuristicNeedsImage: verdict.needsImage, heuristicReason: verdict.reason,
                                  addedAt: now())
-            try syncSlideFiles(page, textLayer: text)
+            page.text = try syncSlideFiles(page, textLayer: text)
             pages.append(page)
             step()
         }
@@ -150,15 +152,17 @@ struct SourceImporter: Sendable {
         let ext = url.pathExtension.isEmpty ? "jpg" : url.pathExtension.lowercased()
         let source = PageSource.image(file: "\(id).\(ext)")
         try copy(url, to: paths.original(source, in: .slides))
-        let page = SlidePage(id: id, source: source, heuristicNeedsImage: true, heuristicReason: "картинка, а не PDF",
+        var page = SlidePage(id: id, source: source, heuristicNeedsImage: true, heuristicReason: "картинка, а не PDF",
                              addedAt: now())
-        try syncSlideFiles(page, textLayer: nil)
+        page.text = try syncSlideFiles(page, textLayer: nil)
         return page
     }
 
-    /// Приводит файлы слайда в соответствие с режимом: для картинки — `slides/images/<id>.jpg`,
-    /// для текстового слоя — `slides/pages/<id>.md` с текстом из PDF.
-    func syncSlideFiles(_ page: SlidePage, textLayer: String? = nil) throws {
+    /// Приводит файлы слайда в соответствие с режимом: для картинки — `slides/images/<id>.jpg`
+    /// (текст остаётся до распознавания), для текстового слоя — `slides/pages/<id>.md` с текстом из PDF
+    /// (прежний текст уходит в историю). Возвращает новое описание текста страницы.
+    @discardableResult
+    func syncSlideFiles(_ page: SlidePage, textLayer: String? = nil) throws -> PageText? {
         if page.usesImage {
             let image: CIImage
             switch page.source {
@@ -169,13 +173,14 @@ struct SourceImporter: Sendable {
             }
             let resized = ImageProcessor.resized(image, maxDimension: ImageProcessor.maxDimension)
             try write(try ImageProcessor.jpegData(resized), to: paths.slideImage(page.id))
-        } else {
-            try? FileManager.default.removeItem(at: paths.slideImage(page.id))
-            if case .pdfPage(_, let index) = page.source {
-                let text = try textLayer ?? PDFTools.pageTexts(paths.original(page.source, in: .slides))[index]
-                try write(Data(text.trimmingCharacters(in: .whitespacesAndNewlines).utf8), to: paths.pageText(page.id, in: .slides))
-            }
+            return page.text
         }
+        try? FileManager.default.removeItem(at: paths.slideImage(page.id))
+        guard case .pdfPage(_, let index) = page.source else { return page.text }
+        let raw = try textLayer ?? PDFTools.pageTexts(paths.original(page.source, in: .slides))[index]
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        try PageTextStore(paths: paths).write(text, id: page.id, in: .slides, previous: page.text, now: now())
+        return PageText(origin: .textLayer, updatedAt: JSONCoding.rounded(now()))
     }
 
     // MARK: Удаление

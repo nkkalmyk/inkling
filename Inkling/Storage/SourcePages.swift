@@ -74,6 +74,27 @@ enum CropMode: Codable, Equatable, Hashable, Sendable {
     }
 }
 
+/// Откуда текст страницы `<раздел>/pages/<id>.md` (SPEC, разделы 2.6 и 4.1).
+struct PageText: Codable, Equatable, Sendable {
+    enum Origin: String, Codable, Sendable {
+        /// Распознан моделью.
+        case model
+        /// Взят из текстового слоя PDF.
+        case textLayer
+        /// Набран вручную без распознавания.
+        case manual
+    }
+
+    var origin: Origin
+    var engine: EngineID?
+    var model: String?
+    var updatedAt: Date
+    /// Текст правили вручную после распознавания.
+    var manuallyEdited = false
+    /// SHA-256 картинки, по которой распознан текст: если картинку пересоздали (поворот, обрезка), текст устарел.
+    var imageHash: String?
+}
+
 /// Страница раздела «Мой конспект».
 struct NotePage: Codable, Equatable, Identifiable, Sendable {
     var id: String
@@ -84,6 +105,16 @@ struct NotePage: Codable, Equatable, Identifiable, Sendable {
     /// Поворот пользователем, четверти оборота по часовой стрелке (0…3).
     var rotation: Int = 0
     var addedAt: Date
+    /// `nil` — страница ещё не распознана.
+    var text: PageText?
+    /// SHA-256 текущего обработанного фото.
+    var imageHash: String?
+
+    /// Фото пересоздано (поворот, обрезка) после того, как по нему распознали текст.
+    var textIsStale: Bool {
+        guard let text, text.origin == .model, let used = text.imageHash, let current = imageHash else { return false }
+        return used != current
+    }
 }
 
 /// Как получить текст слайда (SPEC, раздел 3.3).
@@ -106,6 +137,13 @@ struct SlidePage: Codable, Equatable, Identifiable, Sendable {
     /// «Не включать в конспект» (титульники, «Спасибо за внимание»).
     var excluded: Bool = false
     var addedAt: Date
+    /// `nil` — текста ещё нет (слайд-картинка не распознана).
+    var text: PageText?
+
+    /// Слайду-картинке нужно распознавание: текста нет или он из текстового слоя.
+    var needsRecognition: Bool {
+        usesImage && (text == nil || text?.origin == .textLayer)
+    }
 
     /// Слайд отправляется в модель картинкой.
     var usesImage: Bool {

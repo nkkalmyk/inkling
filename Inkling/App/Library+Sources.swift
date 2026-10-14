@@ -100,6 +100,9 @@ extension Library {
             if let staging { try? FileManager.default.removeItem(at: staging) }
             importProgress = nil
             mutate(lectureID) { $0.appendImported(combined) }
+            // Новые страницы распознаются сразу после импорта (SPEC, раздел 13).
+            let toRecognize = combined.notes.map(\.id) + combined.slides.filter(\.needsRecognition).map(\.id)
+            if !toRecognize.isEmpty { recognition?.recognize(lectureID: lectureID, pageIDs: toRecognize) }
             if !combined.skipped.isEmpty {
                 errorMessage = "Не всё удалось импортировать:\n"
                     + combined.skipped.map { "• \($0.name): \($0.reason)" }.joined(separator: "\n")
@@ -151,7 +154,13 @@ extension Library {
             let outcome = await Task.detached(priority: .userInitiated) {
                 Result { try importer.syncSlideFiles(page) }
             }.value
+            if case .success(let text) = outcome, text != page.text {
+                mutate(lectureID) { $0.setPageText(text, for: id) }
+            }
             finishBusy(id, outcome.error)
+            if outcome.error == nil, page.needsRecognition {
+                recognition?.recognize(lectureID: lectureID, pageIDs: [id])
+            }
         }
     }
 
@@ -175,8 +184,12 @@ extension Library {
             let outcome = await Task.detached(priority: .userInitiated) {
                 Result { try importer.renderNotePhoto(page) }
             }.value
-            if case .success(let crop) = outcome, crop != page.crop {
-                mutate(lectureID) { _ = $0.setCrop(crop, forNote: page.id) }
+            if case .success(let crop) = outcome {
+                let hash = FileHash.sha256(LecturePaths(folder: folder).notePhoto(page.id))
+                mutate(lectureID) { meta in
+                    _ = meta.setCrop(crop, forNote: page.id)
+                    if let i = meta.notes.firstIndex(where: { $0.id == page.id }) { meta.notes[i].imageHash = hash }
+                }
             }
             finishBusy(page.id, outcome.error)
         }
@@ -187,6 +200,45 @@ extension Library {
         pageRevisions[id, default: 0] += 1
         if let error { errorMessage = error.localizedDescription }
         reload()
+    }
+
+    // MARK: Текст страниц
+
+    /// Сохраняет правку текста. При первой правке результата модели прежняя версия уходит в историю (SPEC, раздел 4.1).
+    func saveEditedText(_ text: String, pageID: String, lectureID: UUID) {
+        guard let lecture = lecture(id: lectureID), let location = lecture.meta.page(pageID) else { return }
+        let store = PageTextStore(paths: LecturePaths(folder: lecture.folder))
+        guard store.read(pageID, in: location.section) != text else { return }
+        let current = lecture.meta.pageText(pageID)
+        do {
+            try store.write(text, id: pageID, in: location.section, previous: current,
+                            saveHistory: current?.manuallyEdited != true)
+        } catch {
+            errorMessage = "Не удалось сохранить текст: \(error.localizedDescription)"
+            return
+        }
+        var info = current ?? PageText(origin: .manual, updatedAt: Date())
+        info.manuallyEdited = true
+        info.updatedAt = JSONCoding.rounded(Date())
+        if current?.manuallyEdited != true || current?.origin == nil {
+            mutate(lectureID) { $0.setPageText(info, for: pageID) }
+        }
+    }
+
+    /// Восстанавливает версию из истории; текущая уходит в историю.
+    func restoreVersion(_ entry: HistoryStore.Entry, pageID: String, lectureID: UUID) {
+        guard let lecture = lecture(id: lectureID), let location = lecture.meta.page(pageID) else { return }
+        let store = PageTextStore(paths: LecturePaths(folder: lecture.folder))
+        do {
+            let current = lecture.meta.pageText(pageID)
+            let restored = try store.restore(entry, id: pageID, in: location.section, current: current)
+            var info = restored ?? PageText(origin: .manual, updatedAt: Date(), manuallyEdited: true)
+            info.updatedAt = JSONCoding.rounded(Date())
+            mutate(lectureID) { $0.setPageText(info, for: pageID) }
+            pageRevisions[pageID, default: 0] += 1
+        } catch {
+            errorMessage = "Не удалось восстановить версию: \(error.localizedDescription)"
+        }
     }
 
     @discardableResult

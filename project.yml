@@ -23,6 +23,12 @@ targets:
     platform: macOS
     sources:
       - path: Inkling
+        excludes:
+          - Resources/Prompts
+      # Промпты по умолчанию копируются в бандл папкой, со структурой (SPEC, раздел 5).
+      - path: Inkling/Resources/Prompts
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nkalmykov.inkling
