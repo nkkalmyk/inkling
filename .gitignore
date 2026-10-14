@@ -13,3 +13,6 @@ xcuserdata/
 
 # Отладка этапа 0
 docs/cli-experiments/tmp/
+
+# Локальный просмотр рендера
+.claude/launch.json

@@ -7,9 +7,14 @@ struct HistoryStore: Sendable {
     struct Entry: Identifiable, Equatable, Sendable {
         var file: URL
         var date: Date
-        var info: PageText?
+        /// Описание версии `<метка>.json`, если оно есть.
+        var infoFile: URL?
 
         var id: String { file.path }
+
+        func info<T: Decodable>(_ type: T.Type) -> T? {
+            infoFile.flatMap { try? AtomicFile.readJSON(type, from: $0) }
+        }
     }
 
     let folder: URL
@@ -38,7 +43,7 @@ struct HistoryStore: Sendable {
     }
 
     /// Сохраняет копию файла. Повтор последней сохранённой версии не дублируется.
-    func save(_ file: URL, info: PageText?, now: Date = Date()) throws {
+    func save<Info: Encodable>(_ file: URL, info: Info?, now: Date = Date()) throws {
         guard let data = try? Data(contentsOf: file) else { return }
         if let latest = entries().first, (try? Data(contentsOf: latest.file)) == data { return }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -62,8 +67,8 @@ struct HistoryStore: Sendable {
                 let stamp = file.deletingPathExtension().lastPathComponent
                 guard let date = Self.date(fromStamp: stamp) else { return nil }
                 let infoURL = folder.appendingPathComponent("\(stamp).json")
-                let info = try? AtomicFile.readJSON(PageText.self, from: infoURL)
-                return Entry(file: file, date: date, info: info)
+                return Entry(file: file, date: date,
+                             infoFile: FileManager.default.fileExists(atPath: infoURL.path) ? infoURL : nil)
             }
             .sorted { $0.date > $1.date }
     }
@@ -100,7 +105,7 @@ struct PageTextStore: Sendable {
                  now: Date = Date()) throws -> PageText? {
         let text = try String(contentsOf: entry.file, encoding: .utf8)
         try write(text, id: id, in: section, previous: current, now: now)
-        return entry.info
+        return entry.info(PageText.self)
     }
 }
 

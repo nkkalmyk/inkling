@@ -1,0 +1,137 @@
+// Рендер конспекта: Markdown (markdown-it) + формулы (KaTeX + mhchem).
+// Формулы вынимаются из текста до markdown-it, чтобы `_`, `*` и `\` внутри них не превращались в разметку,
+// а после рендера подставляются обратно уже свёрстанными. Чистая функция строки в строку: без DOM.
+(function (global) {
+  'use strict';
+
+  var md = global.markdownit({ html: false, linkify: true, typographer: false, breaks: false });
+  var PH = 'INKLINGMATH';
+
+  // Находит формулы $...$ и $$...$$ вне кода и заменяет их метками INKLINGMATH<n>X.
+  function extractMath(src) {
+    var formulas = [];
+    var parts = [];
+    var buffer = [];
+    var inFence = null;
+
+    function flush() {
+      if (buffer.length) {
+        parts.push(scan(buffer.join('\n'), formulas));
+        buffer = [];
+      }
+    }
+
+    src.split('\n').forEach(function (line) {
+      var fence = line.match(/^\s*(```+|~~~+)/);
+      if (inFence) {
+        parts.push(line);
+        if (fence && fence[1][0] === inFence[0] && fence[1].length >= inFence.length) inFence = null;
+        return;
+      }
+      if (fence) {
+        flush();
+        inFence = fence[1];
+        parts.push(line);
+        return;
+      }
+      buffer.push(line);
+    });
+    flush();
+    return { text: parts.join('\n'), formulas: formulas };
+  }
+
+  function scan(text, formulas) {
+    var out = '';
+    var i = 0;
+    var n = text.length;
+    while (i < n) {
+      var c = text[i];
+      if (c === '\\' && text[i + 1] === '$') { out += '\\$'; i += 2; continue; }
+      if (c === '`') {
+        var run = 0;
+        while (text[i + run] === '`') run++;
+        var ticks = text.substr(i, run);
+        var close = text.indexOf(ticks, i + run);
+        while (close !== -1 && text[close + run] === '`') close = text.indexOf(ticks, close + run + 1);
+        if (close === -1) { out += ticks; i += run; continue; }
+        out += text.slice(i, close + run);
+        i = close + run;
+        continue;
+      }
+      if (c === '$' && text[i + 1] === '$') {
+        var end = text.indexOf('$$', i + 2);
+        if (end !== -1) {
+          formulas.push({ tex: text.slice(i + 2, end), display: true });
+          out += PH + (formulas.length - 1) + 'X';
+          i = end + 2;
+          continue;
+        }
+      }
+      if (c === '$') {
+        var j = findInlineEnd(text, i);
+        if (j !== -1) {
+          formulas.push({ tex: text.slice(i + 1, j), display: false });
+          out += PH + (formulas.length - 1) + 'X';
+          i = j + 1;
+          continue;
+        }
+      }
+      out += c;
+      i++;
+    }
+    return out;
+  }
+
+  // Правила Pandoc: после открывающего $ нет пробела, перед закрывающим нет пробела, после него не цифра;
+  // формула не выходит за пустую строку.
+  function findInlineEnd(text, start) {
+    var next = text[start + 1];
+    if (next === undefined || /\s/.test(next)) return -1;
+    for (var j = start + 1; j < text.length; j++) {
+      var ch = text[j];
+      if (ch === '\n' && text[j + 1] === '\n') return -1;
+      if (ch === '\\') { j++; continue; }
+      if (ch === '$') {
+        if (/\s/.test(text[j - 1])) continue;
+        if (/[0-9]/.test(text[j + 1] || '')) continue;
+        return j;
+      }
+    }
+    return -1;
+  }
+
+  function escapeHTML(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function renderFormula(f) {
+    try {
+      var html = global.katex.renderToString(f.tex, {
+        displayMode: f.display, throwOnError: false, strict: 'ignore', trust: false, output: 'html'
+      });
+      return f.display ? '<div class="math-display">' + html + '</div>' : html;
+    } catch (e) {
+      return '<span class="katex-error" title="' + escapeHTML(String(e && e.message || e)) + '">' + escapeHTML(f.tex) + '</span>';
+    }
+  }
+
+  function toHTML(markdown) {
+    var extracted = extractMath(markdown || '');
+    var html = md.render(extracted.text);
+    // Формула одна в абзаце — выключенная, без обёртки <p>.
+    html = html.replace(new RegExp('<p>(' + PH + '(\\d+)X)</p>', 'g'), function (_, all, idx) {
+      var f = extracted.formulas[+idx];
+      return f && f.display ? renderFormula(f) : '<p>' + renderFormula(f) + '</p>';
+    });
+    html = html.replace(new RegExp(PH + '(\\d+)X', 'g'), function (_, idx) {
+      var f = extracted.formulas[+idx];
+      return f ? renderFormula(f) : '';
+    });
+    html = html.replace(/\[неразборчиво\]/g, '<mark class="illegible">[неразборчиво]</mark>');
+    html = html.replace(/<blockquote>\s*<p>(⚠️|⚠)/g, '<blockquote class="callout warn"><p>$1');
+    html = html.replace(/<blockquote>\s*<p>(📎)/g, '<blockquote class="callout slides"><p>$1');
+    return html;
+  }
+
+  global.InklingRender = { toHTML: toHTML, extractMath: extractMath };
+})(this);

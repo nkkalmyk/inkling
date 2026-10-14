@@ -49,6 +49,8 @@ final class Library {
     var busyPages: Set<String> = []
     /// Растёт при пересоздании файла страницы, чтобы миниатюры перечитались.
     var pageRevisions: [String: Int] = [:]
+    /// Растёт при перезаписи `konspekt.md` приложением (сборка, восстановление версии).
+    var konspektRevision: [UUID: Int] = [:]
     /// Куда класть снимки Камеры непрерывности и вставку: открытая лекция и выбранный раздел.
     var importTarget: (lectureID: UUID, section: SourceSection)?
     /// Очередь распознавания; задаётся приложением.
