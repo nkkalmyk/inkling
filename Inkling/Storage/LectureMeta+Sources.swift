@@ -100,6 +100,24 @@ extension LectureMeta {
         return slides[i]
     }
 
+    func pageText(_ id: String) -> PageText? {
+        notes.first { $0.id == id }?.text ?? slides.first { $0.id == id }?.text
+    }
+
+    /// Записывает описание текста страницы. Возвращает `false`, если страницы уже нет.
+    @discardableResult
+    mutating func setPageText(_ text: PageText?, for id: String) -> Bool {
+        if let i = notes.firstIndex(where: { $0.id == id }) {
+            notes[i].text = text
+            return true
+        }
+        if let i = slides.firstIndex(where: { $0.id == id }) {
+            slides[i].text = text
+            return true
+        }
+        return false
+    }
+
     mutating func setSlideExcluded(_ excluded: Bool, for id: String) {
         guard let i = slides.firstIndex(where: { $0.id == id }) else { return }
         slides[i].excluded = excluded

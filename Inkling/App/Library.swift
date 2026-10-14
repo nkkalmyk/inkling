@@ -51,6 +51,10 @@ final class Library {
     var pageRevisions: [String: Int] = [:]
     /// Куда класть снимки Камеры непрерывности и вставку: открытая лекция и выбранный раздел.
     var importTarget: (lectureID: UUID, section: SourceSection)?
+    /// Очередь распознавания; задаётся приложением.
+    @ObservationIgnored weak var recognition: RecognitionCenter?
+
+    var prompts: PromptLibrary { PromptLibrary(root: root) }
 
     private var watcher: DirectoryWatcher?
     private var downloadPoll: Task<Void, Never>?
@@ -80,6 +84,7 @@ final class Library {
         watcher = nil
         store = LibraryStore(root: newRoot, trasher: store.trasher)
         perform { try store.bootstrap() }
+        perform { try prompts.installMissingDefaults() }
         reload()
         watcher = DirectoryWatcher(url: newRoot) { [weak self] in self?.reload() }
     }

@@ -13,6 +13,13 @@ struct SourcesView: View {
     private var paths: LecturePaths { LecturePaths(folder: lecture.folder) }
 
     var body: some View {
+        VStack(spacing: 0) {
+            RecognitionBar(lecture: lecture)
+            content
+        }
+    }
+
+    private var content: some View {
         HSplitView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
@@ -189,6 +196,7 @@ private struct SourceSectionView: View {
         VStack(spacing: 4) {
             content()
                 .frame(height: 150)
+                .overlay(alignment: .bottomLeading) { RecognitionBadge(pageID: id, lecture: lecture) }
                 .overlay {
                     if library.busyPages.contains(id) {
                         ProgressView().controlSize(.small)
@@ -320,5 +328,144 @@ struct SlidePageMenu: View {
 
     private var autoTitle: String {
         page.heuristicNeedsImage ? "Автоматически (картинка)" : "Автоматически (текстовый слой)"
+    }
+}
+
+// MARK: Распознавание
+
+/// Полоса над источниками: прогресс распознавания, отмена, остановившая очередь ошибка, «Распознать нераспознанные».
+private struct RecognitionBar: View {
+    @Environment(RecognitionCenter.self) private var recognition
+    @Environment(\.openSettings) private var openSettings
+    let lecture: LectureRecord
+    @State private var showDetails = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let batch = recognition.batches[lecture.id] {
+                running(batch)
+            } else if let error = recognition.blockingError {
+                blocked(error)
+            } else if !pending.isEmpty {
+                idle
+            }
+        }
+    }
+
+    private var pending: [String] { recognition.pendingPages(in: lecture) }
+
+    private func running(_ batch: RecognitionCenter.Batch) -> some View {
+        HStack(spacing: 10) {
+            ProgressView(value: Double(batch.done + batch.failed), total: Double(max(batch.total, 1)))
+                .frame(width: 160)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let elapsed = Int(context.date.timeIntervalSince(batch.startedAt))
+                Text("Распознавание: \(batch.done + batch.failed) из \(batch.total)"
+                     + (batch.engine.map { " · \($0.title)" } ?? "")
+                     + " · \(elapsed / 60):\(String(format: "%02d", elapsed % 60))")
+            }
+            if batch.failed > 0 {
+                Text("ошибок: \(batch.failed)").foregroundStyle(.red)
+            }
+            if let note = batch.note {
+                Text(note).foregroundStyle(.orange).lineLimit(1)
+            }
+            Spacer()
+            Button("Отменить") { recognition.cancel(lectureID: lecture.id) }
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private func blocked(_ error: AIError) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(.red)
+                Text(error.userMessage)
+                Spacer()
+                if case .rateLimited = error {} else {
+                    Button("Настройки…") { openSettings() }
+                }
+                if !pending.isEmpty {
+                    Button("Повторить") { recognition.recognize(lectureID: lecture.id, pageIDs: pending) }
+                }
+                Button {
+                    recognition.blockingError = nil
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.borderless)
+            }
+            if !error.details.isEmpty {
+                DisclosureGroup("Подробности", isExpanded: $showDetails) {
+                    Text(error.details)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .font(.caption)
+            }
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(.red.opacity(0.08))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var idle: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "text.viewfinder").foregroundStyle(.secondary)
+            Text("Не распознано страниц: \(pending.count)")
+            Spacer()
+            Button("Распознать") { recognition.recognize(lectureID: lecture.id, pageIDs: pending) }
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+}
+
+/// Значок состояния текста на миниатюре.
+private struct RecognitionBadge: View {
+    @Environment(RecognitionCenter.self) private var recognition
+    let pageID: String
+    let lecture: LectureRecord
+
+    var body: some View {
+        Group {
+            switch recognition.state(of: pageID) {
+            case .queued:
+                icon("clock", .secondary, "В очереди")
+            case .running:
+                ProgressView().controlSize(.mini).padding(4)
+                    .background(.regularMaterial, in: Circle())
+            case .failed(let error):
+                icon("exclamationmark.triangle.fill", .red, error.userMessage)
+            case nil:
+                if let note = lecture.meta.notes.first(where: { $0.id == pageID }) {
+                    if note.text == nil { icon("text.badge.xmark", .secondary, "Не распознано") }
+                    else if note.textIsStale { icon("exclamationmark.circle.fill", .orange, "Фото изменено после распознавания") }
+                    else if note.text?.manuallyEdited == true { icon("pencil.circle.fill", .blue, "Текст правлен вручную") }
+                } else if let slide = lecture.meta.slides.first(where: { $0.id == pageID }), slide.needsRecognition {
+                    icon("text.badge.xmark", .secondary, "Не распознано")
+                }
+            }
+        }
+        .padding(4)
+    }
+
+    private func icon(_ name: String, _ style: Color, _ help: String) -> some View {
+        Image(systemName: name)
+            .font(.caption)
+            .foregroundStyle(style)
+            .padding(3)
+            .background(.regularMaterial, in: Circle())
+            .help(help)
     }
 }

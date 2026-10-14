@@ -19,6 +19,17 @@ struct SettingsView: View {
 
 private struct GeneralSettings: View {
     @Environment(AppSettings.self) private var settings
+    @State private var confirmReset = false
+    @State private var promptMessage: String?
+
+    private func resetPrompts() {
+        do {
+            let backup = try PromptLibrary(root: settings.storageRoot).resetToDefaults()
+            promptMessage = backup.map { "Готово. Ваши версии сохранены в \($0.path)." } ?? "Промпты и так были по умолчанию."
+        } catch {
+            promptMessage = "Не удалось сбросить промпты: \(error.localizedDescription)"
+        }
+    }
 
     var body: some View {
         Form {
@@ -40,8 +51,25 @@ private struct GeneralSettings: View {
                 }
             }
             LabeledContent("Промпты") {
-                Text("Папка промптов и сброс к умолчанию появятся вместе с распознаванием.")
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Button("Открыть папку промптов") {
+                            let prompts = PromptLibrary(root: settings.storageRoot)
+                            try? prompts.installMissingDefaults()
+                            NSWorkspace.shared.open(prompts.folder)
+                        }
+                        Button("Сбросить к умолчанию…") { confirmReset = true }
+                    }
+                    if let promptMessage {
+                        Text(promptMessage).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .confirmationDialog("Вернуть промпты по умолчанию?", isPresented: $confirmReset) {
+                Button("Сбросить") { resetPrompts() }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("Изменённые файлы не удалятся: они будут перенесены в папку «_старые».")
             }
         }
         .formStyle(.grouped)

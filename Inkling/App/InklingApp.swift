@@ -9,12 +9,20 @@ struct InklingApp: App {
     @State private var settings: AppSettings
     @State private var library: Library
     @State private var engines: EngineCenter
+    @State private var recognition: RecognitionCenter
 
     init() {
         let settings = AppSettings()
         _settings = State(initialValue: settings)
-        _library = State(initialValue: Library(root: settings.storageRoot))
-        _engines = State(initialValue: EngineCenter(settings: settings))
+        let library = Library(root: settings.storageRoot)
+        let engines = EngineCenter(settings: settings)
+        let recognition = RecognitionCenter(library: library, router: { engines.router },
+                                            timeout: { TimeInterval(settings.pageTimeoutSeconds) },
+                                            maxParallel: { settings.maxParallelCalls })
+        library.recognition = recognition
+        _library = State(initialValue: library)
+        _engines = State(initialValue: engines)
+        _recognition = State(initialValue: recognition)
     }
 
     var body: some Scene {
@@ -23,6 +31,7 @@ struct InklingApp: App {
                 .environment(library)
                 .environment(settings)
                 .environment(engines)
+                .environment(recognition)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
                 .task {
                     appDelegate.library = library
@@ -44,6 +53,7 @@ struct InklingApp: App {
             SettingsView()
                 .environment(settings)
                 .environment(engines)
+                .environment(library)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
         }
     }
