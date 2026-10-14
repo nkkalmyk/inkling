@@ -267,7 +267,8 @@ struct AIErrorTests {
 
     @Test func everyErrorHasRussianMessage() {
         let errors: [AIError] = [.binaryNotFound(""), .notAuthenticated(""), .rateLimited(resetAt: nil, details: ""),
-                                 .timeout, .cancelled, .invalidOutput(""), .processFailed(exitCode: 2, stderr: "")]
+                                 .timeout, .cancelled, .invalidOutput(""), .processFailed(exitCode: 2, stderr: ""),
+                                 .ollamaUnavailable(""), .modelNotInstalled(model: "m")]
         for error in errors {
             #expect(error.userMessage.range(of: "[А-Яа-яЁё]", options: .regularExpression) != nil)
         }

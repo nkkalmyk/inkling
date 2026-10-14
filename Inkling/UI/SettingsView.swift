@@ -98,20 +98,95 @@ private struct EngineSettings: View {
         Form {
             Picker("Основной движок", selection: $settings.primaryEngine) {
                 Text(AppSettings.Engine.claude.title).tag(AppSettings.Engine.claude)
+                Text(AppSettings.Engine.ollama.title).tag(AppSettings.Engine.ollama)
             }
             Picker("Запасной движок", selection: $settings.fallbackEngine) {
-                Text(AppSettings.Engine.none.title).tag(AppSettings.Engine.none)
+                ForEach(AppSettings.Engine.allCases) { Text($0.title).tag($0) }
             }
-            .help("Других движков пока нет: Gemini CLI и Antigravity CLI недоступны для этого аккаунта")
             Toggle("Переключаться на запасной при лимите", isOn: $settings.autoFallback)
-                .disabled(settings.fallbackEngine == .none)
+                .disabled(settings.fallbackEngine == .none || settings.fallbackEngine == settings.primaryEngine)
+            Picker("Сейчас работает", selection: $settings.engineMode) {
+                ForEach(AppSettings.EngineMode.allCases) { Text($0.title).tag($0) }
+            }
+            .help("То же, что меню «Модель» на панели лекции. Действует на новые запуски.")
             Section("Claude Code") {
                 TextField("Путь к claude", text: $settings.claudePathOverride, prompt: Text("Автопоиск"))
-                TextField("Модель", text: $settings.claudeModel, prompt: Text("sonnet"))
+                ClaudeModelPicker()
                 ConnectionCheckRow(engine: .claude)
+            }
+            Section {
+                TextField("Путь к ollama", text: $settings.ollamaPathOverride, prompt: Text("Автопоиск"))
+                OllamaModelPicker()
+                ConnectionCheckRow(engine: .ollama)
+            } header: {
+                Text("Ollama (локально)")
+            } footer: {
+                Text("Приложение само запускает сервер Ollama, когда он нужен, и закрывает его при выходе. "
+                     + "Модель inkling-ocr создаётся по инструкции в docs/ollama. Локальная модель медленнее Claude "
+                     + "и чаще ошибается на плотном почерке: её результаты помечаются «проверьте».")
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Модель Claude: Sonnet, Opus, Haiku или своя строка (`--model`).
+private struct ClaudeModelPicker: View {
+    @Environment(AppSettings.self) private var settings
+    private static let custom = "__custom__"
+
+    var body: some View {
+        @Bindable var settings = settings
+        let known = AppSettings.claudeModels.map(\.id)
+        Picker("Модель", selection: Binding(
+            get: { known.contains(settings.claudeModel) ? settings.claudeModel : Self.custom },
+            set: { settings.claudeModel = $0 == Self.custom ? "" : $0 })) {
+            ForEach(AppSettings.claudeModels, id: \.id) { Text($0.title).tag($0.id) }
+            Divider()
+            Text("Другая…").tag(Self.custom)
+        }
+        if !known.contains(settings.claudeModel) {
+            TextField("Своя модель", text: $settings.claudeModel, prompt: Text("например, claude-sonnet-5-5"))
+        }
+    }
+}
+
+/// Модель Ollama из установленных; если сервер недоступен, имя можно вписать вручную.
+private struct OllamaModelPicker: View {
+    @Environment(AppSettings.self) private var settings
+    @Environment(EngineCenter.self) private var engines
+
+    var body: some View {
+        @Bindable var settings = settings
+        let models = engines.ollamaModels.map { $0.hasSuffix(":latest") ? String($0.dropLast(7)) : $0 }
+        LabeledContent("Модель") {
+            HStack {
+                if models.isEmpty {
+                    TextField("Модель", text: $settings.ollamaModel, prompt: Text(OllamaEngine.Config.defaultModel))
+                        .labelsHidden()
+                } else {
+                    Picker("Модель", selection: $settings.ollamaModel) {
+                        ForEach(models, id: \.self) { Text($0).tag($0) }
+                        if !models.contains(settings.ollamaModel) {
+                            Text("\(settings.ollamaModel) (не установлена)").tag(settings.ollamaModel)
+                        }
+                    }
+                    .labelsHidden()
+                }
+                Button {
+                    engines.refreshOllamaModels()
+                } label: {
+                    if engines.loadingOllamaModels { ProgressView().controlSize(.small) } else { Text("Обновить список") }
+                }
+                .disabled(engines.loadingOllamaModels)
+            }
+        }
+        if let error = engines.ollamaModelsError {
+            Label(error.userMessage, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.callout)
+        }
     }
 }
 

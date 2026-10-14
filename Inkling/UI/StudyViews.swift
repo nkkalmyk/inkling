@@ -136,6 +136,7 @@ private struct StudyToolbar: View {
                     .locale(Locale(identifier: "ru_RU"))), info.manuallyEdited ? "правлено вручную" : nil]
                     .compactMap { $0 }.joined(separator: " · "))
                     .foregroundStyle(.secondary)
+                ReviewBadge(engine: info.engine, manuallyEdited: info.manuallyEdited)
             }
             Spacer()
             trailing

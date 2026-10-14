@@ -3,10 +3,21 @@ import PDFKit
 import Testing
 @testable import Inkling
 
-/// Сквозной прогон всего конвейера с настоящим Claude Code (SPEC, раздел 10). По флагу, как другие живые тесты.
+/// Каким движком идёт живой сквозной прогон: по флагам окружения.
+enum LiveEngine {
+    static var selected: EngineID? {
+        let env = ProcessInfo.processInfo.environment
+        if env["INKLING_LIVE_CLAUDE"] == "1" { return .claude }
+        if env["INKLING_LIVE_OLLAMA"] == "1" { return .ollama }
+        return nil
+    }
+}
+
+/// Сквозной прогон всего конвейера с настоящим движком (SPEC, раздел 10). По флагу, как другие живые тесты:
+/// `INKLING_LIVE_CLAUDE=1` — Claude Code, `INKLING_LIVE_OLLAMA=1` — локальная Ollama (этап 8).
 /// Берёт синтетические данные из `TestData/synthetic` и, если есть, реальные фото из `TestData/real`.
 /// Результаты кладёт в `INKLING_E2E_OUT` (если задано) для `docs/e2e-report.md`.
-@Suite("Сквозной прогон", .enabled(if: ProcessInfo.processInfo.environment["INKLING_LIVE_CLAUDE"] == "1"))
+@Suite("Сквозной прогон", .enabled(if: LiveEngine.selected != nil))
 @MainActor
 struct EndToEndTests {
     static let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
@@ -21,9 +32,13 @@ struct EndToEndTests {
         let library = Library(root: dir.url.appendingPathComponent("Inkling"),
                               trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
         library.open(root: library.root)
-        let router = EngineRouter(primary: ClaudeCodeEngine(config: .init()), fallback: nil, settings: .init(maxParallel: 2))
+        let local = LiveEngine.selected == .ollama
+        let engine: any AIEngine = local ? OllamaEngine(config: .init()) : ClaudeCodeEngine(config: .init())
+        note("Движок: \(engine.id.title)")
+        let router = EngineRouter(primary: engine, fallback: nil, settings: .init(maxParallel: 2))
         let recognition = RecognitionCenter(library: library, router: { router }, timeout: { 180 }, maxParallel: { 2 })
-        let assembly = AssemblyCenter(library: library, router: { router }, threshold: { 40_000 })
+        let assembly = AssemblyCenter(library: library, router: { router },
+                                      threshold: { local ? EngineCenter.localChunkThreshold : 40_000 })
         let study = StudyCenter(library: library, router: { router })
         library.recognition = recognition
 
@@ -55,7 +70,9 @@ struct EndToEndTests {
 
         // Распознавание стартует само после импорта.
         started = Date()
-        for _ in 0..<1800 where recognition.isBusy(id) || recognition.pendingPages(in: library.lecture(id: id)!).count > 0 {
+        // Локальная модель в 5–10 раз медленнее: ждём дольше.
+        let patience = local ? 5 : 1
+        for _ in 0..<(1800 * patience) where recognition.isBusy(id) || recognition.pendingPages(in: library.lecture(id: id)!).count > 0 {
             if recognition.blockingError != nil { break }
             try await Task.sleep(for: .milliseconds(200))
         }
@@ -76,7 +93,7 @@ struct EndToEndTests {
         note("Сборка: режим \(readiness.plan?.mode.rawValue ?? "-"), вызовов \(readiness.plan?.calls ?? 0)")
         started = Date()
         assembly.assemble(id)
-        for _ in 0..<3000 where assembly.isRunning(id) { try await Task.sleep(for: .milliseconds(200)) }
+        for _ in 0..<(3000 * patience) where assembly.isRunning(id) { try await Task.sleep(for: .milliseconds(200)) }
         #expect(assembly.errors[id] == nil, "\(String(describing: assembly.errors[id]))")
         lecture = try #require(library.lecture(id: id))
         let konspekt = try #require(KonspektStore(folder: lecture.folder).read())
@@ -87,7 +104,7 @@ struct EndToEndTests {
         // Учебные материалы.
         started = Date()
         study.generate(id)
-        for _ in 0..<3000 where study.isRunning(id) { try await Task.sleep(for: .milliseconds(200)) }
+        for _ in 0..<(3000 * patience) where study.isRunning(id) { try await Task.sleep(for: .milliseconds(200)) }
         #expect(study.errors[id] == nil, "\(String(describing: study.errors[id]))")
         let materials = try #require(StudyStore(folder: lecture.folder).readStudy())
         try? FileManager.default.copyItem(at: StudyStore(folder: lecture.folder).studyURL,

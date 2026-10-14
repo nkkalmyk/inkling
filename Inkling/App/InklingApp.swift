@@ -26,7 +26,7 @@ struct InklingApp: App {
         _engines = State(initialValue: engines)
         _recognition = State(initialValue: recognition)
         let assembly = AssemblyCenter(library: library, router: { engines.router },
-                                      threshold: { settings.chunkThresholdChars })
+                                      threshold: { engines.chunkThreshold })
         let study = StudyCenter(library: library, router: { engines.router })
         // «Запускать учебные материалы автоматически после сборки» (SPEC, раздел 4, пункт 5).
         assembly.onAssembled = { lectureID in

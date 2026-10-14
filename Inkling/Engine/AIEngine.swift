@@ -1,27 +1,33 @@
 import Foundation
 
-/// Идентификатор движка. В v1 есть только Claude Code (SPEC, раздел 13).
+/// Идентификатор движка: Claude Code и локальная Ollama (SPEC, раздел 13).
 enum EngineID: String, Codable, Sendable, CaseIterable {
     case claude
+    case ollama
 
     var title: String {
         switch self {
         case .claude: "Claude Code"
+        case .ollama: "Ollama (локально)"
         }
     }
+
+    /// Результат локальной модели нужно проверить: на плотной рукописи она ошибается заметно чаще Claude.
+    var needsReview: Bool { self == .ollama }
 }
 
 /// Запрос к модели (SPEC, раздел 2.1).
 struct AIRequest: Sendable {
     enum Format: Sendable, Equatable {
         case text
-        /// JSON; со схемой CLI сам проверяет структуру (`--json-schema`), без схемы JSON извлекается из текста.
+        /// JSON; со схемой движок сам держит структуру (`--json-schema`, `format` у Ollama), без схемы JSON извлекается из текста.
         case json(schema: String?)
     }
 
     var prompt: String
     var systemPrompt: String
-    /// Картинки копируются во временную папку запуска; в промпте на них ссылаются как `./<имя файла>`.
+    /// Claude: картинки копируются во временную папку запуска, в промпте на них ссылаются как `./<имя файла>`.
+    /// Ollama: картинки уходят в запрос в base64.
     var images: [URL] = []
     var format: Format = .text
     var timeout: TimeInterval = 120
@@ -34,7 +40,7 @@ struct AIResponse: Sendable, Equatable {
     /// JSON-ответ (для `.json`).
     var json: Data?
     var engine: EngineID
-    /// Фактическая модель, как её назвал CLI.
+    /// Фактическая модель, как её назвал движок.
     var model: String
     var duration: TimeInterval
 }
@@ -48,6 +54,10 @@ enum AIError: Error, Equatable, Sendable {
     case cancelled
     case invalidOutput(String)
     case processFailed(exitCode: Int32, stderr: String)
+    /// Ollama: нет бинарника или сервер не поднялся.
+    case ollamaUnavailable(String)
+    /// Ollama: выбранной модели нет среди установленных.
+    case modelNotInstalled(model: String)
 
     /// Повтор на том же движке имеет смысл (SPEC, раздел 2.6).
     var isRetryable: Bool {
@@ -84,14 +94,19 @@ enum AIError: Error, Equatable, Sendable {
             return "Модель вернула пустой ответ или ответ в неожиданном формате."
         case .processFailed(let code, _):
             if isModelUnavailable { return "Выбранная модель недоступна. Укажите другую в настройках (вкладка «Движок»)." }
-            return "Claude Code завершился с ошибкой (код \(code))."
+            return "Движок завершился с ошибкой (код \(code))."
+        case .ollamaUnavailable:
+            return "Ollama недоступна. Установите её (brew install ollama) или укажите путь к ollama в настройках (вкладка «Движок»)."
+        case .modelNotInstalled(let model):
+            return "Модель «\(model)» не установлена в Ollama. Выберите другую в настройках или создайте её (см. docs/ollama)."
         }
     }
 
     /// Сырые подробности для раскрывающегося блока.
     var details: String {
         switch self {
-        case .binaryNotFound(let s), .notAuthenticated(let s), .invalidOutput(let s): s
+        case .binaryNotFound(let s), .notAuthenticated(let s), .invalidOutput(let s), .ollamaUnavailable(let s): s
+        case .modelNotInstalled(let model): model
         case .rateLimited(_, let s): s
         case .processFailed(_, let stderr): stderr
         case .timeout, .cancelled: ""
@@ -113,7 +128,7 @@ struct ConnectionReport: Sendable, Equatable {
     var isOK: Bool { error == nil && model != nil }
 }
 
-/// Движок, выполняющий запросы к модели через установленный CLI.
+/// Движок, выполняющий запросы к модели: через установленный CLI или локальный сервер.
 protocol AIEngine: Sendable {
     var id: EngineID { get }
     func run(_ request: AIRequest) async throws(AIError) -> AIResponse

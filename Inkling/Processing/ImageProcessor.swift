@@ -174,6 +174,20 @@ enum ImageProcessor {
                                                      height: floor(output.extent.height)))
     }
 
+    /// Для локальной модели: картинку меньше `below` по длинной стороне увеличивает (не больше чем в 2 раза
+    /// и не больше `target`). На мелких скриншотах плотного почерка это заметно снижает ошибки распознавания.
+    static func upscaledForModel(_ image: CIImage, below: CGFloat = 1600, target: CGFloat = 2000) -> CIImage {
+        let longest = max(image.extent.width, image.extent.height)
+        guard longest > 0, longest < below else { return image }
+        let filter = CIFilter.lanczosScaleTransform()
+        filter.inputImage = image
+        filter.scale = Float(min(2, target / longest))
+        filter.aspectRatio = 1
+        guard let output = filter.outputImage else { return image }
+        return normalized(output).cropped(to: CGRect(x: 0, y: 0, width: floor(output.extent.width),
+                                                     height: floor(output.extent.height)))
+    }
+
     private static func normalized(_ image: CIImage) -> CIImage {
         let origin = image.extent.origin
         guard origin != .zero else { return image }

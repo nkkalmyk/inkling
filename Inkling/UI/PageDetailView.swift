@@ -192,6 +192,9 @@ private struct PageEditor: View {
             case .manual:
                 Text("Набрано вручную")
             }
+            if info.origin == .model {
+                ReviewBadge(engine: info.engine, manuallyEdited: info.manuallyEdited)
+            }
             if info.manuallyEdited && info.origin != .manual {
                 Label("правлено вручную", systemImage: "pencil").labelStyle(.titleAndIcon)
             }

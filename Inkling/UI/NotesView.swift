@@ -128,6 +128,7 @@ struct NotesView: View {
         if let info {
             Text(describe(info)).foregroundStyle(.secondary).lineLimit(1)
                 .help(info.skippedPages > 0 ? "При сборке пропущено нераспознанных страниц: \(info.skippedPages)" : "")
+            ReviewBadge(engine: info.engine, manuallyEdited: info.manuallyEdited)
         }
     }
 

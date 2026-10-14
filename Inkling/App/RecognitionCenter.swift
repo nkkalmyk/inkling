@@ -147,7 +147,7 @@ final class RecognitionCenter {
         let imageHash = FileHash.sha256(image)
 
         let lectureID = job.lectureID
-        states[job.pageID] = .running(engine: .claude, startedAt: Date())
+        states[job.pageID] = .running(engine: router().primaryID, startedAt: Date())
         let result: Result<AIResponse, AIError>
         do {
             result = .success(try await router().run(request) { event in
@@ -178,7 +178,8 @@ final class RecognitionCenter {
         guard let lecture = try library.store.findLecture(id: job.lectureID),
               let location = lecture.meta.page(job.pageID) else { return }
         let previous = lecture.meta.pageText(job.pageID)
-        let text = response.text.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
+        // Локальная модель иногда заворачивает весь ответ в ```markdown — снимаем, как при сборке.
+        let text = MarkdownCleanup.unwrap(response.text) + "\n"
         try PageTextStore(paths: LecturePaths(folder: lecture.folder))
             .write(text, id: job.pageID, in: location.section, previous: previous)
         let info = PageText(origin: .model, engine: response.engine, model: response.model,
@@ -207,7 +208,7 @@ final class RecognitionCenter {
         finish(job, failed: true)
         // Нет входа, нет бинарника, лимит без запасного: остальные страницы упадут так же — останавливаем очередь.
         switch error {
-        case .notAuthenticated, .binaryNotFound, .rateLimited:
+        case .notAuthenticated, .binaryNotFound, .rateLimited, .ollamaUnavailable, .modelNotInstalled:
             blockingError = error
             let stopped = queue
             queue.removeAll()

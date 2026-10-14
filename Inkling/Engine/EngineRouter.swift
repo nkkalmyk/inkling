@@ -17,6 +17,8 @@ actor EngineRouter {
     }
 
     private let primary: any AIEngine
+    /// Основной движок — для подписи «Распознаёт …», пока не пришло событие маршрутизатора.
+    nonisolated let primaryID: EngineID
     private let fallback: (any AIEngine)?
     private let settings: Settings
     private let now: @Sendable () -> Date
@@ -27,6 +29,7 @@ actor EngineRouter {
     init(primary: any AIEngine, fallback: (any AIEngine)?, settings: Settings,
          now: @escaping @Sendable () -> Date = { Date() }) {
         self.primary = primary
+        primaryID = primary.id
         self.fallback = fallback
         self.settings = settings
         self.now = now
