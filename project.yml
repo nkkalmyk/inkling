@@ -26,9 +26,14 @@ targets:
         excludes:
           - Resources/Prompts
           - Resources/Web
+          - Resources/Inkling.icon
       # Промпты по умолчанию копируются в бандл папкой, со структурой (SPEC, раздел 5).
       - path: Inkling/Resources/Prompts
         type: folder
+        buildPhase: resources
+      # Иконка в формате Icon Composer: слои, светлая/тёмная/тонированная версии собираются actool.
+      - path: Inkling/Resources/Inkling.icon
+        type: file
         buildPhase: resources
       # Рендер конспекта: HTML, CSS, render.js и зафиксированные KaTeX, mhchem, markdown-it.
       - path: Inkling/Resources/Web
@@ -42,7 +47,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Inkling
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.education
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_APPICON_NAME: Inkling
         # Приложение запускает внешние CLI, песочница выключена (SPEC, раздел 1).
         ENABLE_APP_SANDBOX: NO
         COMBINE_HIDPI_IMAGES: YES
