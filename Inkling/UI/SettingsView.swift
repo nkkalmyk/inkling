@@ -63,6 +63,7 @@ private struct GeneralSettings: View {
 
 private struct EngineSettings: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(EngineCenter.self) private var engines
 
     var body: some View {
         @Bindable var settings = settings
@@ -79,11 +80,7 @@ private struct EngineSettings: View {
             Section("Claude Code") {
                 TextField("Путь к claude", text: $settings.claudePathOverride, prompt: Text("Автопоиск"))
                 TextField("Модель", text: $settings.claudeModel, prompt: Text("sonnet"))
-                LabeledContent("Подключение") {
-                    Button("Проверить подключение") {}
-                        .disabled(true)
-                        .help("Появится вместе с движком")
-                }
+                ConnectionCheckRow(engine: .claude)
             }
         }
         .formStyle(.grouped)
@@ -112,5 +109,59 @@ private struct ProcessingSettings: View {
             Toggle("Сохранять временные папки при ошибке (для отладки)", isOn: $settings.keepTempFoldersOnError)
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct ConnectionCheckRow: View {
+    @Environment(EngineCenter.self) private var engines
+    let engine: EngineID
+    @State private var showDetails = false
+
+    var body: some View {
+        LabeledContent("Подключение") {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Button("Проверить подключение") { engines.checkConnection(engine) }
+                        .disabled(engines.checking.contains(engine))
+                    if engines.checking.contains(engine) {
+                        ProgressView().controlSize(.small)
+                        Text("Отправляю тестовый запрос…").foregroundStyle(.secondary)
+                    }
+                }
+                if let report = engines.reports[engine] {
+                    reportView(report)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func reportView(_ report: ConnectionReport) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let path = report.binaryPath {
+                Text("Путь: \(path) (\(report.binarySource ?? ""))").textSelection(.enabled)
+            }
+            if let version = report.version, !version.isEmpty {
+                Text("Версия: \(version)")
+            }
+            if report.isOK, let model = report.model {
+                Label("Работает: ответила модель \(model) за \(String(format: "%.1f", report.duration ?? 0)) с",
+                      systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
+            if let error = report.error {
+                Label(error.userMessage, systemImage: "xmark.octagon.fill")
+                    .foregroundStyle(.red)
+                if !error.details.isEmpty {
+                    DisclosureGroup("Подробности", isExpanded: $showDetails) {
+                        Text(error.details)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        }
+        .font(.callout)
     }
 }

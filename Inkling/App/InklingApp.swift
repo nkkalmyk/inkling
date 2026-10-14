@@ -8,11 +8,13 @@ struct InklingApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var settings: AppSettings
     @State private var library: Library
+    @State private var engines: EngineCenter
 
     init() {
         let settings = AppSettings()
         _settings = State(initialValue: settings)
         _library = State(initialValue: Library(root: settings.storageRoot))
+        _engines = State(initialValue: EngineCenter(settings: settings))
     }
 
     var body: some Scene {
@@ -20,6 +22,7 @@ struct InklingApp: App {
             ContentView()
                 .environment(library)
                 .environment(settings)
+                .environment(engines)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
                 .task {
                     appDelegate.library = library
@@ -40,6 +43,7 @@ struct InklingApp: App {
         Settings {
             SettingsView()
                 .environment(settings)
+                .environment(engines)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
         }
     }
