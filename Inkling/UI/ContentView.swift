@@ -1,0 +1,77 @@
+import SwiftUI
+
+struct ContentView: View {
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        @Bindable var library = library
+        NavigationSplitView {
+            SidebarView()
+                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 360)
+        } detail: {
+            if let lecture = library.selectedLecture {
+                LectureView(lecture: lecture)
+                    .id(lecture.id)
+            } else {
+                ContentUnavailableView {
+                    Label("Выберите лекцию", systemImage: "book.closed")
+                } description: {
+                    Text("Или создайте новую: фото конспекта и слайды добавляются внутри лекции.")
+                } actions: {
+                    Button("Новая лекция…") { library.sheet = .newLecture(subject: nil) }
+                }
+            }
+        }
+        .sheet(item: $library.sheet) { sheet in
+            switch sheet {
+            case .newLecture(let subject):
+                LectureEditorSheet(mode: .create(subject: subject))
+            case .editLecture(let id):
+                LectureEditorSheet(mode: .edit(id))
+            case .newSubject:
+                SubjectNameSheet(mode: .create)
+            case .renameSubject(let name):
+                SubjectNameSheet(mode: .rename(name))
+            }
+        }
+        .confirmationDialog(deletionTitle, isPresented: deletionBinding, titleVisibility: .visible,
+                            presenting: library.pendingDeletion) { deletion in
+            Button("Переместить в корзину", role: .destructive) { library.confirmDeletion(deletion) }
+            Button("Отмена", role: .cancel) {}
+        } message: { deletion in
+            Text(deletionMessage(deletion))
+        }
+        .alert("Ошибка", isPresented: errorBinding) {
+            Button("OK") { library.errorMessage = nil }
+        } message: {
+            Text(library.errorMessage ?? "")
+        }
+    }
+
+    private var deletionBinding: Binding<Bool> {
+        Binding(get: { library.pendingDeletion != nil }, set: { if !$0 { library.pendingDeletion = nil } })
+    }
+
+    private var errorBinding: Binding<Bool> {
+        Binding(get: { library.errorMessage != nil }, set: { if !$0 { library.errorMessage = nil } })
+    }
+
+    private var deletionTitle: String {
+        switch library.pendingDeletion {
+        case .lecture(_, let title): "Удалить лекцию «\(title)»?"
+        case .subject(let name, _): "Удалить предмет «\(name)»?"
+        case nil: ""
+        }
+    }
+
+    private func deletionMessage(_ deletion: Library.Deletion) -> String {
+        switch deletion {
+        case .lecture:
+            return "Папка лекции со всеми фото, текстами и материалами уйдёт в корзину."
+        case .subject(_, let count):
+            return count == 0
+                ? "Папка предмета уйдёт в корзину."
+                : "Папка предмета и все его лекции (\(count)) уйдут в корзину."
+        }
+    }
+}
