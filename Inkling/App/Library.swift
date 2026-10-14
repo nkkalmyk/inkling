@@ -42,6 +42,16 @@ final class Library {
     var pendingDeletion: Deletion?
     var errorMessage: String?
 
+    // Источники (Library+Sources.swift).
+    var importProgress: ImportProgress?
+    var pdfQuestion: PDFSectionQuestion?
+    /// Страницы, которые сейчас пересоздаются.
+    var busyPages: Set<String> = []
+    /// Растёт при пересоздании файла страницы, чтобы миниатюры перечитались.
+    var pageRevisions: [String: Int] = [:]
+    /// Куда класть снимки Камеры непрерывности и вставку: открытая лекция и выбранный раздел.
+    var importTarget: (lectureID: UUID, section: SourceSection)?
+
     private var watcher: DirectoryWatcher?
     private var downloadPoll: Task<Void, Never>?
 

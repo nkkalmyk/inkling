@@ -27,6 +27,11 @@ struct LectureView: View {
             if lecture.hasConflict {
                 ConflictBanner { library.revealInFinder(lecture.folder) }
             }
+            if let adjustment = lecture.meta.dateAdjustment {
+                DateAdjustedBanner(newDate: lecture.meta.date, previousDate: adjustment.previousDate,
+                                   revert: { library.revertDateAdjustment(lectureID: lecture.id) },
+                                   dismiss: { library.acceptDateAdjustment(lectureID: lecture.id) })
+            }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -55,8 +60,7 @@ struct LectureView: View {
     private var content: some View {
         switch tab {
         case .sources:
-            ContentUnavailableView("Нет источников", systemImage: "photo.on.rectangle.angled",
-                                   description: Text("Здесь будут фото конспекта и слайды. Импорт появится в следующей версии."))
+            SourcesView(lecture: lecture)
         case .notes:
             ContentUnavailableView("Конспекта пока нет", systemImage: "doc.richtext",
                                    description: Text("Конспект собирается из распознанных страниц."))
@@ -70,6 +74,33 @@ struct LectureView: View {
             ContentUnavailableView("Карточек пока нет", systemImage: "rectangle.on.rectangle.angled",
                                    description: Text("Карточки готовятся по готовому конспекту."))
         }
+    }
+}
+
+private struct DateAdjustedBanner: View {
+    let newDate: CalendarDate
+    let previousDate: CalendarDate
+    let revert: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "calendar.badge.clock").foregroundStyle(.blue)
+            Text("Дата изменена по фото: \(newDate.formatted) (было \(previousDate.formatted)).")
+                .font(.callout)
+            Spacer()
+            Button("Вернуть", action: revert)
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+            .help("Оставить новую дату")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.blue.opacity(0.1))
     }
 }
 

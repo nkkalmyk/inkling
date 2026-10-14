@@ -41,6 +41,16 @@ struct ContentView: View {
         } message: { deletion in
             Text(deletionMessage(deletion))
         }
+        .confirmationDialog(pdfQuestionTitle, isPresented: pdfQuestionBinding, titleVisibility: .visible,
+                            presenting: library.pdfQuestion) { question in
+            Button("Добавить в «\(question.guess.title)»") { library.answerPDFQuestion(question, section: question.guess) }
+            Button("Добавить в «\(question.requested.title)»") { library.answerPDFQuestion(question, section: question.requested) }
+            Button("Отмена", role: .cancel) { library.answerPDFQuestion(question, section: nil) }
+        } message: { question in
+            Text(question.guess == .slides
+                 ? "В PDF есть текстовый слой, обычно так выглядят слайды преподавателя."
+                 : "В PDF нет текстового слоя, обычно так выглядит скан тетради.")
+        }
         .alert("Ошибка", isPresented: errorBinding) {
             Button("OK") { library.errorMessage = nil }
         } message: {
@@ -50,6 +60,16 @@ struct ContentView: View {
 
     private var deletionBinding: Binding<Bool> {
         Binding(get: { library.pendingDeletion != nil }, set: { if !$0 { library.pendingDeletion = nil } })
+    }
+
+    private var pdfQuestionBinding: Binding<Bool> {
+        Binding(get: { library.pdfQuestion != nil }, set: { shown in
+            if !shown, let question = library.pdfQuestion { library.answerPDFQuestion(question, section: nil) }
+        })
+    }
+
+    private var pdfQuestionTitle: String {
+        library.pdfQuestion?.guess == .slides ? "Похоже, это слайды" : "Похоже, это скан тетради"
     }
 
     private var errorBinding: Binding<Bool> {

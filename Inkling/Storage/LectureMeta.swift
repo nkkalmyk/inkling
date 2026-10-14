@@ -13,6 +13,14 @@ struct LectureMeta: Codable, Equatable, Sendable {
     var date: CalendarDate
     var createdAt: Date
     var updatedAt: Date
+    /// Раздел «Мой конспект», в порядке страниц.
+    var notes: [NotePage] = []
+    /// Раздел «Слайды», в порядке страниц.
+    var slides: [SlidePage] = []
+    /// Дата уже один раз подстраивалась под дату съёмки фото (SPEC, раздел 13).
+    var dateAutoAdjusted: Bool = false
+    /// Показать плашку «Дата изменена по фото · Вернуть»; хранит прежнюю дату.
+    var dateAdjustment: DateAdjustment?
 
     init(id: UUID = UUID(), subject: String, topic: String, date: CalendarDate, now: Date = Date()) {
         self.schemaVersion = Self.currentSchemaVersion
@@ -30,7 +38,8 @@ struct LectureMeta: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, id, subject, topic, date, createdAt, updatedAt
+        case schemaVersion, id, subject, topic, date, createdAt, updatedAt, notes, slides
+        case dateAutoAdjusted, dateAdjustment
     }
 
     init(from decoder: Decoder) throws {
@@ -42,7 +51,36 @@ struct LectureMeta: Codable, Equatable, Sendable {
         date = try c.decode(CalendarDate.self, forKey: .date)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(timeIntervalSince1970: 0)
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
+        notes = try c.decodeIfPresent([NotePage].self, forKey: .notes) ?? []
+        slides = try c.decodeIfPresent([SlidePage].self, forKey: .slides) ?? []
+        dateAutoAdjusted = try c.decodeIfPresent(Bool.self, forKey: .dateAutoAdjusted) ?? false
+        dateAdjustment = try c.decodeIfPresent(DateAdjustment.self, forKey: .dateAdjustment)
     }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(schemaVersion, forKey: .schemaVersion)
+        try c.encode(id, forKey: .id)
+        try c.encode(subject, forKey: .subject)
+        try c.encode(topic, forKey: .topic)
+        try c.encode(date, forKey: .date)
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(updatedAt, forKey: .updatedAt)
+        try c.encode(notes, forKey: .notes)
+        try c.encode(slides, forKey: .slides)
+        try c.encode(dateAutoAdjusted, forKey: .dateAutoAdjusted)
+        try c.encodeIfPresent(dateAdjustment, forKey: .dateAdjustment)
+    }
+
+    func page(_ id: String) -> (section: SourceSection, index: Int)? {
+        if let i = notes.firstIndex(where: { $0.id == id }) { return (.notes, i) }
+        if let i = slides.firstIndex(where: { $0.id == id }) { return (.slides, i) }
+        return nil
+    }
+}
+
+struct DateAdjustment: Codable, Equatable, Sendable {
+    var previousDate: CalendarDate
 }
 
 /// JSON файлов данных: даты в ISO 8601 с точностью до секунды, чтение принимает и доли секунды.
