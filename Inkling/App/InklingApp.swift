@@ -11,6 +11,7 @@ struct InklingApp: App {
     @State private var engines: EngineCenter
     @State private var recognition: RecognitionCenter
     @State private var assembly: AssemblyCenter
+    @State private var study: StudyCenter
 
     init() {
         let settings = AppSettings()
@@ -24,8 +25,15 @@ struct InklingApp: App {
         _library = State(initialValue: library)
         _engines = State(initialValue: engines)
         _recognition = State(initialValue: recognition)
-        _assembly = State(initialValue: AssemblyCenter(library: library, router: { engines.router },
-                                                       threshold: { settings.chunkThresholdChars }))
+        let assembly = AssemblyCenter(library: library, router: { engines.router },
+                                      threshold: { settings.chunkThresholdChars })
+        let study = StudyCenter(library: library, router: { engines.router })
+        // «Запускать учебные материалы автоматически после сборки» (SPEC, раздел 4, пункт 5).
+        assembly.onAssembled = { lectureID in
+            if settings.autoStudyMaterials { study.generate(lectureID) }
+        }
+        _assembly = State(initialValue: assembly)
+        _study = State(initialValue: study)
     }
 
     var body: some Scene {
@@ -36,6 +44,7 @@ struct InklingApp: App {
                 .environment(engines)
                 .environment(recognition)
                 .environment(assembly)
+                .environment(study)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
                 .task {
                     appDelegate.library = library

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
+<link rel="stylesheet" href="notes.css">
+<script src="vendor/katex/katex.min.js"></script>
+<script src="vendor/katex/contrib/mhchem.min.js"></script>
+<script src="vendor/markdown-it/markdown-it.umd.min.js"></script>
+<script src="render.js"></script>
+<style>
+  html, body { background: transparent; overflow: hidden; }
+  main { max-width: none; padding: 0; }
+  main > :first-child { margin-top: 0; }
+  main > :last-child { margin-bottom: 0; }
+  body.large { font-size: 20px; }
+</style>
+</head>
+<body>
+<main id="content"></main>
+<script>
+  // Короткий фрагмент (вопрос, ответ, карточка): после отрисовки сообщает высоту, чтобы приложение подогнало рамку.
+  function reportHeight() {
+    var h = Math.ceil(document.getElementById('content').getBoundingClientRect().height);
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.height) {
+      window.webkit.messageHandlers.height.postMessage(h);
+    }
+  }
+  window.inklingShow = function (markdown, large) {
+    document.body.classList.toggle('large', !!large);
+    document.getElementById('content').innerHTML = InklingRender.toHTML(markdown);
+    reportHeight();
+    document.fonts.ready.then(reportHeight);
+  };
+  new ResizeObserver(reportHeight).observe(document.getElementById('content'));
+</script>
+</body>
+</html>

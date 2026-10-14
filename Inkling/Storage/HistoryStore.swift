@@ -55,22 +55,32 @@ struct HistoryStore: Sendable {
         }
         try AtomicFile.write(data, to: folder.appendingPathComponent("\(stamp).\(file.pathExtension)"))
         if let info {
-            try AtomicFile.writeJSON(info, to: folder.appendingPathComponent("\(stamp).json"))
+            try AtomicFile.writeJSON(info, to: folder.appendingPathComponent("\(stamp).info.json"))
         }
     }
 
-    /// Версии от новой к старой.
+    /// Версии от новой к старой. Описание версии — `<метка>.info.json`
+    /// (ранние версии писали `<метка>.json` рядом с `.md`; они тоже читаются).
     func entries() -> [Entry] {
-        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-        return files.filter { $0.pathExtension != "json" }
-            .compactMap { file -> Entry? in
-                let stamp = file.deletingPathExtension().lastPathComponent
-                guard let date = Self.date(fromStamp: stamp) else { return nil }
-                let infoURL = folder.appendingPathComponent("\(stamp).json")
-                return Entry(file: file, date: date,
-                             infoFile: FileManager.default.fileExists(atPath: infoURL.path) ? infoURL : nil)
-            }
-            .sorted { $0.date > $1.date }
+        let names = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+        let stampLength = Self.stamp(Date(timeIntervalSince1970: 0)).count
+        var byStamp: [String: [String]] = [:]
+        for name in names where name.count > stampLength {
+            byStamp[String(name.prefix(stampLength)), default: []].append(name)
+        }
+        var result: [Entry] = []
+        for (stamp, files) in byStamp {
+            guard let date = Self.date(fromStamp: stamp) else { continue }
+            let info = files.first { $0 == "\(stamp).info.json" }
+            let content = files.filter { $0 != info }
+            // Старый формат: `<метка>.md` + `<метка>.json`, где `.json` — описание.
+            let legacyInfo = content.count == 2 && content.contains("\(stamp).json") ? "\(stamp).json" : nil
+            guard let file = content.first(where: { $0 != legacyInfo }) else { continue }
+            let infoName = info ?? legacyInfo
+            result.append(Entry(file: folder.appendingPathComponent(file), date: date,
+                                infoFile: infoName.map { folder.appendingPathComponent($0) }))
+        }
+        return result.sorted { $0.date > $1.date }
     }
 }
 
