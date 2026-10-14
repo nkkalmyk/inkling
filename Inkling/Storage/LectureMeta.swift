@@ -23,6 +23,8 @@ struct LectureMeta: Codable, Equatable, Sendable {
     var dateAdjustment: DateAdjustment?
     /// Собранный конспект `konspekt.md` (SPEC, раздел 4).
     var konspekt: ArtifactInfo?
+    /// Учебные материалы `study.json`; `inputHash` — хеш конспекта.
+    var study: ArtifactInfo?
 
     init(id: UUID = UUID(), subject: String, topic: String, date: CalendarDate, now: Date = Date()) {
         self.schemaVersion = Self.currentSchemaVersion
@@ -41,7 +43,7 @@ struct LectureMeta: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, id, subject, topic, date, createdAt, updatedAt, notes, slides
-        case dateAutoAdjusted, dateAdjustment, konspekt
+        case dateAutoAdjusted, dateAdjustment, konspekt, study
     }
 
     init(from decoder: Decoder) throws {
@@ -58,6 +60,7 @@ struct LectureMeta: Codable, Equatable, Sendable {
         dateAutoAdjusted = try c.decodeIfPresent(Bool.self, forKey: .dateAutoAdjusted) ?? false
         dateAdjustment = try c.decodeIfPresent(DateAdjustment.self, forKey: .dateAdjustment)
         konspekt = try c.decodeIfPresent(ArtifactInfo.self, forKey: .konspekt)
+        study = try c.decodeIfPresent(ArtifactInfo.self, forKey: .study)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -74,6 +77,7 @@ struct LectureMeta: Codable, Equatable, Sendable {
         try c.encode(dateAutoAdjusted, forKey: .dateAutoAdjusted)
         try c.encodeIfPresent(dateAdjustment, forKey: .dateAdjustment)
         try c.encodeIfPresent(konspekt, forKey: .konspekt)
+        try c.encodeIfPresent(study, forKey: .study)
     }
 
     func page(_ id: String) -> (section: SourceSection, index: Int)? {

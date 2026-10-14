@@ -342,3 +342,27 @@ struct RecognitionLiveTests {
         #expect(lecture.meta.pageText(pageID)?.model?.hasPrefix("claude-") == true)
     }
 }
+
+@Suite("История: форматы")
+struct HistoryFormatTests {
+    @Test func jsonContentAndLegacySidecars() throws {
+        let dir = try TempDir()
+        let history = HistoryStore(lectureFolder: dir.url, category: "c", key: "k")
+        let study = dir.url.appendingPathComponent("study.json")
+        try Data("{\"v\":1}".utf8).write(to: study)
+        try history.save(study, info: PageText(origin: .manual, updatedAt: Date(timeIntervalSince1970: 0)),
+                         now: Date(timeIntervalSince1970: 10))
+        // Старая запись: описание в `<метка>.json` рядом с `.md`.
+        let legacy = HistoryStore.stamp(Date(timeIntervalSince1970: 5))
+        try Data("старый текст".utf8).write(to: history.folder.appendingPathComponent("\(legacy).md"))
+        try AtomicFile.writeJSON(PageText(origin: .model, updatedAt: Date(timeIntervalSince1970: 0)),
+                                 to: history.folder.appendingPathComponent("\(legacy).json"))
+
+        let entries = history.entries()
+        #expect(entries.count == 2)
+        #expect(entries[0].file.lastPathComponent.hasSuffix(".json"))
+        #expect(entries[0].info(PageText.self)?.origin == .manual)
+        #expect(entries[1].file.pathExtension == "md")
+        #expect(entries[1].info(PageText.self)?.origin == .model)
+    }
+}

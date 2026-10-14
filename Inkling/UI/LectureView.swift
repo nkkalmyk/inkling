@@ -64,14 +64,11 @@ struct LectureView: View {
         case .notes:
             NotesView(lecture: lecture)
         case .questions:
-            ContentUnavailableView("Вопросов пока нет", systemImage: "questionmark.bubble",
-                                   description: Text("Вопросы готовятся по готовому конспекту."))
+            QuestionsView(lecture: lecture, showNotes: { tab = .notes })
         case .quiz:
-            ContentUnavailableView("Теста пока нет", systemImage: "checklist",
-                                   description: Text("Тест готовится по готовому конспекту."))
+            QuizView(lecture: lecture, showNotes: { tab = .notes })
         case .flashcards:
-            ContentUnavailableView("Карточек пока нет", systemImage: "rectangle.on.rectangle.angled",
-                                   description: Text("Карточки готовятся по готовому конспекту."))
+            FlashcardsView(lecture: lecture, showNotes: { tab = .notes })
         }
     }
 }

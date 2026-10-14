@@ -25,6 +25,8 @@ final class AssemblyCenter {
 
     private(set) var runs: [UUID: Run] = [:]
     var errors: [UUID: AIError] = [:]
+    /// Вызывается после успешной сборки (для «запускать учебные материалы автоматически»).
+    @ObservationIgnored var onAssembled: ((UUID) -> Void)?
 
     @ObservationIgnored private let library: Library
     @ObservationIgnored private let router: @MainActor () -> EngineRouter
@@ -130,6 +132,7 @@ final class AssemblyCenter {
                                 skippedPages: input.unrecognizedNotes + input.unrecognizedSlides)
         library.mutate(lectureID) { $0.konspekt = info }
         library.konspektRevision[lectureID, default: 0] += 1
+        onAssembled?(lectureID)
     }
 
     private func note(_ event: EngineRouter.Event, lectureID: UUID) {
