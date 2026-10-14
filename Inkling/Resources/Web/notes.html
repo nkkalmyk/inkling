@@ -14,9 +14,21 @@
 <main id="content"></main>
 <script>
   // Вызывается из приложения. Сигнал «готово» уходит после загрузки шрифтов KaTeX: по нему можно печатать в PDF.
+  // Шрифты KaTeX грузятся лениво: document.fonts.ready может сработать раньше, чем загрузка начнётся.
+  // Поэтому грузим их явно, даём вёрстке устояться и только потом сообщаем, что можно печатать.
+  // (requestAnimationFrame не годится: в невидимом окне печати он не срабатывает.)
+  function katexFontsLoaded() {
+    var faces = [];
+    document.fonts.forEach(function (face) { if (face.family.indexOf('KaTeX') !== -1) faces.push(face.load().catch(function () {})); });
+    return Promise.all(faces).then(function () { return document.fonts.ready; });
+  }
+  function nextFrames() {
+    void document.body.offsetHeight;
+    return new Promise(function (resolve) { setTimeout(resolve, 60); });
+  }
   window.inklingShow = function (markdown) {
     document.getElementById('content').innerHTML = InklingRender.toHTML(markdown);
-    document.fonts.ready.then(function () {
+    katexFontsLoaded().then(nextFrames).then(function () {
       var errors = document.querySelectorAll('.katex-error').length;
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.rendered) {
         window.webkit.messageHandlers.rendered.postMessage({ errors: errors });

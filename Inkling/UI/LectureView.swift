@@ -46,6 +46,9 @@ struct LectureView: View {
                 .labelsHidden()
             }
             ToolbarItem {
+                ExportMenu(lecture: lecture)
+            }
+            ToolbarItem {
                 Button {
                     library.sheet = .editLecture(lecture.id)
                 } label: {
