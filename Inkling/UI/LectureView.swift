@@ -87,7 +87,7 @@ struct LectureView: View {
     private var content: some View {
         switch tab {
         case .sources:
-            SourcesView(lecture: lecture, showNotes: { tab = .notes })
+            SourcesView(lecture: lecture)
         case .notes:
             NotesView(lecture: lecture)
         case .questions:
