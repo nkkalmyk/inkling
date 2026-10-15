@@ -60,6 +60,8 @@ struct InklingApp: App {
                 Button("Новый предмет…") { library.sheet = .newSubject }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
             }
+            CommandGroup(before: .sidebar) { LectureViewCommands() }
+            CommandMenu("Лекция") { LectureMenuCommands() }
         }
 
         Settings {
