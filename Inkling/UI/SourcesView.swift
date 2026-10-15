@@ -26,7 +26,6 @@ struct SourcesView: View {
         }
         // «Импорт с iPhone» (Камера непрерывности): SwiftUI отдаёт снимок этому экрану, он идёт в выбранный раздел.
         .importsItemProviders([.image, .pdf]) { providers in
-            ccLog.notice("importsItemProviders count=\(providers.count, privacy: .public) active=\(isActive, privacy: .public)") // DEBUGCC
             guard isActive else { return false }
             library.importProviders(providers, into: activeSection, lectureID: lecture.id)
             return true

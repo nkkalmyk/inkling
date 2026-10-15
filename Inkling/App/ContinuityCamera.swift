@@ -1,9 +1,5 @@
 import AppKit
-import OSLog
 import SwiftUI
-
-/// Временная диагностика Камеры непрерывности (DEBUGCC).
-let ccLog = Logger(subsystem: "com.nkalmykov.inkling", category: "continuity")
 
 /// Камера непрерывности (SPEC, раздел 3.1): пункт «Импорт с iPhone» в меню «Файл» и в контекстном меню раздела.
 /// Система сама наполняет пункт («Сфотографировать», «Сканировать документы») и спрашивает цепочку ответчиков,
@@ -26,7 +22,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency NSServ
     /// NSApplication передаёт этот запрос делегату, если первый ответчик и окно его не обработали.
     @objc func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?,
                               returnType: NSPasteboard.PasteboardType?) -> Any? {
-        ccLog.notice("delegate validRequestor send=\(sendType?.rawValue ?? "nil", privacy: .public) return=\(returnType?.rawValue ?? "nil", privacy: .public) target=\(self.library?.importTarget != nil, privacy: .public)") // DEBUGCC
         return ContinuityCamera.accepts(sendType: sendType, returnType: returnType) && library?.importTarget != nil ? self : nil
     }
 
@@ -92,7 +87,6 @@ struct ContinuityCameraAnchor: NSViewRepresentable {
 
         override func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?,
                                      returnType: NSPasteboard.PasteboardType?) -> Any? {
-            ccLog.notice("button validRequestor send=\(sendType?.rawValue ?? "nil", privacy: .public) return=\(returnType?.rawValue ?? "nil", privacy: .public)") // DEBUGCC
             if ContinuityCamera.accepts(sendType: sendType, returnType: returnType) { return self }
             return super.validRequestor(forSendType: sendType, returnType: returnType)
         }
@@ -170,7 +164,6 @@ struct ContinuityCameraButton: NSViewRepresentable {
             window?.makeFirstResponder(self)
             let menu = NSMenu()
             menu.addItem(withTitle: "Добавить файлы…", action: #selector(addFiles), keyEquivalent: "").target = self
-            ccLog.notice("button showMenu fr=\(String(describing: self.window?.firstResponder.map { type(of: $0) }), privacy: .public) event=\(String(describing: NSApp.currentEvent?.type), privacy: .public)") // DEBUGCC
             if let event = NSApp.currentEvent, [.leftMouseUp, .leftMouseDown].contains(event.type) {
                 // Как контекстное меню: пункт Камеры непрерывности AppKit вставит сам и наполнит iPhone.
                 NSMenu.popUpContextMenu(menu, with: event, for: self)
@@ -180,7 +173,6 @@ struct ContinuityCameraButton: NSViewRepresentable {
                 menu.addItem(ContinuityCamera.menuItem())
                 menu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self)
             }
-            ccLog.notice("button menu closed items=\(menu.items.map { "\($0.title):\($0.isEnabled)" }.joined(separator: ","), privacy: .public)") // DEBUGCC
         }
 
         @objc private func addFiles() { onAddFiles() }
