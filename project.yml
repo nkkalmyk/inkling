@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "0.2.3"
-    CURRENT_PROJECT_VERSION: "5"
+    MARKETING_VERSION: "0.2.4"
+    CURRENT_PROJECT_VERSION: "6"
     # Подпись Personal Team (SPEC, раздел 13): стабильная, разрешения не слетают при пересборке.
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "Apple Development"
