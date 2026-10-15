@@ -119,13 +119,14 @@
     var extracted = extractMath(markdown || '');
     var html = md.render(extracted.text);
     // Формула одна в абзаце — выключенная, без обёртки <p>.
-    html = html.replace(new RegExp('<p>(' + PH + '(\\d+)X)</p>', 'g'), function (_, all, idx) {
+    html = html.replace(new RegExp('<p>(' + PH + '(\\d+)X)</p>', 'g'), function (whole, all, idx) {
       var f = extracted.formulas[+idx];
-      return f && f.display ? renderFormula(f) : '<p>' + renderFormula(f) + '</p>';
+      if (!f) return whole;  // метка из самого текста, а не от extractMath
+      return f.display ? renderFormula(f) : '<p>' + renderFormula(f) + '</p>';
     });
-    html = html.replace(new RegExp(PH + '(\\d+)X', 'g'), function (_, idx) {
+    html = html.replace(new RegExp(PH + '(\\d+)X', 'g'), function (whole, idx) {
       var f = extracted.formulas[+idx];
-      return f ? renderFormula(f) : '';
+      return f ? renderFormula(f) : whole;
     });
     html = html.replace(/\[неразборчиво\]/g, '<mark class="illegible">[неразборчиво]</mark>');
     html = html.replace(/<blockquote>\s*<p>(⚠️|⚠)/g, '<blockquote class="callout warn"><p>$1');
