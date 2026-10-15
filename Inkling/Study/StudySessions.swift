@@ -33,9 +33,10 @@ struct QuizSession: Equatable, Sendable {
         var generator = SeededGenerator(seed: seed)
         self.items = items
         self.onlyMistakes = onlyMistakes
-        optionOrder = Dictionary(uniqueKeysWithValues: items.map { item in
+        // Повторяющиеся id (файл правили вручную) не должны ронять приложение: берём первый порядок.
+        optionOrder = Dictionary(items.map { item in
             (item.id, Array(item.options.indices).shuffled(using: &generator))
-        })
+        }, uniquingKeysWith: { first, _ in first })
     }
 
     var current: StudyMaterials.QuizItem? { index < items.count ? items[index] : nil }
