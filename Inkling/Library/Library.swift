@@ -60,6 +60,7 @@ final class Library {
 
     private var watcher: DirectoryWatcher?
     private var downloadPoll: Task<Void, Never>?
+    @ObservationIgnored private var reloadGeneration = 0
 
     /// Подменённая корзина (тесты); `nil` — корзина macOS с запасной папкой `_Удалённое`.
     @ObservationIgnored private let customTrasher: (any Trasher)?
@@ -92,10 +93,25 @@ final class Library {
         perform { try store.bootstrap() }
         perform { try prompts.installMissingDefaults() }
         reload()
-        watcher = DirectoryWatcher(url: newRoot) { [weak self] in self?.reload() }
+        watcher = DirectoryWatcher(url: newRoot) { [weak self] in self?.reloadInBackground() }
+    }
+
+    /// Перечитывание по событию файловой системы: чтение и разбор всех `meta.json` идут вне главного потока.
+    /// Результат отбрасывается, если за это время состояние уже обновили синхронным `reload()` или сменили папку.
+    private func reloadInBackground() {
+        let generation = reloadGeneration
+        let store = store
+        Task {
+            let loaded = await Task.detached(priority: .utility) { try? store.loadSubjects() }.value
+            guard generation == reloadGeneration, let loaded else { return }
+            subjects = loaded
+            if let selection, lecture(id: selection) == nil { self.selection = nil }
+            scheduleDownloadPollIfNeeded()
+        }
     }
 
     func reload() {
+        reloadGeneration &+= 1
         do {
             subjects = try store.loadSubjects()
         } catch {

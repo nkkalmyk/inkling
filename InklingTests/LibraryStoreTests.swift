@@ -195,6 +195,22 @@ struct LibraryStoreTests {
         #expect(updated.folder.lastPathComponent == "2026-10-14 — Матрицы")
     }
 
+    @Test func findLectureWithHintAndStaleHint() throws {
+        try store.bootstrap()
+        let first = try store.createLecture(subject: "Высшая алгебра", topic: "Матрицы", date: .d("2026-10-14"))
+        let second = try store.createLecture(subject: "Математический анализ", topic: "Пределы", date: .d("2026-10-15"))
+
+        // Верная подсказка и подсказка от другой лекции дают один и тот же результат.
+        #expect(try store.findLecture(id: second.id, hint: second.folder)?.folder == second.folder)
+        #expect(try store.findLecture(id: second.id, hint: first.folder)?.folder == second.folder)
+
+        // Папку переименовали снаружи: старая подсказка не существует, поиск находит новую папку.
+        let renamed = second.folder.deletingLastPathComponent().appendingPathComponent("переименовано")
+        try FileManager.default.moveItem(at: second.folder, to: renamed)
+        #expect(try store.findLecture(id: second.id, hint: second.folder)?.folder.lastPathComponent == "переименовано")
+        #expect(try store.findLecture(id: UUID(), hint: first.folder) == nil)
+    }
+
     @Test func deleteLectureGoesToTrash() throws {
         try store.bootstrap()
         let lecture = try store.createLecture(subject: "Высшая алгебра", topic: "Матрицы", date: .d("2026-10-14"))

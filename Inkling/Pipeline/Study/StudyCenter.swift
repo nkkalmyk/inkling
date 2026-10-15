@@ -118,7 +118,7 @@ final class StudyCenter {
     """
 
     private func save(_ study: StudyMaterials, response: AIResponse, inputHash: String, lectureID: UUID) throws {
-        guard let lecture = try library.store.findLecture(id: lectureID) else { throw LibraryError.lectureNotFound }
+        guard let lecture = try library.store.findLecture(id: lectureID, hint: library.lecture(id: lectureID)?.folder) else { throw LibraryError.lectureNotFound }
         let now = JSONCoding.rounded(Date())
         try StudyStore(folder: lecture.folder).writeNew(study, previous: lecture.meta.study)
         let info = ArtifactInfo(engine: response.engine, model: response.model, createdAt: now, updatedAt: now,
