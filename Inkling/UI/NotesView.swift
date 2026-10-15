@@ -86,15 +86,9 @@ struct NotesView: View {
     // MARK: Состояния
 
     private func emptyState(_ readiness: AssemblyCenter.Readiness) -> some View {
-        ContentUnavailableView {
-            Label("Конспекта пока нет", systemImage: "doc.richtext")
-        } description: {
-            if let plan = readiness.plan {
-                Text(planDescription(plan, readiness.input))
-            } else {
-                Text("Сначала добавьте и распознайте страницы на вкладке «Источники».")
-            }
-        } actions: {
+        EmptyState("Конспекта пока нет", systemImage: "doc.richtext",
+                   description: readiness.plan.map { planDescription($0, readiness.input) }
+                       ?? "Сначала добавьте и распознайте страницы на вкладке «Источники».") {
             if readiness.plan != nil, !assembly.isRunning(lecture.id) {
                 Button("Собрать конспект") { start(force: false) }
                     .prominentAction()
@@ -107,7 +101,7 @@ struct NotesView: View {
     }
 
     private func header(_ readiness: AssemblyCenter.Readiness) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Spacing.m) {
             Picker("Режим", selection: $editing) {
                 Text("Просмотр").tag(false)
                 Text("Правка").tag(true)
@@ -120,7 +114,7 @@ struct NotesView: View {
             provenance
             if katexErrors > 0 && !editing {
                 Label("ошибок в формулах: \(katexErrors)", systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.statusError)
                     .help("Формулы с ошибкой показаны исходным LaTeX красным")
             }
             Spacer()
@@ -133,14 +127,15 @@ struct NotesView: View {
                 Label("История", systemImage: "clock.arrow.circlepath")
             }
             .popover(isPresented: $showHistory, arrowEdge: .bottom) {
-                ArtifactHistoryPopover(history: store.history, describe: describe) { entry in
-                    library.restoreKonspekt(entry, lectureID: lecture.id)
-                }
+                HistoryPopover(entries: store.history.entries(),
+                               emptyHint: "Они появляются, когда конспект перезаписывается.",
+                               subtitle: { describe($0.info(ArtifactInfo.self)) },
+                               restore: { library.restoreKonspekt($0, lectureID: lecture.id) })
             }
         }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .font(.meta)
+        .padding(.horizontal, Spacing.m)
+        .padding(.vertical, Spacing.s)
     }
 
     @ViewBuilder
@@ -158,8 +153,7 @@ struct NotesView: View {
         if let model = info.model { parts.append(model) }
         if let mode = info.mode { parts.append(mode.title) }
         if info.parts > 1 { parts.append("частей: \(info.parts)") }
-        parts.append(info.updatedAt.formatted(.dateTime.day().month(.abbreviated).hour().minute()
-            .locale(Locale(identifier: "ru_RU"))))
+        parts.append(info.updatedAt.stamp)
         if info.manuallyEdited { parts.append("правлено вручную") }
         return parts.joined(separator: " · ")
     }
@@ -214,54 +208,5 @@ struct NotesView: View {
         task.cancel()
         saveTask = nil
         library.saveKonspektEdit(text + "\n", lectureID: lecture.id)
-    }
-}
-
-/// Список версий из истории с предпросмотром и восстановлением.
-struct ArtifactHistoryPopover: View {
-    let history: HistoryStore
-    let describe: (ArtifactInfo?) -> String
-    let restore: (HistoryStore.Entry) -> Void
-    @State private var selected: HistoryStore.Entry?
-    @State private var preview = ""
-
-    var body: some View {
-        let entries = history.entries()
-        VStack(alignment: .leading, spacing: 8) {
-            Text("История версий").font(.headline)
-            if entries.isEmpty {
-                Text("Предыдущих версий нет. Они появляются, когда конспект перезаписывается.")
-                    .foregroundStyle(.secondary).frame(width: 320)
-            } else {
-                HStack(alignment: .top, spacing: 10) {
-                    List(entries, selection: Binding(get: { selected?.id }, set: { id in
-                        selected = entries.first { $0.id == id }
-                        preview = selected.flatMap { try? String(contentsOf: $0.file, encoding: .utf8) } ?? ""
-                    })) { entry in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.date.formatted(.dateTime.day().month().hour().minute().second()
-                                .locale(Locale(identifier: "ru_RU"))))
-                            Text(describe(entry.info(ArtifactInfo.self))).font(.caption).foregroundStyle(.secondary)
-                        }
-                        .tag(entry.id)
-                    }
-                    .frame(width: 240, height: 300)
-                    ScrollView {
-                        Text(preview.isEmpty ? "Выберите версию слева" : preview)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(preview.isEmpty ? .secondary : .primary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(width: 380, height: 300)
-                }
-                HStack {
-                    Spacer()
-                    Button("Восстановить эту версию") { if let selected { restore(selected) } }
-                        .disabled(selected == nil)
-                }
-            }
-        }
-        .padding(14)
     }
 }

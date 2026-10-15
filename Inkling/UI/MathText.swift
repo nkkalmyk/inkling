@@ -12,7 +12,7 @@ struct MathText: View {
             MathSnippetView(markdown: markdown, large: large)
         } else {
             Text(Self.attributed(markdown))
-                .font(large ? .title3 : .body)
+                .font(large ? .readingLarge : .reading)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

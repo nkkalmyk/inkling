@@ -14,10 +14,14 @@ extension Font {
     /// Технические подробности ошибки, исходный текст в истории версий.
     static let mono = Font.caption.monospaced()
 
-    /// Текст для чтения: вопросы, ответы, термины.
-    static let reading = Font.system(.body, design: .serif)
+    /// Текст для чтения: вопросы, ответы, термины. Системный `.body` на macOS (13 pt) мелок для чтения,
+    /// поэтому размер задан явно; веб-фрагменты с формулами (`snippet.html`) набираются тем же кеглем.
+    static let reading = Font.system(size: readingSize, design: .serif)
     /// Крупный текст для чтения: вопрос теста, лицевая сторона карточки.
-    static let readingLarge = Font.system(.title3, design: .serif)
+    static let readingLarge = Font.system(size: readingLargeSize, design: .serif)
+
+    static let readingSize: CGFloat = 15
+    static let readingLargeSize: CGFloat = 19
 
     /// Итоговые числа: счёт теста, «Знаю 12 из 20».
     static let metric = Font.system(.largeTitle, design: .rounded).weight(.bold).monospacedDigit()
