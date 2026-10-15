@@ -33,6 +33,8 @@ struct AIRequest: Sendable {
     var timeout: TimeInterval = 120
     /// `nil` — модель из настроек движка.
     var model: String?
+    /// Запрос выполняет только этот движок: без перехода на запасной и без запуска на другом.
+    var requiredEngine: EngineID?
 }
 
 struct AIResponse: Sendable, Equatable {

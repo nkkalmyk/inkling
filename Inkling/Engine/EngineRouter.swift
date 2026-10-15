@@ -46,7 +46,11 @@ actor EngineRouter {
         defer { release() }
         if Task.isCancelled { throw .cancelled }
 
-        let canFallback = settings.autoFallback && fallback != nil
+        if let required = request.requiredEngine, primary.id != required {
+            throw .invalidOutput("Это действие работает только через \(required.title). "
+                + "Выберите «Авто» или «Только Claude» в меню «Модель».")
+        }
+        let canFallback = settings.autoFallback && fallback != nil && request.requiredEngine == nil
         if canFallback, isLimited(primary.id), let fallback {
             onEvent(.started(fallback.id))
             return try await runWithRetry(fallback, request, onEvent: onEvent)
