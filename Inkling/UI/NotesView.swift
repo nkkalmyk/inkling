@@ -15,6 +15,7 @@ struct NotesView: View {
     @State private var showHistory = false
     @State private var katexErrors = 0
     @Environment(\.lectureRequests) private var requests
+    @Environment(\.isActiveTab) private var isActive
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Confirmation: Identifiable {
@@ -61,9 +62,10 @@ struct NotesView: View {
         }
         .motion(.standard, value: assembly.errors[lecture.id] == nil)
         .motion(.standard, value: readiness.isStale)
-        .focusedSceneValue(\.notesEditing, info == nil && text.isEmpty ? nil : $editing)
-        .task(id: requests.wrappedValue.assemble) {
-            guard requests.wrappedValue.assemble else { return }
+        .focusedSceneValue(\.notesEditing, !isActive || info == nil && text.isEmpty ? nil : $editing)
+        .onChange(of: isActive) { if !isActive { flushSave() } }
+        .task(id: requests.wrappedValue.assemble && isActive) {
+            guard requests.wrappedValue.assemble, isActive else { return }
             requests.wrappedValue.assemble = false
             start(force: false)
         }

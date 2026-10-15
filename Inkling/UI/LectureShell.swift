@@ -61,6 +61,9 @@ struct LectureRequests: Equatable {
 
 extension EnvironmentValues {
     @Entry var lectureRequests: Binding<LectureRequests> = .constant(LectureRequests())
+    /// Вкладка лекции видна. Открытые вкладки остаются в памяти скрытыми (переключение без пересоздания
+    /// веб-вью), и скрытая не должна забирать фокус, клавиши, вставку и запросы тулбара.
+    @Entry var isActiveTab = true
 }
 
 // MARK: Главное действие
