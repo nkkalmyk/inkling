@@ -57,11 +57,16 @@ struct NotesWebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
             if action.navigationType == .linkActivated, let url = action.request.url, url.scheme != "file" {
-                NSWorkspace.shared.open(url)
+                if Self.opensExternally(url) { NSWorkspace.shared.open(url) }
                 decisionHandler(.cancel)
             } else {
                 decisionHandler(.allow)
             }
+        }
+
+        /// Только веб-ссылки и почта: схемы вроде `smb:` или `shortcuts:` ответ модели открывать не должен.
+        nonisolated static func opensExternally(_ url: URL) -> Bool {
+            ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "")
         }
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {

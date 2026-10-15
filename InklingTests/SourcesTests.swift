@@ -353,3 +353,13 @@ struct ShotOrderTests {
         #expect(Calendar.current.component(.hour, from: result.notes[0].captureDate!) == 9)
     }
 }
+
+@Suite("Ссылки конспекта")
+struct ExternalLinkTests {
+    @Test func onlyWebAndMailOpen() {
+        let open = { (s: String) in NotesWebView.Coordinator.opensExternally(URL(string: s)!) }
+        #expect(open("https://example.com") && open("http://example.com") && open("mailto:a@b.c"))
+        #expect(!open("smb://evil/share") && !open("shortcuts://run-shortcut?name=x"))
+        #expect(!open("x-apple.systempreferences:com.apple.preference.security") && !open("/relative"))
+    }
+}
