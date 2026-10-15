@@ -131,3 +131,10 @@ mark.illegible { background: var(--illegible); color: inherit; padding: 0 2px; b
   .math-display, blockquote, table, pre, figure, li { break-inside: avoid; }
   a { color: inherit; text-decoration: none; }
 }
+
+/* Схемы от модели рисуют чёрным и серым: в тёмной теме берём цвет текста, иначе линии не видно. */
+figure.scheme [stroke="black"], figure.scheme [stroke="#000"], figure.scheme [stroke="#000000"] { stroke: currentColor; }
+figure.scheme [fill="black"], figure.scheme [fill="#000"], figure.scheme [fill="#000000"] { fill: currentColor; }
+figure.scheme [stroke="gray"], figure.scheme [stroke="grey"] { stroke: var(--muted); }
+figure.scheme text { fill: currentColor; font-family: var(--interface); }
+figure.scheme [fill="white"] { fill: var(--bg-solid, Canvas); }

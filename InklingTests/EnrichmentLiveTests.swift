@@ -1,4 +1,5 @@
 import Foundation
+import JavaScriptCore
 import Testing
 @testable import Inkling
 
@@ -35,6 +36,18 @@ struct EnrichmentLiveTests {
         print("Время: \(Int(Date().timeIntervalSince(started))) с")
         print("Блоков: \(additions.count) \(counts), убрано проверкой: \(info?.removedByCheck ?? -1)")
         print("Текст автора сохранён: \(Enrichment.preservesAuthorText(original: original, enriched: result))")
+        // Графики и схемы должны реально отрисоваться (diagram.js), а не уйти в «не отрисован».
+        let context = JSContext()!
+        context.evaluateScript("var self = this;")
+        let web = try #require(NotesWebView.webFolder)
+        context.evaluateScript(try String(contentsOf: web.appendingPathComponent("diagram.js"), encoding: .utf8))
+        for addition in additions where addition.kind == .plot || addition.kind == .svg {
+            let code = addition.text.components(separatedBy: "\n").dropFirst().dropLast().joined(separator: "\n")
+            let method = addition.kind == .plot ? "plot" : "svg"
+            let html = context.objectForKeyedSubscript("InklingDiagram")!.invokeMethod(method, withArguments: [code])!.toString()!
+            print("\(addition.kind.title): \(html.contains("diagram-error") ? "ОШИБКА" : "ок") — \(code.prefix(110))")
+            #expect(!html.contains("diagram-error"), "\(code)")
+        }
         if let out = environment["INKLING_LIVE_OUT"] {
             try result.write(toFile: out, atomically: true, encoding: .utf8)
         }
