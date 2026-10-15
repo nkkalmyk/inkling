@@ -23,6 +23,9 @@ extension Font {
     static let readingSize: CGFloat = 15
     static let readingLargeSize: CGFloat = 19
 
+    /// Крупный символ начального экрана теста и карточек.
+    static let illustration = Font.system(size: 44)
+
     /// Итоговые числа: счёт теста, «Знаю 12 из 20».
     static let metric = Font.system(.largeTitle, design: .rounded).weight(.bold).monospacedDigit()
 }
