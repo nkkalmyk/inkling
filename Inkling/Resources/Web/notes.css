@@ -80,6 +80,31 @@ blockquote.warn { background: var(--surface); border-left-color: var(--muted); }
 /* Вставка со слайда — в тоне акцента. */
 blockquote.slides { background: var(--accent-soft); border-left-color: var(--accent); }
 
+/* Блоки «Дополнить»: пояснение, пример, связи; резюме в начале. Цвета нейтральные, акцент только у границы. */
+blockquote.explain, blockquote.example, blockquote.link { background: var(--surface); border-left-color: var(--accent); }
+blockquote.example { border-left-style: double; border-left-width: 5px; }
+blockquote.link { border-left-style: dashed; }
+h2.summary-heading { border-bottom-color: var(--accent); }
+h2.summary-heading + ul { background: var(--accent-soft); border-radius: 8px; padding: 0.6em 1.2em 0.6em 2em; }
+
+figure.diagram { margin: 1em 0; text-align: center; }
+figure.diagram svg { max-width: 100%; height: auto; color: var(--text); }
+figure.scheme svg { width: 100%; max-height: 360px; }
+figure.diagram figcaption { color: var(--muted); font: 0.85em var(--interface); margin-top: 0.3em; }
+.diagram .grid { stroke: var(--rule); stroke-width: 1; }
+.diagram .axis { stroke: var(--muted); stroke-width: 1.4; }
+.diagram .tick, .diagram .plabel { fill: var(--muted); font: 11px var(--interface); }
+.diagram .plabel { fill: var(--text); }
+.diagram .curve { fill: none; stroke-width: 2.2; stroke-linejoin: round; }
+.diagram .curve.c0, .diagram .swatch.c0 { stroke: var(--accent); background: var(--accent); }
+.diagram .curve.c1, .diagram .swatch.c1 { stroke: var(--text); background: var(--text); }
+.diagram .curve.c2, .diagram .swatch.c2 { stroke: var(--muted); background: var(--muted); }
+.diagram .curve.c3, .diagram .swatch.c3 { stroke: var(--error); background: var(--error); }
+.diagram .dot { fill: var(--text); }
+.diagram .legend { font: 0.85em var(--interface); color: var(--muted); display: flex; gap: 1em; justify-content: center; flex-wrap: wrap; }
+.diagram .swatch { display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; }
+.diagram-error { color: var(--error); font: 0.9em var(--interface); }
+
 mark.illegible { background: var(--illegible); color: inherit; padding: 0 2px; border-radius: 4px; }
 
 .math-display { margin: 0.8em 0; overflow-x: auto; overflow-y: hidden; }
