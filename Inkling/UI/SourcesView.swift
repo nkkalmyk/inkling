@@ -8,6 +8,7 @@ struct SourcesView: View {
     @Environment(Library.self) private var library
     let lecture: LectureRecord
 
+    @Environment(\.isActiveTab) private var isActive
     @State private var selection: Set<String> = []
     @State private var activeSection: SourceSection = .notes
     /// Ширина ленты миниатюр, общая для всех лекций.
@@ -24,13 +25,12 @@ struct SourcesView: View {
             }
         }
         .onPasteCommand(of: ImportStaging.acceptedTypes) { providers in
+            guard isActive else { return }
             library.importProviders(providers, into: activeSection, lectureID: lecture.id)
         }
-        .onAppear { updateTarget() }
-        .onChange(of: activeSection) { updateTarget() }
-        .onDisappear {
-            if library.importTarget?.lectureID == lecture.id { library.importTarget = nil }
-        }
+        .onChange(of: isActive, initial: true) { isActive ? updateTarget() : clearTarget() }
+        .onChange(of: activeSection) { if isActive { updateTarget() } }
+        .onDisappear(perform: clearTarget)
         .onChange(of: selection) {
             if let first = selection.first, let location = lecture.meta.page(first) { activeSection = location.section }
         }
@@ -53,6 +53,11 @@ struct SourcesView: View {
 
     private func updateTarget() {
         library.importTarget = (lecture.id, activeSection)
+    }
+
+    /// Камера непрерывности и меню «Импорт с iPhone» кладут файлы, только пока «Источники» на экране.
+    private func clearTarget() {
+        if library.importTarget?.lectureID == lecture.id { library.importTarget = nil }
     }
 
     private func addFiles(to section: SourceSection) {

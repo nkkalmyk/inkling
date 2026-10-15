@@ -10,6 +10,7 @@ struct StudyContainer<Content: View>: View {
 
     @State private var confirmRegenerate = false
     @Environment(\.lectureRequests) private var requests
+    @Environment(\.isActiveTab) private var isActive
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -43,8 +44,8 @@ struct StudyContainer<Content: View>: View {
         }
         .background(Color.surfaceStudy)
         .motion(.standard, value: study.errors[lecture.id] == nil)
-        .task(id: requests.wrappedValue.prepareStudy) {
-            guard requests.wrappedValue.prepareStudy else { return }
+        .task(id: requests.wrappedValue.prepareStudy && isActive) {
+            guard requests.wrappedValue.prepareStudy, isActive else { return }
             requests.wrappedValue.prepareStudy = false
             if materials == nil { study.generate(lecture.id) } else { regenerate() }
         }
@@ -196,6 +197,7 @@ struct QuestionsView: View {
     @State private var revealed: Set<String> = []
     @State private var editing: EditTarget?
     @FocusState private var listFocused: Bool
+    @Environment(\.isActiveTab) private var isActive
 
     var body: some View {
         StudyContainer(lecture: lecture, showNotes: showNotes) { materials, progress in
@@ -221,7 +223,7 @@ struct QuestionsView: View {
                 }
             }
         }
-        .onAppear { listFocused = true }
+        .onChange(of: isActive, initial: true) { if isActive { listFocused = true } }
     }
 
     private var filters: some View {
@@ -267,7 +269,7 @@ struct QuestionsView: View {
         .listStyle(.sidebar)
         .focused($listFocused)
         .onKeyPress(.space) {
-            guard case .question(let id) = selection else { return .ignored }
+            guard isActive, case .question(let id) = selection else { return .ignored }
             toggleReveal(id)
             return .handled
         }
@@ -294,33 +296,21 @@ struct QuestionsView: View {
         }
     }
 
+    /// «Кратко» одним фрагментом: пункты с формулами иначе дают по веб-вью на каждый пункт,
+    /// и вкладка открывается рывком. Маркеры списка — в цвете акцента (notes.css).
     private func summary(_ materials: StudyMaterials) -> some View {
         VStack(alignment: .leading, spacing: Spacing.m) {
             Text("Кратко").font(.sectionTitle)
-            ForEach(Array(materials.summary.enumerated()), id: \.offset) { _, point in
-                HStack(alignment: .top, spacing: Spacing.s) {
-                    // Маркер по середине первой строки текста для чтения (интерлиньяж ~1,6 кегля).
-                    Circle().fill(Color.accentColor).frame(width: 6, height: 6)
-                        .padding(.top, (Font.readingSize * 1.6 - 6) / 2)
-                        .accessibilityHidden(true)
-                    MathText(markdown: point)
-                }
-            }
+            MathText(markdown: materials.summary.map { "- " + $0.replacingOccurrences(of: "\n", with: " ") }
+                .joined(separator: "\n"))
         }
     }
 
+    /// «Термины» одним фрагментом по той же причине.
     private func terms(_ materials: StudyMaterials) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.l) {
+        VStack(alignment: .leading, spacing: Spacing.m) {
             Text("Термины").font(.sectionTitle)
-            ForEach(materials.terms) { term in
-                VStack(alignment: .leading, spacing: Spacing.xs) {
-                    MathText(markdown: "**\(term.term)**")
-                    MathText(markdown: term.definition).foregroundStyle(.secondary)
-                }
-                .padding(Spacing.m)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .surface(.studyRaised)
-            }
+            MathText(markdown: materials.terms.map { "**\($0.term)**  \n\($0.definition)" }.joined(separator: "\n\n"))
         }
     }
 
@@ -378,6 +368,7 @@ struct QuizView: View {
     @State private var startedFor: Date?
     @State private var editing: EditTarget?
     @FocusState private var focused: Bool
+    @Environment(\.isActiveTab) private var isActive
 
     var body: some View {
         StudyContainer(lecture: lecture, showNotes: showNotes) { materials, progress in
@@ -402,11 +393,11 @@ struct QuizView: View {
                 StudyItemEditor(target: target, materials: materials) { study.saveEdited($0, lectureID: lecture.id) }
             }
         }
-        .focusable()
+        .focusable(isActive)
         .focused($focused)
         .focusEffectDisabled()
-        .onAppear { focused = true }
-        .onKeyPress(phases: .down) { press in handleKey(press) }
+        .onChange(of: isActive, initial: true) { if isActive { focused = true } }
+        .onKeyPress(phases: .down) { press in isActive ? handleKey(press) : .ignored }
         .onChange(of: study.revision(lecture.id)) {
             // Материалы пересобраны: старая сессия больше не совпадает с вопросами.
             if lecture.meta.study?.createdAt != startedFor { session = nil }
@@ -571,6 +562,7 @@ struct FlashcardsView: View {
     /// Куда ушла последняя карточка: «знаю» — вправо, «не знаю» — влево.
     @State private var lastKnown = true
     @FocusState private var focused: Bool
+    @Environment(\.isActiveTab) private var isActive
 
     var body: some View {
         StudyContainer(lecture: lecture, showNotes: showNotes) { materials, progress in
@@ -594,11 +586,11 @@ struct FlashcardsView: View {
                 StudyItemEditor(target: target, materials: materials) { study.saveEdited($0, lectureID: lecture.id) }
             }
         }
-        .focusable()
+        .focusable(isActive)
         .focused($focused)
         .focusEffectDisabled()
-        .onAppear { focused = true }
-        .onKeyPress(phases: .down) { press in handleKey(press) }
+        .onChange(of: isActive, initial: true) { if isActive { focused = true } }
+        .onKeyPress(phases: .down) { press in isActive ? handleKey(press) : .ignored }
         .onChange(of: study.revision(lecture.id)) {
             if lecture.meta.study?.createdAt != startedFor { session = nil }
         }

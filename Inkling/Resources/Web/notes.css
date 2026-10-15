@@ -53,6 +53,7 @@ a { color: var(--accent); }
 strong { font-weight: 600; }
 p, ul, ol { margin: 0.6em 0; }
 li { margin: 0.2em 0; }
+li::marker { color: var(--accent); }
 
 code {
   font: 0.85em ui-monospace, "SF Mono", Menlo, monospace;
