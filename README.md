@@ -15,7 +15,7 @@
 ![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF)
 ![Claude Code](https://img.shields.io/badge/движок-Claude_Code-D97757)
 ![Ollama](https://img.shields.io/badge/запасной-Ollama-555555)
-![Version](https://img.shields.io/badge/версия-0.2.2-F5B83D)
+![Version](https://img.shields.io/badge/версия-0.2.5-F5B83D)
 
 </div>
 
