@@ -11,8 +11,8 @@ struct PageDetailView: View {
             PageEditor(lecture: lecture, pageID: pageID, section: location.section, number: location.index + 1)
                 .id(pageID)
         } else {
-            ContentUnavailableView("Выберите страницу", systemImage: "doc.viewfinder",
-                                   description: Text("Порядок меняется перетаскиванием, лишние страницы удаляются клавишей ⌫."))
+            EmptyState("Выберите страницу", systemImage: "doc.viewfinder",
+                       description: "Порядок меняется перетаскиванием в ленте, лишние страницы удаляются клавишей ⌫.")
         }
     }
 }
@@ -32,6 +32,8 @@ private struct PageEditor: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var confirmRerecognize = false
     @State private var showHistory = false
+    /// Ширина панели: в узкой фото и текст встают друг под другом.
+    @State private var width: CGFloat = 0
 
     private var paths: LecturePaths { LecturePaths(folder: lecture.folder) }
     private var note: NotePage? { lecture.meta.notes.first { $0.id == pageID } }
@@ -49,19 +51,22 @@ private struct PageEditor: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-                .padding(10)
+                .padding(.horizontal, Spacing.m)
+                .padding(.vertical, Spacing.s)
             Divider()
-            HSplitView {
-                ZoomableImageView(image: image, zoom: zoom)
-                    .frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity)
-                VStack(spacing: 0) {
-                    statusLine
-                    Divider()
-                    textArea
+            if width >= 640 {
+                HSplitView {
+                    imagePane.frame(minWidth: 240, maxWidth: .infinity, maxHeight: .infinity)
+                    textPane.frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(minWidth: 260, maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VSplitView {
+                    imagePane.frame(maxWidth: .infinity, minHeight: 160, maxHeight: .infinity)
+                    textPane.frame(maxWidth: .infinity, minHeight: 160, maxHeight: .infinity)
+                }
             }
         }
+        .onGeometryChange(for: CGFloat.self, of: \.size.width) { width = $0 }
         .task(id: "\(imageSource.map { "\($0)" } ?? "")#\(revision)") {
             guard let imageSource else { return }
             image = await PageImageLoader.shared.image(imageSource, maxPixel: 2400, revision: revision)
@@ -77,10 +82,23 @@ private struct PageEditor: View {
         }
     }
 
+    private var imagePane: some View {
+        ZoomableImageView(image: image, zoom: zoom)
+            .background(Color.surfaceSunken)
+    }
+
+    private var textPane: some View {
+        VStack(spacing: 0) {
+            statusLine
+            Divider()
+            textArea
+        }
+    }
+
     // MARK: Шапка
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Spacing.s) {
             Text(section == .notes ? "Страница \(number)" : "Слайд \(number)").font(.headline)
             Spacer()
             if let note { noteControls(note) }
@@ -100,7 +118,10 @@ private struct PageEditor: View {
                 Label("История", systemImage: "clock.arrow.circlepath")
             }
             .popover(isPresented: $showHistory, arrowEdge: .bottom) {
-                HistoryPopover(lecture: lecture, pageID: pageID, section: section)
+                HistoryPopover(entries: PageTextStore(paths: paths).history(pageID, in: section).entries(),
+                               emptyHint: "Они появляются, когда текст перезаписывается.",
+                               subtitle: { describe($0.info(PageText.self)) },
+                               restore: { library.restoreVersion($0, pageID: pageID, lectureID: lecture.id) })
             }
         }
         .disabled(busy)
@@ -139,10 +160,15 @@ private struct PageEditor: View {
             .fixedSize()
             .help(page.heuristicReason.map { "Эвристика выбрала картинку: \($0)" } ?? "Текстовый слой выглядит нормально")
         }
-        Toggle("Не в конспект", isOn: Binding(
-            get: { page.excluded },
-            set: { library.setSlideExcluded($0, for: page.id, lectureID: lecture.id) }))
-            .help("Не включать слайд в конспект (титульник, «Спасибо за внимание»)")
+        // Не Toggle: любой Toggle в окне выключает в SwiftUI «Импорт с iPhone» (Камеру непрерывности).
+        Button {
+            library.setSlideExcluded(!page.excluded, for: page.id, lectureID: lecture.id)
+        } label: {
+            Label("Не в конспект", systemImage: page.excluded ? "checkmark.square.fill" : "square")
+                .labelStyle(.titleAndIcon)
+        }
+        .accessibilityValue(page.excluded ? "Включено" : "Выключено")
+        .help("Не включать слайд в конспект (титульник, «Спасибо за внимание»)")
     }
 
     // MARK: Статус и текст
@@ -156,20 +182,22 @@ private struct PageEditor: View {
 
     @ViewBuilder
     private var statusLine: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Spacing.s) {
             switch recognition.state(of: pageID) {
             case .queued:
-                Image(systemName: "clock").foregroundStyle(.secondary)
+                Image(systemName: "clock").accessibilityHidden(true)
                 Text("В очереди на распознавание")
             case .running(let engine, let startedAt):
                 ProgressView().controlSize(.small)
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text("Распознаёт \(engine.title) · \(Int(context.date.timeIntervalSince(startedAt))) с")
-                }
+                Text("Распознаёт \(engine.title)")
+                ElapsedText(since: startedAt)
             case .failed(let error):
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.statusError)
+                    .accessibilityHidden(true)
                 Text(error.userMessage).lineLimit(2)
+                    .foregroundStyle(.primary)
                     .help(error.details)
+                    .accessibilityLabel("Ошибка: \(error.userMessage)")
             case nil:
                 provenance
             }
@@ -177,8 +205,8 @@ private struct PageEditor: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Spacing.m)
+        .padding(.vertical, Spacing.s)
     }
 
     @ViewBuilder
@@ -186,7 +214,7 @@ private struct PageEditor: View {
         if let info {
             switch info.origin {
             case .model:
-                Text("\(info.engine?.title ?? "Модель") · \(info.model ?? "") · \(info.updatedAt.formatted(Self.dateFormat))")
+                Text("\(info.engine?.title ?? "Модель") · \(info.model ?? "") · \(info.updatedAt.stamp)")
             case .textLayer:
                 Text("Текстовый слой PDF")
             case .manual:
@@ -199,21 +227,19 @@ private struct PageEditor: View {
                 Label("правлено вручную", systemImage: "pencil").labelStyle(.titleAndIcon)
             }
             if note?.textIsStale == true {
-                Label("фото изменено после распознавания", systemImage: "exclamationmark.circle")
-                    .foregroundStyle(.orange)
+                Label("фото изменено после распознавания", systemImage: "arrow.triangle.2.circlepath")
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(.primary)
             }
         } else {
             Text("Не распознано")
         }
     }
 
-    private static let dateFormat = Date.FormatStyle().day().month(.abbreviated).hour().minute()
-        .locale(Locale(identifier: "ru_RU"))
-
     @ViewBuilder
     private var textArea: some View {
         if info == nil && text.isEmpty && !isRunning {
-            VStack(spacing: 10) {
+            VStack(spacing: Spacing.s) {
                 Text("Текста пока нет.").foregroundStyle(.secondary)
                 if slide.map(\.usesImage) ?? true {
                     Button("Распознать") { recognition.recognize(lectureID: lecture.id, pageIDs: [pageID]) }
@@ -226,6 +252,18 @@ private struct PageEditor: View {
                 scheduleSave()
             }), onIllegibleClick: { zoom = .init(relativeY: $0) })
         }
+    }
+
+    private func describe(_ info: PageText?) -> String {
+        guard let info else { return "без описания" }
+        var parts: [String]
+        switch info.origin {
+        case .model: parts = [info.model ?? info.engine?.title ?? "модель"]
+        case .textLayer: parts = ["текстовый слой"]
+        case .manual: parts = ["набрано вручную"]
+        }
+        if info.manuallyEdited && info.origin != .manual { parts.append("правлено вручную") }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: Загрузка и сохранение
@@ -250,75 +288,5 @@ private struct PageEditor: View {
         task.cancel()
         saveTask = nil
         library.saveEditedText(text, pageID: pageID, lectureID: lecture.id)
-    }
-}
-
-// MARK: История
-
-private struct HistoryPopover: View {
-    @Environment(Library.self) private var library
-    let lecture: LectureRecord
-    let pageID: String
-    let section: SourceSection
-    @State private var selected: HistoryStore.Entry?
-    @State private var preview = ""
-
-    private var entries: [HistoryStore.Entry] {
-        PageTextStore(paths: LecturePaths(folder: lecture.folder)).history(pageID, in: section).entries()
-    }
-
-    var body: some View {
-        let entries = entries
-        VStack(alignment: .leading, spacing: 8) {
-            Text("История версий").font(.headline)
-            if entries.isEmpty {
-                Text("Предыдущих версий нет. Они появляются, когда текст перезаписывается.")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 320)
-            } else {
-                HStack(alignment: .top, spacing: 10) {
-                    List(entries, selection: Binding(get: { selected?.id }, set: { id in
-                        selected = entries.first { $0.id == id }
-                        preview = selected.flatMap { try? String(contentsOf: $0.file, encoding: .utf8) } ?? ""
-                    })) { entry in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.date.formatted(.dateTime.day().month().hour().minute().second()
-                                .locale(Locale(identifier: "ru_RU"))))
-                            Text(describe(entry.info(PageText.self))).font(.caption).foregroundStyle(.secondary)
-                        }
-                        .tag(entry.id)
-                    }
-                    .frame(width: 220, height: 260)
-                    ScrollView {
-                        Text(preview.isEmpty ? "Выберите версию слева" : preview)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(preview.isEmpty ? .secondary : .primary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(width: 320, height: 260)
-                }
-                HStack {
-                    Spacer()
-                    Button("Восстановить эту версию") {
-                        if let selected { library.restoreVersion(selected, pageID: pageID, lectureID: lecture.id) }
-                    }
-                    .disabled(selected == nil)
-                }
-            }
-        }
-        .padding(14)
-    }
-
-    private func describe(_ info: PageText?) -> String {
-        guard let info else { return "без описания" }
-        var parts: [String]
-        switch info.origin {
-        case .model: parts = [info.model ?? info.engine?.title ?? "модель"]
-        case .textLayer: parts = ["текстовый слой"]
-        case .manual: parts = ["набрано вручную"]
-        }
-        if info.manuallyEdited && info.origin != .manual { parts.append("правлено вручную") }
-        return parts.joined(separator: " · ")
     }
 }

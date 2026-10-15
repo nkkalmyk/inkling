@@ -1,0 +1,48 @@
+import AppKit
+import CoreGraphics
+
+/// Колонтитулы готового PDF: слева «Предмет · Тема», справа «3 / 12». Печать WKWebView своих колонтитулов
+/// не даёт, поэтому страницы перерисовываются в новый PDF с подписью внизу. Метаданные: название и программа.
+enum PDFFooter {
+    static func stamp(_ url: URL, label: String, title: String) throws {
+        guard let source = CGPDFDocument(url as CFURL), source.numberOfPages > 0 else {
+            throw PDFExportError.printFailed
+        }
+        let temp = url.deletingLastPathComponent().appending(path: ".\(UUID().uuidString).pdf")
+        let info: [CFString: Any] = [kCGPDFContextTitle: title, kCGPDFContextCreator: "Inkling"]
+        guard let context = CGContext(temp as CFURL, mediaBox: nil, info as CFDictionary) else {
+            throw PDFExportError.printFailed
+        }
+        let count = source.numberOfPages
+        for index in 1...count {
+            guard let page = source.page(at: index) else { continue }
+            var box = page.getBoxRect(.mediaBox)
+            context.beginPage(mediaBox: &box)
+            context.drawPDFPage(page)
+            draw(left: label, right: "\(index) / \(count)", in: box, context: context)
+            context.endPage()
+        }
+        context.closePDF()
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
+    }
+
+    /// Строка на 24 pt выше нижнего края, по полям страницы (16 мм).
+    private static func draw(left: String, right: String, in box: CGRect, context: CGContext) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 8),
+            .foregroundColor: NSColor(white: 0.45, alpha: 1),
+        ]
+        let margin: CGFloat = 45
+        let baseline: CGFloat = 24
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        let rightText = NSAttributedString(string: right, attributes: attributes)
+        let rightWidth = rightText.size().width
+        rightText.draw(at: CGPoint(x: box.maxX - margin - rightWidth, y: box.minY + baseline))
+        let leftText = NSAttributedString(string: left, attributes: attributes)
+        let available = box.width - margin * 2 - rightWidth - 16
+        leftText.draw(with: CGRect(x: box.minX + margin, y: box.minY + baseline, width: available, height: 12),
+                      options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        NSGraphicsContext.restoreGraphicsState()
+    }
+}

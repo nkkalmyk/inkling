@@ -1,29 +1,28 @@
 :root {
+  /* Значения повторяют токены дизайн-системы (Assets.xcassets, docs/design-system.md):
+     акцент — янтарь из иконки, предупреждения без цвета, цвет только у ошибки. */
   --text: #1d1d1f;
   --muted: #6e6e73;
-  --bg: #ffffff;
-  --rule: #d2d2d7;
-  --code-bg: #f2f2f5;
-  --warn-bg: #fff4e0;
-  --warn-border: #f0a020;
-  --slides-bg: #e8f1ff;
-  --slides-border: #3b82f6;
-  --illegible: #ffe066;
+  --bg: transparent;
+  --rule: rgba(0, 0, 0, 0.1);
+  --surface: rgba(0, 0, 0, 0.04);
+  --accent: #9a5f00;
+  --accent-soft: rgba(154, 95, 0, 0.10);
+  --illegible: rgba(245, 184, 61, 0.45);
   --error: #c62828;
+  --reading: ui-serif, "New York", Georgia, serif;
+  --interface: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --text: #f2f2f7;
     --muted: #a1a1a6;
-    --bg: #1e1e1e;
-    --rule: #3a3a3c;
-    --code-bg: #2c2c2e;
-    --warn-bg: #3a2c12;
-    --warn-border: #d48a10;
-    --slides-bg: #172a45;
-    --slides-border: #5b9bff;
-    --illegible: #7a6200;
+    --rule: rgba(255, 255, 255, 0.12);
+    --surface: rgba(255, 255, 255, 0.06);
+    --accent: #f5b83d;
+    --accent-soft: rgba(245, 184, 61, 0.12);
+    --illegible: rgba(245, 184, 61, 0.35);
     --error: #ff6b6b;
   }
 }
@@ -34,56 +33,76 @@ body {
   margin: 0;
   color: var(--text);
   background: var(--bg);
-  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  font: 17px/1.6 var(--reading);
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
 }
 
 main {
-  max-width: 780px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: 24px 32px 64px;
+  padding: 32px 32px 80px;
 }
 
-h1, h2, h3, h4 { line-height: 1.25; margin: 1.4em 0 0.5em; }
-h1 { font-size: 1.7em; margin-top: 0.2em; }
-h2 { font-size: 1.35em; border-bottom: 1px solid var(--rule); padding-bottom: 0.2em; }
+/* Заголовки тоже New York: плотнее и с отрицательной разрядкой, как крупный текст у Apple. */
+h1, h2, h3, h4 { line-height: 1.2; margin: 1.6em 0 0.5em; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: 1.9em; margin-top: 0.2em; letter-spacing: -0.02em; }
+h2 { font-size: 1.4em; padding-bottom: 0.25em; border-bottom: 1px solid var(--rule); }
 h3 { font-size: 1.15em; }
+a { color: var(--accent); }
+strong { font-weight: 600; }
 p, ul, ol { margin: 0.6em 0; }
 li { margin: 0.2em 0; }
+li::marker { color: var(--accent); }
 
 code {
-  font: 0.9em ui-monospace, "SF Mono", Menlo, monospace;
-  background: var(--code-bg);
+  font: 0.85em ui-monospace, "SF Mono", Menlo, monospace;
+  background: var(--surface);
   padding: 0.1em 0.3em;
   border-radius: 4px;
 }
-pre { background: var(--code-bg); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+pre { background: var(--surface); padding: 12px 16px; border-radius: 8px; overflow-x: auto; }
 pre code { background: none; padding: 0; }
 
-table { border-collapse: collapse; margin: 0.8em 0; }
-th, td { border: 1px solid var(--rule); padding: 4px 10px; }
+table { border-collapse: collapse; margin: 0.8em 0; font-family: var(--interface); font-size: 0.9em; }
+th, td { border: 1px solid var(--rule); padding: 4px 12px; }
+th { background: var(--surface); font-weight: 600; }
 
 blockquote {
   margin: 0.8em 0;
   padding: 0.4em 1em;
-  border-left: 4px solid var(--rule);
+  border-left: 3px solid var(--rule);
   color: var(--muted);
 }
-blockquote.callout { color: var(--text); border-radius: 0 6px 6px 0; }
-blockquote.warn { background: var(--warn-bg); border-left-color: var(--warn-border); }
-blockquote.slides { background: var(--slides-bg); border-left-color: var(--slides-border); }
+blockquote.callout { color: var(--text); border-radius: 0 8px 8px 0; }
+/* Предупреждение — нейтральная подложка: в интерфейсе цвет есть только у ошибок. */
+blockquote.warn { background: var(--surface); border-left-color: var(--muted); }
+/* Вставка со слайда — в тоне акцента. */
+blockquote.slides { background: var(--accent-soft); border-left-color: var(--accent); }
 
-mark.illegible { background: var(--illegible); color: inherit; padding: 0 2px; border-radius: 3px; }
+mark.illegible { background: var(--illegible); color: inherit; padding: 0 2px; border-radius: 4px; }
 
 .math-display { margin: 0.8em 0; overflow-x: auto; overflow-y: hidden; }
 .katex { font-size: 1.08em; }
 .katex-error { color: var(--error) !important; font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; }
 
-/* Печать в PDF A4 (этап экспорта). */
+/* Титул PDF (заполняется только при экспорте). */
+#print-heading { max-width: 720px; margin: 0 auto; padding: 32px 32px 0; }
+#print-heading p { margin: 0; font-family: var(--interface); font-size: 0.8em; color: var(--muted); }
+#print-heading .print-subject { text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; color: var(--accent); }
+#print-heading h1 { font-size: 2.2em; letter-spacing: -0.02em; margin: 0.25em 0 0.2em; }
+#print-heading .print-date { padding-bottom: 1.2em; border-bottom: 2px solid var(--accent); margin-bottom: 0.4em; }
+
+/* Печать в PDF A4: поля задаёт NSPrintInfo (18 × 16 мм), колонтитулы рисует PDFFooter. */
 @page { size: A4; margin: 18mm 16mm; }
 @media print {
-  :root { --bg: #ffffff; --text: #000000; }
-  main { max-width: none; padding: 0; }
-  h1, h2, h3 { break-after: avoid; }
-  .math-display, blockquote, table, pre { break-inside: avoid; }
+  :root { --bg: #ffffff; --text: #000000; --muted: #555555; --accent: #9a5f00; --accent-soft: rgba(154, 95, 0, 0.10);
+          --rule: rgba(0, 0, 0, 0.15); --surface: rgba(0, 0, 0, 0.04); --illegible: rgba(245, 184, 61, 0.45); }
+  /* Подложки цитат и формул печатаются, а не выбрасываются. */
+  body { font-size: 11pt; line-height: 1.5; orphans: 3; widows: 3; -webkit-print-color-adjust: exact; }
+  main, #print-heading { max-width: none; padding: 0; }
+  h1, h2, h3, h4 { break-after: avoid; }
+  h2 { margin-top: 1.4em; }
+  .math-display, blockquote, table, pre, figure, li { break-inside: avoid; }
+  a { color: inherit; text-decoration: none; }
 }
