@@ -305,3 +305,14 @@ struct StudyLiveTests {
         #expect(study.questions.count >= 5)
     }
 }
+
+@Suite("Самопроверка: повреждённые данные")
+struct QuizDuplicateIDTests {
+    @Test func duplicateQuizIDsDoNotCrash() {
+        let item = StudyMaterials.QuizItem(id: "z1", question: "q", options: ["a", "b", "c", "d"],
+                                           correctIndex: 0, explanation: "e")
+        let session = QuizSession(items: [item, item], seed: 1)
+        #expect(session.items.count == 2)
+        #expect(session.optionOrder["z1"]?.count == 4)
+    }
+}

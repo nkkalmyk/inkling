@@ -32,6 +32,12 @@ enum PageSource: Codable, Equatable, Hashable, Sendable {
         }
     }
 
+    /// Просто имя файла: без каталогов, `..` и скрытых имён.
+    var hasSafeFileName: Bool {
+        let name = file
+        return !name.isEmpty && !name.hasPrefix(".") && !name.contains("/") && !name.contains("\0")
+    }
+
     var isPDF: Bool {
         if case .pdfPage = self { true } else { false }
     }
@@ -189,4 +195,9 @@ struct LecturePaths: Sendable {
 
 enum PageID {
     static func make() -> String { UUID().uuidString.lowercased() }
+
+    /// Допустимый id страницы: он входит в имена файлов (`photos/<id>.jpg`, `pages/<id>.md`).
+    static func isSafe(_ id: String) -> Bool {
+        !id.isEmpty && id.count <= 128 && id.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
+    }
 }

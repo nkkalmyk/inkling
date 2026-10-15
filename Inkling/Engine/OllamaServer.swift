@@ -77,7 +77,7 @@ actor OllamaServer {
         env["OLLAMA_FLASH_ATTENTION"] = "1"
         env["OLLAMA_KV_CACHE_TYPE"] = "q8_0"
         process.environment = env
-        FileManager.default.createFile(atPath: Self.logURL.path, contents: nil)
+        FileManager.default.createFile(atPath: Self.logURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
         if let log = try? FileHandle(forWritingTo: Self.logURL) {
             process.standardOutput = log
             process.standardError = log

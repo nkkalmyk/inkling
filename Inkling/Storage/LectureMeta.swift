@@ -55,8 +55,12 @@ struct LectureMeta: Codable, Equatable, Sendable {
         date = try c.decode(CalendarDate.self, forKey: .date)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(timeIntervalSince1970: 0)
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
-        notes = try c.decodeIfPresent([NotePage].self, forKey: .notes) ?? []
-        slides = try c.decodeIfPresent([SlidePage].self, forKey: .slides) ?? []
+        // id и имя файла страницы подставляются в пути: из чужого или повреждённого meta.json
+        // страницы с `..` и `/` отбрасываются, иначе приложение тронуло бы файлы вне папки лекции.
+        notes = (try c.decodeIfPresent([NotePage].self, forKey: .notes) ?? [])
+            .filter { PageID.isSafe($0.id) && $0.source.hasSafeFileName }
+        slides = (try c.decodeIfPresent([SlidePage].self, forKey: .slides) ?? [])
+            .filter { PageID.isSafe($0.id) && $0.source.hasSafeFileName }
         dateAutoAdjusted = try c.decodeIfPresent(Bool.self, forKey: .dateAutoAdjusted) ?? false
         dateAdjustment = try c.decodeIfPresent(DateAdjustment.self, forKey: .dateAdjustment)
         konspekt = try c.decodeIfPresent(ArtifactInfo.self, forKey: .konspekt)
