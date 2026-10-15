@@ -1,6 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Точка «i» — капля чернил, повёрнутая хвостиком вправо-вверх, как след пера. -->
+  <!-- Точка «i» — капля чернил, повёрнутая хвостиком вправо-вверх, как след пера: янтарное стекло. -->
+  <defs>
+    <linearGradient id="amber" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#FFD978"/>
+      <stop offset="0.55" stop-color="#F5B83D"/>
+      <stop offset="1" stop-color="#E8862A"/>
+    </linearGradient>
+  </defs>
   <g transform="translate(548 318) rotate(38)">
-    <path d="M0 -118 C 34 -70, 72 -26, 72 18 A 72 72 0 1 1 -72 18 C -72 -26, -34 -70, 0 -118 Z" fill="#F5B83D"/>
+    <path d="M0 -118 C 34 -70, 72 -26, 72 18 A 72 72 0 1 1 -72 18 C -72 -26, -34 -70, 0 -118 Z" fill="url(#amber)"/>
   </g>
 </svg>

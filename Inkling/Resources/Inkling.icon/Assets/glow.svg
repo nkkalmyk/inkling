@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Тёплое свечение за буквой: его преломляют стеклянные слои над ним. -->
+  <defs>
+    <radialGradient id="warm" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFB547" stop-opacity="1"/>
+      <stop offset="0.45" stop-color="#FF6F61" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#B53CFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cool" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#5B8CFF" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#5B8CFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="690" cy="300" r="300" fill="url(#cool)"/>
+  <circle cx="470" cy="610" r="380" fill="url(#warm)"/>
+</svg>

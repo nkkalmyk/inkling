@@ -14,7 +14,9 @@ struct NotesView: View {
     @State private var confirm: Confirmation?
     @State private var showHistory = false
     @State private var katexErrors = 0
-    @State private var showErrorDetails = false
+    @Environment(\.lectureRequests) private var requests
+    @Environment(\.isActiveTab) private var isActive
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Confirmation: Identifiable {
         case overwriteManual, skipUnrecognized(Int)
@@ -28,12 +30,23 @@ struct NotesView: View {
     var body: some View {
         let readiness = assembly.readiness(lecture)
         VStack(spacing: 0) {
-            if let run = assembly.runs[lecture.id] {
-                runningBar(run)
-            } else if let error = assembly.errors[lecture.id] {
-                errorBar(error)
-            } else if readiness.isStale {
-                staleBar
+            if !assembly.isRunning(lecture.id) {
+                if let error = assembly.errors[lecture.id] {
+                    InlineNotice(.error, "Конспект не собран. \(error.userMessage)", systemImage: "exclamationmark.octagon.fill",
+                                 details: error.details, dismiss: { assembly.errors[lecture.id] = nil }) {
+                        Button("Повторить") { start(force: true) }
+                    }
+                    .transition(.notice(reduceMotion: reduceMotion))
+                    Divider()
+                } else if readiness.isStale {
+                    InlineNotice(.info, "Устарело: тексты или порядок страниц изменились после сборки.",
+                                 systemImage: "clock.arrow.circlepath") {
+                        Button("Пересобрать") { start(force: false) }
+                            .disabled(recognition.isBusy(lecture.id))
+                    }
+                    .transition(.notice(reduceMotion: reduceMotion))
+                    Divider()
+                }
             }
             if info == nil && text.isEmpty {
                 emptyState(readiness)
@@ -46,6 +59,15 @@ struct NotesView: View {
                     NotesWebView(markdown: text) { katexErrors = $0 }
                 }
             }
+        }
+        .motion(.standard, value: assembly.errors[lecture.id] == nil)
+        .motion(.standard, value: readiness.isStale)
+        .focusedSceneValue(\.notesEditing, !isActive || info == nil && text.isEmpty ? nil : $editing)
+        .onChange(of: isActive) { if !isActive { flushSave() } }
+        .task(id: requests.wrappedValue.assemble && isActive) {
+            guard requests.wrappedValue.assemble, isActive else { return }
+            requests.wrappedValue.assemble = false
+            start(force: false)
         }
         .onAppear(perform: load)
         .onChange(of: revision) { load() }
@@ -66,18 +88,12 @@ struct NotesView: View {
     // MARK: Состояния
 
     private func emptyState(_ readiness: AssemblyCenter.Readiness) -> some View {
-        ContentUnavailableView {
-            Label("Конспекта пока нет", systemImage: "doc.richtext")
-        } description: {
-            if let plan = readiness.plan {
-                Text(planDescription(plan, readiness.input))
-            } else {
-                Text("Сначала добавьте и распознайте страницы на вкладке «Источники».")
-            }
-        } actions: {
+        EmptyState("Конспекта пока нет", systemImage: "doc.richtext",
+                   description: readiness.plan.map { planDescription($0, readiness.input) }
+                       ?? "Сначала добавьте и распознайте страницы на вкладке «Источники».") {
             if readiness.plan != nil, !assembly.isRunning(lecture.id) {
                 Button("Собрать конспект") { start(force: false) }
-                    .buttonStyle(.borderedProminent)
+                    .prominentAction()
                     .disabled(recognition.isBusy(lecture.id))
             }
             if recognition.isBusy(lecture.id) {
@@ -87,7 +103,7 @@ struct NotesView: View {
     }
 
     private func header(_ readiness: AssemblyCenter.Readiness) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Spacing.m) {
             Picker("Режим", selection: $editing) {
                 Text("Просмотр").tag(false)
                 Text("Правка").tag(true)
@@ -100,7 +116,7 @@ struct NotesView: View {
             provenance
             if katexErrors > 0 && !editing {
                 Label("ошибок в формулах: \(katexErrors)", systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.statusError)
                     .help("Формулы с ошибкой показаны исходным LaTeX красным")
             }
             Spacer()
@@ -113,14 +129,15 @@ struct NotesView: View {
                 Label("История", systemImage: "clock.arrow.circlepath")
             }
             .popover(isPresented: $showHistory, arrowEdge: .bottom) {
-                ArtifactHistoryPopover(history: store.history, describe: describe) { entry in
-                    library.restoreKonspekt(entry, lectureID: lecture.id)
-                }
+                HistoryPopover(entries: store.history.entries(),
+                               emptyHint: "Они появляются, когда конспект перезаписывается.",
+                               subtitle: { describe($0.info(ArtifactInfo.self)) },
+                               restore: { library.restoreKonspekt($0, lectureID: lecture.id) })
             }
         }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .font(.meta)
+        .padding(.horizontal, Spacing.m)
+        .padding(.vertical, Spacing.s)
     }
 
     @ViewBuilder
@@ -138,8 +155,7 @@ struct NotesView: View {
         if let model = info.model { parts.append(model) }
         if let mode = info.mode { parts.append(mode.title) }
         if info.parts > 1 { parts.append("частей: \(info.parts)") }
-        parts.append(info.updatedAt.formatted(.dateTime.day().month(.abbreviated).hour().minute()
-            .locale(Locale(identifier: "ru_RU"))))
+        parts.append(info.updatedAt.stamp)
         if info.manuallyEdited { parts.append("правлено вручную") }
         return parts.joined(separator: " · ")
     }
@@ -150,67 +166,6 @@ struct NotesView: View {
         let missing = input.unrecognizedNotes + input.unrecognizedSlides
         if missing > 0 { lines.append("Не распознано: \(missing) — они не попадут в конспект.") }
         return lines.joined(separator: "\n")
-    }
-
-    private func runningBar(_ run: AssemblyCenter.Run) -> some View {
-        HStack(spacing: 10) {
-            ProgressView(value: Double(run.finishedCalls), total: Double(max(run.totalCalls, 1))).frame(width: 140)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                let elapsed = Int(context.date.timeIntervalSince(run.startedAt))
-                Text((run.merging ? "Склейка частей" : run.totalCalls > 1
-                      ? "Сборка: готово частей \(run.finishedCalls) из \(run.totalCalls - 1)" : "Сборка конспекта")
-                     + (run.engine.map { " · \($0.title)" } ?? "")
-                     + " · \(elapsed / 60):\(String(format: "%02d", elapsed % 60))")
-            }
-            if let note = run.note { Text(note).foregroundStyle(.orange).lineLimit(1) }
-            Spacer()
-            Button("Отменить") { assembly.cancel(lecture.id) }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private func errorBar(_ error: AIError) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(.red)
-                Text("Конспект не собран. \(error.userMessage)")
-                Spacer()
-                Button("Повторить") { start(force: true) }
-                Button { assembly.errors[lecture.id] = nil } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.borderless)
-            }
-            if !error.details.isEmpty {
-                DisclosureGroup("Подробности", isExpanded: $showErrorDetails) {
-                    Text(error.details).font(.caption.monospaced()).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .font(.caption)
-            }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.red.opacity(0.08))
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private var staleBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "clock.badge.exclamationmark").foregroundStyle(.orange)
-            Text("Устарело: тексты или порядок страниц изменились после сборки.")
-            Spacer()
-            Button("Пересобрать") { start(force: false) }
-                .disabled(recognition.isBusy(lecture.id))
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.orange.opacity(0.1))
-        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var confirmTitle: String {
@@ -255,54 +210,5 @@ struct NotesView: View {
         task.cancel()
         saveTask = nil
         library.saveKonspektEdit(text + "\n", lectureID: lecture.id)
-    }
-}
-
-/// Список версий из истории с предпросмотром и восстановлением.
-struct ArtifactHistoryPopover: View {
-    let history: HistoryStore
-    let describe: (ArtifactInfo?) -> String
-    let restore: (HistoryStore.Entry) -> Void
-    @State private var selected: HistoryStore.Entry?
-    @State private var preview = ""
-
-    var body: some View {
-        let entries = history.entries()
-        VStack(alignment: .leading, spacing: 8) {
-            Text("История версий").font(.headline)
-            if entries.isEmpty {
-                Text("Предыдущих версий нет. Они появляются, когда конспект перезаписывается.")
-                    .foregroundStyle(.secondary).frame(width: 320)
-            } else {
-                HStack(alignment: .top, spacing: 10) {
-                    List(entries, selection: Binding(get: { selected?.id }, set: { id in
-                        selected = entries.first { $0.id == id }
-                        preview = selected.flatMap { try? String(contentsOf: $0.file, encoding: .utf8) } ?? ""
-                    })) { entry in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.date.formatted(.dateTime.day().month().hour().minute().second()
-                                .locale(Locale(identifier: "ru_RU"))))
-                            Text(describe(entry.info(ArtifactInfo.self))).font(.caption).foregroundStyle(.secondary)
-                        }
-                        .tag(entry.id)
-                    }
-                    .frame(width: 240, height: 300)
-                    ScrollView {
-                        Text(preview.isEmpty ? "Выберите версию слева" : preview)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(preview.isEmpty ? .secondary : .primary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(width: 380, height: 300)
-                }
-                HStack {
-                    Spacer()
-                    Button("Восстановить эту версию") { if let selected { restore(selected) } }
-                        .disabled(selected == nil)
-                }
-            }
-        }
-        .padding(14)
     }
 }

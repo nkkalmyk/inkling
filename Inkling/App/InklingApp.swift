@@ -60,6 +60,10 @@ struct InklingApp: App {
                 Button("Новый предмет…") { library.sheet = .newSubject }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
             }
+            // «Файл» → «Импорт с iPhone»: снимок получает экран с .importsItemProviders («Источники»).
+            ImportFromDevicesCommands()
+            CommandGroup(before: .sidebar) { LectureViewCommands() }
+            CommandMenu("Лекция") { LectureMenuCommands() }
         }
 
         Settings {

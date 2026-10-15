@@ -65,9 +65,14 @@ struct ReviewBadge: View {
 
     var body: some View {
         if engine?.needsReview == true, !manuallyEdited {
-            Label("Сделано локальной моделью — проверьте", systemImage: "exclamationmark.triangle.fill")
+            // Предупреждения в интерфейсе бесцветные; эту пометку пропускать нельзя, поэтому она выделена формой.
+            Label("Сделано локальной моделью — проверьте", systemImage: "exclamationmark.triangle")
                 .labelStyle(.titleAndIcon)
-                .foregroundStyle(.orange)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, Spacing.s)
+                .padding(.vertical, Spacing.xxs)
+                .surface(.raised, radius: Radius.chip)
                 .help("Локальная модель чаще ошибается в словах, числах и формулах и редко признаёт неразборчивое. "
                       + "Сверьте с оригиналом.")
         }

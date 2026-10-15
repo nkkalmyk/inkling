@@ -7,14 +7,11 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency NSServicesMenuRequestor {
     weak var library: Library?
-    private var menuObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // SwiftUI может пересобрать главное меню: проверяем пункт при обновлениях приложения (проверка дешёвая).
-        menuObserver = NotificationCenter.default.addObserver(forName: NSApplication.didUpdateNotification,
-                                                              object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.ensureImportMenuItem() }
-        }
+        // Без регистрации AppKit не спрашивает приложение (validRequestor), примет ли оно данные из Служб,
+        // и пункт «Импорт с iPhone» остаётся серым: Камера непрерывности считает, что принимать некому.
+        NSApp.registerServicesMenuSendTypes([], returnTypes: ContinuityCamera.returnTypes)
     }
 
     /// Сервер Ollama, запущенный приложением, гасится вместе с ним (SPEC, раздел 13, этап 8).
@@ -22,20 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency NSServ
         OllamaServer.shared.stopIfOwned()
     }
 
-    private func ensureImportMenuItem() {
-        guard let fileMenu = NSApp.mainMenu?.items.compactMap(\.submenu)
-            .first(where: { menu in menu.items.contains { $0.title == "Новая лекция…" } }),
-              !fileMenu.items.contains(where: { $0.identifier == NSMenuItem.importFromDeviceIdentifier })
-        else { return }
-        let anchor = fileMenu.items.lastIndex { $0.title == "Новый предмет…" } ?? (fileMenu.items.count - 1)
-        fileMenu.insertItem(.separator(), at: anchor + 1)
-        fileMenu.insertItem(ContinuityCamera.menuItem(), at: anchor + 2)
-    }
-
     /// NSApplication передаёт этот запрос делегату, если первый ответчик и окно его не обработали.
     @objc func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?,
                               returnType: NSPasteboard.PasteboardType?) -> Any? {
-        ContinuityCamera.accepts(sendType: sendType, returnType: returnType) && library?.importTarget != nil ? self : nil
+        return ContinuityCamera.accepts(sendType: sendType, returnType: returnType) && library?.importTarget != nil ? self : nil
     }
 
     func readSelection(from pasteboard: NSPasteboard) -> Bool {
@@ -52,10 +39,14 @@ enum ContinuityCamera {
         return item
     }
 
-    /// Принимаем только входящие картинки и PDF (сканы документов), ничего не отправляем.
+    /// Что приложение принимает от Камеры непрерывности: снимки и PDF (сканы документов).
+    static let returnTypes: [NSPasteboard.PasteboardType] =
+        [.pdf] + NSImage.imageTypes.map { NSPasteboard.PasteboardType($0) }
+
+    /// Принимаем только входящие картинки и PDF, ничего не отправляем.
     static func accepts(sendType: NSPasteboard.PasteboardType?, returnType: NSPasteboard.PasteboardType?) -> Bool {
         guard sendType == nil, let returnType else { return false }
-        return returnType == .pdf || NSImage.imageTypes.contains(returnType.rawValue)
+        return returnTypes.contains(returnType)
     }
 }
 
@@ -85,11 +76,103 @@ struct ContinuityCameraAnchor: NSViewRepresentable {
 
         override func menu(for event: NSEvent) -> NSMenu? {
             window?.makeFirstResponder(self)
+            // Пункт «Импорт с iPhone» в контекстное меню вставляет сам AppKit (если ответчик примет снимок);
+            // добавленный вручную он не наполняет, и тот остаётся серым.
             let menu = NSMenu()
             menu.addItem(withTitle: "Добавить файлы…", action: #selector(addFiles), keyEquivalent: "").target = self
-            menu.addItem(.separator())
-            menu.addItem(ContinuityCamera.menuItem())
             return menu
+        }
+
+        @objc private func addFiles() { onAddFiles() }
+
+        override func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?,
+                                     returnType: NSPasteboard.PasteboardType?) -> Any? {
+            if ContinuityCamera.accepts(sendType: sendType, returnType: returnType) { return self }
+            return super.validRequestor(forSendType: sendType, returnType: returnType)
+        }
+
+        func readSelection(from pasteboard: NSPasteboard) -> Bool {
+            onImport(pasteboard)
+            return true
+        }
+    }
+}
+
+/// Кнопка «Добавить» с меню по обычному щелчку: «Добавить файлы…» и «Импорт с iPhone»
+/// (системный пункт сам наполняется командами «Сфотографировать», «Сканировать документы»).
+/// Нужна, потому что правый щелчок на тачпаде может быть выключен. Сделана на AppKit:
+/// системный пункт Камеры непрерывности работает только в NSMenu, а снимок получает
+/// первый ответчик — эта кнопка.
+struct ContinuityCameraButton: NSViewRepresentable {
+    /// `nil` — только значок «+»; иначе обычная кнопка с подписью.
+    var title: String?
+    var help = "Добавить файлы или снять с iPhone"
+    /// Перед показом меню: делает раздел кнопки целевым, снимок с iPhone ляжет в него.
+    var onOpen: () -> Void = {}
+    var onAddFiles: () -> Void
+    var onImport: (NSPasteboard) -> Void
+
+    func makeNSView(context: Context) -> ButtonView {
+        let button = ButtonView()
+        configure(button)
+        return button
+    }
+
+    func updateNSView(_ button: ButtonView, context: Context) {
+        configure(button)
+    }
+
+    private func configure(_ button: ButtonView) {
+        button.onOpen = onOpen
+        button.onAddFiles = onAddFiles
+        button.onImport = onImport
+        button.toolTip = help
+        button.setAccessibilityLabel(title ?? "Добавить")
+        if let title {
+            button.title = title
+            button.image = nil
+            button.bezelStyle = .push
+            button.isBordered = true
+        } else {
+            button.title = ""
+            button.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Добавить")
+            button.bezelStyle = .accessoryBarAction
+            button.isBordered = false
+        }
+    }
+
+    final class ButtonView: NSButton, @preconcurrency NSServicesMenuRequestor {
+        var onOpen: () -> Void = {}
+        var onAddFiles: () -> Void = {}
+        var onImport: (NSPasteboard) -> Void = { _ in }
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            target = self
+            action = #selector(showMenu)
+            setContentHuggingPriority(.required, for: .horizontal)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) не используется") }
+
+        override var acceptsFirstResponder: Bool { true }
+
+        @objc private func showMenu() {
+            onOpen()
+            // Снимок с iPhone система отдаёт первому ответчику: становимся им до показа меню.
+            window?.makeFirstResponder(self)
+            let menu = NSMenu()
+            menu.addItem(withTitle: "Добавить файлы…", action: #selector(addFiles), keyEquivalent: "").target = self
+            if let event = NSApp.currentEvent, [.leftMouseUp, .leftMouseDown].contains(event.type) {
+                // Как контекстное меню: пункт Камеры непрерывности AppKit вставит сам и наполнит iPhone.
+                NSMenu.popUpContextMenu(menu, with: event, for: self)
+            } else {
+                // С клавиатуры: обычное меню под кнопкой с системным пунктом.
+                menu.addItem(.separator())
+                menu.addItem(ContinuityCamera.menuItem())
+                menu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self)
+            }
         }
 
         @objc private func addFiles() { onAddFiles() }

@@ -2,78 +2,68 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Вкладка «Источники» (SPEC, разделы 3 и 7): «Мой конспект» и «Слайды», импорт, порядок, обрезка, режим слайдов.
+/// Вкладка «Источники» (SPEC, разделы 3 и 7), как в Просмотре: слева лента миниатюр «Мой конспект» и «Слайды»
+/// с обычным выделением (стрелки, ⇧ и ⌘, Delete), справа выбранная страница с текстом.
 struct SourcesView: View {
     @Environment(Library.self) private var library
     let lecture: LectureRecord
-    var showNotes: () -> Void = {}
 
-    @State private var selection: String?
+    @Environment(\.isActiveTab) private var isActive
+    @State private var selection: Set<String> = []
     @State private var activeSection: SourceSection = .notes
-
-    private var paths: LecturePaths { LecturePaths(folder: lecture.folder) }
+    /// Ширина ленты миниатюр, общая для всех лекций.
+    @AppStorage("sources.stripWidth") private var stripWidth = 220.0
 
     var body: some View {
         VStack(spacing: 0) {
-            RecognitionBar(lecture: lecture, showNotes: showNotes)
-            content
-        }
-    }
-
-    private var content: some View {
-        HSplitView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    ForEach(SourceSection.allCases) { section in
-                        SourceSectionView(lecture: lecture, section: section, selection: $selection,
-                                          activeSection: $activeSection, addFiles: { addFiles(to: section) })
-                    }
-                }
-                .padding(16)
+            RecognitionBar(lecture: lecture)
+            ResizableSplit(leadingWidth: $stripWidth, range: 180...300) {
+                ThumbnailStrip(lecture: lecture, selection: $selection, activeSection: $activeSection,
+                               addFiles: addFiles)
+            } trailing: {
+                detail
             }
-            .frame(minWidth: 320, idealWidth: 460)
-
-            PageDetailView(lecture: lecture, pageID: selection)
-                .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .overlay(alignment: .bottom) { progressOverlay }
+        // «Импорт с iPhone» (Камера непрерывности): SwiftUI отдаёт снимок этому экрану, он идёт в выбранный раздел.
+        .importsItemProviders([.image, .pdf]) { providers in
+            guard isActive else { return false }
+            library.importProviders(providers, into: activeSection, lectureID: lecture.id)
+            return true
+        }
         .onPasteCommand(of: ImportStaging.acceptedTypes) { providers in
+            guard isActive else { return }
             library.importProviders(providers, into: activeSection, lectureID: lecture.id)
         }
-        .onDeleteCommand { deleteSelection() }
-        .onAppear { updateTarget() }
-        .onChange(of: activeSection) { updateTarget() }
-        .onDisappear {
-            if library.importTarget?.lectureID == lecture.id { library.importTarget = nil }
+        .onChange(of: isActive, initial: true) { isActive ? updateTarget() : clearTarget() }
+        .onChange(of: activeSection) { if isActive { updateTarget() } }
+        .onDisappear(perform: clearTarget)
+        .onChange(of: selection) {
+            if let first = selection.first, let location = lecture.meta.page(first) { activeSection = location.section }
         }
         .onChange(of: lecture.meta) {
-            if let selection, lecture.meta.page(selection) == nil { self.selection = nil }
+            selection = selection.filter { lecture.meta.page($0) != nil }
         }
     }
 
     @ViewBuilder
-    private var progressOverlay: some View {
-        if let progress = library.importProgress, progress.lectureID == lecture.id {
-            HStack(spacing: 10) {
-                if progress.total > 0 {
-                    ProgressView(value: Double(progress.done), total: Double(progress.total))
-                        .frame(width: 160)
-                    Text("Импорт: \(progress.done) из \(progress.total)")
-                } else {
-                    ProgressView().controlSize(.small)
-                    Text("Подготовка импорта…")
-                }
+    private var detail: some View {
+        if selection.count > 1 {
+            EmptyState("Выбрано страниц: \(selection.count)", systemImage: "square.stack",
+                       description: "Перетащите их в ленте, чтобы изменить порядок, или удалите клавишей ⌫.") {
+                Button("Удалить выбранные", role: .destructive) { deletePages(selection) }
             }
-            .font(.callout)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.regularMaterial, in: Capsule())
-            .padding(12)
+        } else {
+            PageDetailView(lecture: lecture, pageID: selection.first)
         }
     }
 
     private func updateTarget() {
         library.importTarget = (lecture.id, activeSection)
+    }
+
+    /// Камера непрерывности и меню «Импорт с iPhone» кладут файлы, только пока «Источники» на экране.
+    private func clearTarget() {
+        if library.importTarget?.lectureID == lecture.id { library.importTarget = nil }
     }
 
     private func addFiles(to section: SourceSection) {
@@ -88,192 +78,252 @@ struct SourcesView: View {
         library.importFiles(panel.urls, into: section, lectureID: lecture.id)
     }
 
-    private func deleteSelection() {
-        guard let selection, let location = lecture.meta.page(selection) else { return }
-        library.deletePages([selection], in: location.section, lectureID: lecture.id)
+    private func deletePages(_ ids: Set<String>) {
+        for section in SourceSection.allCases {
+            let inSection = ids.filter { lecture.meta.page($0)?.section == section }
+            if !inSection.isEmpty { library.deletePages(inSection, in: section, lectureID: lecture.id) }
+        }
     }
 }
 
-// MARK: Раздел
+// MARK: Лента миниатюр
 
-private struct SourceSectionView: View {
+private struct ThumbnailStrip: View {
     @Environment(Library.self) private var library
     let lecture: LectureRecord
-    let section: SourceSection
-    @Binding var selection: String?
+    @Binding var selection: Set<String>
     @Binding var activeSection: SourceSection
-    let addFiles: () -> Void
+    let addFiles: (SourceSection) -> Void
 
-    @State private var isTargeted = false
-
-    private let columns = [GridItem(.adaptive(minimum: 120, maximum: 180), spacing: 12)]
     private var paths: LecturePaths { LecturePaths(folder: lecture.folder) }
 
-    private var pageIDs: [String] {
+    var body: some View {
+        List(selection: $selection) {
+            ForEach(SourceSection.allCases) { section in
+                Section {
+                    rows(section)
+                    if pageIDs(section).isEmpty {
+                        EmptyDropRow(section: section, onOpen: { activeSection = section },
+                                     addFiles: { addFiles(section) }) { pasteboard in
+                            activeSection = section
+                            library.importPasteboard(pasteboard, into: section, lectureID: lecture.id)
+                        }
+                        .onDrop(of: ImportStaging.acceptedTypes, isTargeted: nil) { providers in
+                            activeSection = section
+                            library.importProviders(providers, into: section, lectureID: lecture.id)
+                            return true
+                        }
+                        .selectionDisabled()
+                    }
+                } header: {
+                    SectionHeader(section: section, count: pageIDs(section).count, isActive: activeSection == section,
+                                  onOpen: { activeSection = section }, addFiles: { addFiles(section) }) { pasteboard in
+                        activeSection = section
+                        library.importPasteboard(pasteboard, into: section, lectureID: lecture.id)
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        // Без материала сайдбара: в macOS 26 он продлевается под тулбар, и граница ленты
+        // прочерчивала линию через переключатель разделов.
+        .scrollContentBackground(.hidden)
+        .contextMenu(forSelectionType: String.self) { ids in
+            menu(for: ids)
+        }
+        .onDeleteCommand {
+            for section in SourceSection.allCases {
+                let ids = selection.filter { lecture.meta.page($0)?.section == section }
+                if !ids.isEmpty { library.deletePages(ids, in: section, lectureID: lecture.id) }
+            }
+        }
+    }
+
+    private func pageIDs(_ section: SourceSection) -> [String] {
         switch section {
         case .notes: lecture.meta.notes.map(\.id)
         case .slides: lecture.meta.slides.map(\.id)
         }
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header
-            if pageIDs.isEmpty {
-                emptyDropZone
-            } else {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                    switch section {
-                    case .notes:
-                        ForEach(Array(lecture.meta.notes.enumerated()), id: \.element.id) { index, page in
-                            cell(id: page.id, number: index + 1) { NotePageCell(page: page, paths: paths) }
-                                .contextMenu { NotePageMenu(page: page, lecture: lecture) }
-                        }
-                    case .slides:
-                        ForEach(Array(lecture.meta.slides.enumerated()), id: \.element.id) { index, page in
-                            cell(id: page.id, number: index + 1) { SlidePageCell(page: page, paths: paths) }
-                                .contextMenu { SlidePageMenu(page: page, lecture: lecture) }
-                        }
-                    }
+    @ViewBuilder
+    private func rows(_ section: SourceSection) -> some View {
+        switch section {
+        case .notes:
+            ForEach(Array(lecture.meta.notes.enumerated()), id: \.element.id) { index, page in
+                ThumbnailRow(id: page.id, number: index + 1, lecture: lecture) {
+                    NotePageThumbnail(page: page, paths: paths)
                 }
             }
-        }
-        .padding(12)
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isTargeted ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06))
-                ContinuityCameraAnchor(onAddFiles: addFiles) { pasteboard in
-                    activeSection = section
-                    library.importPasteboard(pasteboard, into: section, lectureID: lecture.id)
+            .onMove { move($0, to: $1, in: .notes) }
+            .onInsert(of: ImportStaging.acceptedTypes) { _, providers in importDropped(providers, into: .notes) }
+        case .slides:
+            ForEach(Array(lecture.meta.slides.enumerated()), id: \.element.id) { index, page in
+                ThumbnailRow(id: page.id, number: index + 1, lecture: lecture) {
+                    SlidePageThumbnail(page: page, paths: paths)
                 }
             }
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(activeSection == section ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1)
-        }
-        .onDrop(of: ImportStaging.acceptedTypes, isTargeted: $isTargeted) { providers in
-            activeSection = section
-            library.importProviders(providers, into: section, lectureID: lecture.id)
-            return true
-        }
-        .onTapGesture { activeSection = section }
-    }
-
-    private var header: some View {
-        HStack {
-            Text(section.title).font(.headline)
-            if !pageIDs.isEmpty {
-                Text("\(pageIDs.count)").foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button {
-                addFiles()
-            } label: {
-                Label("Добавить файлы…", systemImage: "plus")
-            }
-            .controlSize(.small)
+            .onMove { move($0, to: $1, in: .slides) }
+            .onInsert(of: ImportStaging.acceptedTypes) { _, providers in importDropped(providers, into: .slides) }
         }
     }
 
-    private var emptyDropZone: some View {
-        VStack(spacing: 6) {
-            Image(systemName: section == .notes ? "camera.on.rectangle" : "rectangle.on.rectangle")
-                .font(.title2)
-                .foregroundStyle(.secondary)
-            Text(section == .notes
-                 ? "Перетащите сюда фото рукописи или PDF-скан"
-                 : "Перетащите сюда PDF со слайдами")
-            Text("Или ⌘V, или правый щелчок → «Импорт с iPhone»")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, minHeight: 110)
-        .multilineTextAlignment(.center)
+    /// Перестановка в ленте: страницы встают перед той, что была на месте назначения.
+    private func move(_ offsets: IndexSet, to destination: Int, in section: SourceSection) {
+        let order = pageIDs(section)
+        let moved = offsets.map { order[$0] }
+        let before = order[destination...].first { !moved.contains($0) }
+        library.movePages(moved, before: before, in: section, lectureID: lecture.id)
     }
 
-    private func cell<Content: View>(id: String, number: Int, @ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 4) {
-            content()
-                .frame(height: 150)
-                .overlay(alignment: .bottomLeading) { RecognitionBadge(pageID: id, lecture: lecture) }
-                .overlay {
-                    if library.busyPages.contains(id) {
-                        ProgressView().controlSize(.small)
-                            .padding(8)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
-                    }
+    /// Файлы из Finder добавляются в конец раздела, как при «Добавить файлы…».
+    private func importDropped(_ providers: [NSItemProvider], into section: SourceSection) {
+        activeSection = section
+        library.importProviders(providers, into: section, lectureID: lecture.id)
+    }
+
+    @ViewBuilder
+    private func menu(for ids: Set<String>) -> some View {
+        if ids.count == 1, let id = ids.first {
+            if let note = lecture.meta.notes.first(where: { $0.id == id }) {
+                NotePageMenu(page: note, lecture: lecture)
+            } else if let slide = lecture.meta.slides.first(where: { $0.id == id }) {
+                SlidePageMenu(page: slide, lecture: lecture)
+            }
+        } else if ids.count > 1 {
+            Button("Удалить страницы (\(ids.count))", role: .destructive) {
+                for section in SourceSection.allCases {
+                    let inSection = ids.filter { lecture.meta.page($0)?.section == section }
+                    if !inSection.isEmpty { library.deletePages(inSection, in: section, lectureID: lecture.id) }
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(selection == id ? Color.accentColor : Color.secondary.opacity(0.25),
-                                      lineWidth: selection == id ? 3 : 1)
-                }
-            Text("\(number)").font(.caption).foregroundStyle(.secondary)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            selection = id
-            activeSection = section
-        }
-        .draggable(id)
-        .dropDestination(for: String.self) { dragged, _ in
-            let before = LectureMeta.insertionPoint(order: pageIDs, dragged: dragged, droppedOn: id)
-            library.movePages(dragged, before: before, in: section, lectureID: lecture.id)
-            return true
+            }
         }
     }
 }
 
-// MARK: Ячейки
+/// Заголовок раздела ленты: название, число страниц, «+» с меню «Добавить файлы…» и «Импорт с iPhone»
+/// (то же меню и по правому щелчку).
+private struct SectionHeader: View {
+    let section: SourceSection
+    let count: Int
+    let isActive: Bool
+    let onOpen: () -> Void
+    let addFiles: () -> Void
+    let onImport: (NSPasteboard) -> Void
 
-private struct NotePageCell: View {
+    var body: some View {
+        HStack(spacing: Spacing.xs) {
+            Text(section.title)
+            if count > 0 {
+                Text("\(count)").foregroundStyle(.tertiary).monospacedDigit()
+            }
+            Spacer()
+            ContinuityCameraButton(onOpen: onOpen, onAddFiles: addFiles, onImport: onImport)
+                .fixedSize()
+        }
+        .background { ContinuityCameraAnchor(onAddFiles: addFiles, onImport: onImport) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(isActive ? "\(section.title), сюда добавляются новые файлы" : section.title)
+    }
+}
+
+/// Пустой раздел: куда перетащить файлы и как ещё их добавить.
+private struct EmptyDropRow: View {
+    let section: SourceSection
+    let onOpen: () -> Void
+    let addFiles: () -> Void
+    let onImport: (NSPasteboard) -> Void
+
+    var body: some View {
+        VStack(spacing: Spacing.xs) {
+            Image(systemName: section == .notes ? "camera.on.rectangle" : "rectangle.on.rectangle")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(section == .notes ? "Перетащите сюда фото рукописи или PDF-скан" : "Перетащите сюда PDF со слайдами")
+                .font(.callout)
+            Text("Или ⌘V, или снимите на iPhone:")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ContinuityCameraButton(title: "Добавить…", onOpen: onOpen, onAddFiles: addFiles, onImport: onImport)
+                .fixedSize()
+                .padding(.top, Spacing.xxs)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.vertical, Spacing.m)
+        .frame(maxWidth: .infinity, minHeight: 120)
+        .surface(.sunken, radius: Radius.control)
+        .background { ContinuityCameraAnchor(onAddFiles: addFiles, onImport: onImport) }
+    }
+}
+
+/// Строка ленты: миниатюра с состоянием распознавания и номер.
+private struct ThumbnailRow<Thumbnail: View>: View {
+    @Environment(Library.self) private var library
+    let id: String
+    let number: Int
+    let lecture: LectureRecord
+    @ViewBuilder let thumbnail: () -> Thumbnail
+
+    var body: some View {
+        VStack(spacing: Spacing.xs) {
+            thumbnail()
+                .frame(maxWidth: .infinity, maxHeight: 180)
+                .overlay(alignment: .bottomLeading) { RecognitionBadge(pageID: id, lecture: lecture) }
+                .overlay {
+                    if library.busyPages.contains(id) {
+                        ProgressView().controlSize(.small)
+                            .padding(Spacing.s)
+                            .background(.regularMaterial, in: RoundedRectangle.ds(Radius.control))
+                    }
+                }
+            Text("\(number)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .padding(.vertical, Spacing.xs)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Страница \(number)")
+    }
+}
+
+// MARK: Миниатюры
+
+private struct NotePageThumbnail: View {
     @Environment(Library.self) private var library
     let page: NotePage
     let paths: LecturePaths
 
     var body: some View {
-        PageImageView(source: paths.imageSource(for: page), maxPixel: 360,
+        PageImageView(source: paths.imageSource(for: page), maxPixel: 480,
                       revision: library.pageRevisions[page.id] ?? 0)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .clipShape(RoundedRectangle.ds(Radius.control))
             .overlay(alignment: .topTrailing) {
                 if case .original = page.crop, !page.source.isPDF {
-                    Badge(text: "Оригинал")
+                    Chip("Оригинал", style: .overlay).padding(Spacing.xs)
                 }
             }
     }
 }
 
-private struct SlidePageCell: View {
+private struct SlidePageThumbnail: View {
     @Environment(Library.self) private var library
     let page: SlidePage
     let paths: LecturePaths
 
     var body: some View {
-        PageImageView(source: paths.imageSource(for: page), maxPixel: 360,
+        PageImageView(source: paths.imageSource(for: page), maxPixel: 480,
                       revision: library.pageRevisions[page.id] ?? 0)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .clipShape(RoundedRectangle.ds(Radius.control))
             .opacity(page.excluded ? 0.35 : 1)
             .overlay(alignment: .topTrailing) {
-                VStack(alignment: .trailing, spacing: 3) {
-                    Badge(text: page.usesImage ? "Картинка" : "Текст")
-                    if page.excluded { Badge(text: "Не в конспекте") }
+                VStack(alignment: .trailing, spacing: Spacing.xxs) {
+                    Chip(page.usesImage ? "Картинка" : "Текст", style: .overlay)
+                    if page.excluded { Chip("Не в конспекте", style: .overlay) }
                 }
+                .padding(Spacing.xs)
             }
-    }
-}
-
-private struct Badge: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.caption2.weight(.medium))
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
-            .padding(4)
     }
 }
 
@@ -318,9 +368,16 @@ struct SlidePageMenu: View {
                 Text("Распознать как картинку").tag(SlideMode.image)
             }
         }
-        Toggle("Не включать в конспект", isOn: Binding(
-            get: { page.excluded },
-            set: { library.setSlideExcluded($0, for: page.id, lectureID: lecture.id) }))
+        // Не Toggle: любой Toggle в окне выключает в SwiftUI «Импорт с iPhone» (Камеру непрерывности).
+        Button {
+            library.setSlideExcluded(!page.excluded, for: page.id, lectureID: lecture.id)
+        } label: {
+            if page.excluded {
+                Label("Не включать в конспект", systemImage: "checkmark")
+            } else {
+                Text("Не включать в конспект")
+            }
+        }
         Divider()
         Button("Удалить слайд", role: .destructive) {
             library.deletePages([page.id], in: .slides, lectureID: lecture.id)
@@ -334,133 +391,36 @@ struct SlidePageMenu: View {
 
 // MARK: Распознавание
 
-/// Полоса над источниками: прогресс распознавания, отмена, остановившая очередь ошибка, «Распознать нераспознанные».
+/// Ошибка, остановившая очередь распознавания (нет входа, лимит, нет движка). Прогресс показывает тулбар.
 private struct RecognitionBar: View {
     @Environment(RecognitionCenter.self) private var recognition
-    @Environment(AssemblyCenter.self) private var assembly
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let lecture: LectureRecord
-    let showNotes: () -> Void
-    @State private var showDetails = false
 
     var body: some View {
         VStack(spacing: 0) {
-            if let batch = recognition.batches[lecture.id] {
-                running(batch)
-            } else if let error = recognition.blockingError {
-                blocked(error)
-            } else if !pending.isEmpty {
-                idle
-            } else if canAssemble {
-                readyToAssemble
+            if let error = recognition.blockingError, recognition.batches[lecture.id] == nil {
+                InlineNotice(.error, error.userMessage, systemImage: "exclamationmark.octagon.fill",
+                             details: error.details, dismiss: { recognition.blockingError = nil }) {
+                    if case .rateLimited = error {} else {
+                        Button("Настройки…") { openSettings() }
+                    }
+                    if !pending.isEmpty {
+                        Button("Повторить") { recognition.recognize(lectureID: lecture.id, pageIDs: pending) }
+                    }
+                }
+                .transition(.notice(reduceMotion: reduceMotion))
+                Divider()
             }
         }
-    }
-
-    /// Всё распознано, а конспекта нет или он устарел.
-    private var canAssemble: Bool {
-        guard !assembly.isRunning(lecture.id) else { return false }
-        let readiness = assembly.readiness(lecture)
-        return readiness.plan != nil && (lecture.meta.konspekt == nil || readiness.isStale)
-    }
-
-    private var readyToAssemble: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle").foregroundStyle(.green)
-            Text(lecture.meta.konspekt == nil ? "Все страницы распознаны." : "Страницы изменились после сборки конспекта.")
-            Spacer()
-            Button(lecture.meta.konspekt == nil ? "Собрать конспект" : "Пересобрать конспект") {
-                showNotes()
-                if lecture.meta.konspekt?.manuallyEdited != true { assembly.assemble(lecture.id) }
-            }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
+        .motion(.standard, value: recognition.blockingError == nil)
     }
 
     private var pending: [String] { recognition.pendingPages(in: lecture) }
-
-    private func running(_ batch: RecognitionCenter.Batch) -> some View {
-        HStack(spacing: 10) {
-            ProgressView(value: Double(batch.done + batch.failed), total: Double(max(batch.total, 1)))
-                .frame(width: 160)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                let elapsed = Int(context.date.timeIntervalSince(batch.startedAt))
-                Text("Распознавание: \(batch.done + batch.failed) из \(batch.total)"
-                     + (batch.engine.map { " · \($0.title)" } ?? "")
-                     + " · \(elapsed / 60):\(String(format: "%02d", elapsed % 60))")
-            }
-            if batch.failed > 0 {
-                Text("ошибок: \(batch.failed)").foregroundStyle(.red)
-            }
-            if let note = batch.note {
-                Text(note).foregroundStyle(.orange).lineLimit(1)
-            }
-            Spacer()
-            Button("Отменить") { recognition.cancel(lectureID: lecture.id) }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private func blocked(_ error: AIError) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(.red)
-                Text(error.userMessage)
-                Spacer()
-                if case .rateLimited = error {} else {
-                    Button("Настройки…") { openSettings() }
-                }
-                if !pending.isEmpty {
-                    Button("Повторить") { recognition.recognize(lectureID: lecture.id, pageIDs: pending) }
-                }
-                Button {
-                    recognition.blockingError = nil
-                } label: {
-                    Image(systemName: "xmark")
-                }
-                .buttonStyle(.borderless)
-            }
-            if !error.details.isEmpty {
-                DisclosureGroup("Подробности", isExpanded: $showDetails) {
-                    Text(error.details)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .font(.caption)
-            }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.red.opacity(0.08))
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private var idle: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "text.viewfinder").foregroundStyle(.secondary)
-            Text("Не распознано страниц: \(pending.count)")
-            Spacer()
-            Button("Распознать") { recognition.recognize(lectureID: lecture.id, pageIDs: pending) }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
-    }
 }
 
-/// Значок состояния текста на миниатюре.
+/// Значок состояния текста на миниатюре. Цвет только у ошибки; остальное — значок с подписью.
 private struct RecognitionBadge: View {
     @Environment(RecognitionCenter.self) private var recognition
     let pageID: String
@@ -470,31 +430,29 @@ private struct RecognitionBadge: View {
         Group {
             switch recognition.state(of: pageID) {
             case .queued:
-                icon("clock", .secondary, "В очереди")
+                StatusSymbol(systemImage: "clock", label: "В очереди", onImage: true)
             case .running:
-                ProgressView().controlSize(.mini).padding(4)
+                ProgressView().controlSize(.mini).padding(Spacing.xs)
                     .background(.regularMaterial, in: Circle())
+                    .accessibilityLabel("Распознаётся")
             case .failed(let error):
-                icon("exclamationmark.triangle.fill", .red, error.userMessage)
+                StatusSymbol(systemImage: "exclamationmark.triangle.fill", label: error.userMessage,
+                             tint: .statusError, onImage: true)
             case nil:
                 if let note = lecture.meta.notes.first(where: { $0.id == pageID }) {
-                    if note.text == nil { icon("text.badge.xmark", .secondary, "Не распознано") }
-                    else if note.textIsStale { icon("exclamationmark.circle.fill", .orange, "Фото изменено после распознавания") }
-                    else if note.text?.manuallyEdited == true { icon("pencil.circle.fill", .blue, "Текст правлен вручную") }
+                    if note.text == nil {
+                        StatusSymbol(systemImage: "text.badge.xmark", label: "Не распознано", onImage: true)
+                    } else if note.textIsStale {
+                        StatusSymbol(systemImage: "arrow.triangle.2.circlepath", label: "Фото изменено после распознавания",
+                                     onImage: true)
+                    } else if note.text?.manuallyEdited == true {
+                        StatusSymbol(systemImage: "pencil", label: "Текст правлен вручную", onImage: true)
+                    }
                 } else if let slide = lecture.meta.slides.first(where: { $0.id == pageID }), slide.needsRecognition {
-                    icon("text.badge.xmark", .secondary, "Не распознано")
+                    StatusSymbol(systemImage: "text.badge.xmark", label: "Не распознано", onImage: true)
                 }
             }
         }
-        .padding(4)
-    }
-
-    private func icon(_ name: String, _ style: Color, _ help: String) -> some View {
-        Image(systemName: name)
-            .font(.caption)
-            .foregroundStyle(style)
-            .padding(3)
-            .background(.regularMaterial, in: Circle())
-            .help(help)
+        .padding(Spacing.xs)
     }
 }

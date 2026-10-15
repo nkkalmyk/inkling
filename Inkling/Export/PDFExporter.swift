@@ -13,20 +13,30 @@ enum PDFExportError: LocalizedError {
     }
 }
 
+/// Титул первой страницы PDF.
+struct PrintHeading: Encodable {
+    var subject: String
+    var topic: String
+    var date: String
+}
+
 /// PDF A4 из отрендеренного конспекта (SPEC, раздел 8). Печать начинается только после сигнала
 /// `rendered` из JS: KaTeX отрисовал формулы и загрузил шрифты. Печатается всегда светлая тема.
+/// Первая страница начинается с титула (предмет, тема, дата), внизу каждой — колонтитул.
 @MainActor
 final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     private var webView: WKWebView?
     private var window: NSWindow?
     private var markdown = ""
+    private var heading: PrintHeading?
     private var rendered: CheckedContinuation<Void, Error>?
 
     /// A4 в пунктах.
     static let a4 = NSSize(width: 595.28, height: 841.89)
 
-    func export(markdown: String, title: String, to url: URL) async throws {
+    func export(markdown: String, title: String, heading: PrintHeading? = nil, to url: URL) async throws {
         self.markdown = markdown
+        self.heading = heading
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(self, name: "rendered")
         let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 794, height: 1123), configuration: configuration)
@@ -82,6 +92,8 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
                                didRun: #selector(printOperationDidRun(_:success:contextInfo:)), contextInfo: nil)
         }
         guard ok, FileManager.default.fileExists(atPath: url.path) else { throw PDFExportError.printFailed }
+        let label = heading.map { "\($0.subject) · \($0.topic)" } ?? title
+        try PDFFooter.stamp(url, label: label, title: title)
     }
 
     private nonisolated let printed = OneShot()
@@ -116,7 +128,9 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         let json = (try? JSONEncoder().encode(markdown)).map { String(decoding: $0, as: UTF8.self) } ?? "\"\""
-        webView.evaluateJavaScript("window.inklingShow(\(json))")
+        let headingJSON = heading.flatMap { try? JSONEncoder().encode($0) }.map { String(decoding: $0, as: UTF8.self) }
+        let setHeading = headingJSON.map { "window.inklingSetHeading(\($0));" } ?? ""
+        webView.evaluateJavaScript(setHeading + "window.inklingShow(\(json))")
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
