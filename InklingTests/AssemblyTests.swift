@@ -28,6 +28,20 @@ struct RenderJSTests {
         context.objectForKeyedSubscript("InklingRender")!.invokeMethod("toHTML", withArguments: [markdown])!.toString()
     }
 
+    @Test func remoteImagesAreNotRendered() {
+        let out = html("![схема](https://evil.example/p.png?d=1) и ![](//evil.example/x.png)")
+        #expect(!out.contains("<img") && !out.contains("evil.example"))
+        #expect(out.contains("схема"))
+    }
+
+    @Test func pagesDeclareContentSecurityPolicy() throws {
+        let web = try #require(NotesWebView.webFolder)
+        for file in ["notes.html", "snippet.html"] {
+            let text = try String(contentsOf: web.appendingPathComponent(file), encoding: .utf8)
+            #expect(text.contains("Content-Security-Policy"), "\(file)")
+        }
+    }
+
     @Test func bundleContainsWebAssets() throws {
         let web = try #require(NotesWebView.webFolder)
         for file in ["notes.html", "notes.css", "render.js", "vendor/katex/katex.min.css",

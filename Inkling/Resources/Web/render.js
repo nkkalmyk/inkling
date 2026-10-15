@@ -7,6 +7,17 @@
   var md = global.markdownit({ html: false, linkify: true, typographer: false, breaks: false });
   var PH = 'INKLINGMATH';
 
+  // Удалённые картинки не грузим: ответ модели мог собрать адрес с данными лекции (канал утечки).
+  // Вместо них — подпись; картинки data: и относительные остаются.
+  var defaultImage = md.renderer.rules.image;
+  md.renderer.rules.image = function (tokens, idx, options, env, self) {
+    var src = tokens[idx].attrGet('src') || '';
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(src) && !/^data:/i.test(src)) {
+      return escapeHTML(tokens[idx].content || '');
+    }
+    return defaultImage(tokens, idx, options, env, self);
+  };
+
   // Находит формулы $...$ и $$...$$ вне кода и заменяет их метками INKLINGMATH<n>X.
   function extractMath(src) {
     var formulas = [];
