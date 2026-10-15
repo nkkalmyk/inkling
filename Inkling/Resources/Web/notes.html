@@ -11,6 +11,7 @@
 <script src="render.js"></script>
 </head>
 <body>
+<header id="print-heading" hidden></header>
 <main id="content"></main>
 <script>
   // Вызывается из приложения. Сигнал «готово» уходит после загрузки шрифтов KaTeX: по нему можно печатать в PDF.
@@ -26,6 +27,18 @@
     void document.body.offsetHeight;
     return new Promise(function (resolve) { setTimeout(resolve, 60); });
   }
+  // Титул PDF: предмет, тема и дата над конспектом. В окне приложения не используется.
+  window.inklingSetHeading = function (heading) {
+    var el = document.getElementById('print-heading');
+    el.innerHTML = '';
+    [['subject', heading.subject], ['topic', heading.topic], ['date', heading.date]].forEach(function (part) {
+      var node = document.createElement(part[0] === 'topic' ? 'h1' : 'p');
+      node.className = 'print-' + part[0];
+      node.textContent = part[1];
+      el.appendChild(node);
+    });
+    el.hidden = false;
+  };
   window.inklingShow = function (markdown) {
     document.getElementById('content').innerHTML = InklingRender.toHTML(markdown);
     katexFontsLoaded().then(nextFrames).then(function () {

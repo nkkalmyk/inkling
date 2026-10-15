@@ -32,17 +32,20 @@ final class ExportController {
     func exportMarkdown() {
         guard let konspekt, let url = savePanel(name: "\(baseName).md", type: .init(filenameExtension: "md") ?? .plainText)
         else { return }
-        write(konspekt, to: url)
+        write(MarkdownExporter.document(konspekt: konspekt, subject: lecture.meta.subject, topic: lecture.meta.topic,
+                                        date: lecture.meta.date), to: url)
     }
 
     func exportPDF() {
         guard exportingPDFSince == nil, let konspekt, let url = savePanel(name: "\(baseName).pdf", type: .pdf) else { return }
         exportingPDFSince = .now
         let title = lecture.meta.topic
+        let heading = PrintHeading(subject: lecture.meta.subject, topic: lecture.meta.topic,
+                                   date: lecture.meta.date.formatted)
         Task {
             defer { exportingPDFSince = nil }
             do {
-                try await PDFExporter().export(markdown: konspekt, title: title, to: url)
+                try await PDFExporter().export(markdown: konspekt, title: title, heading: heading, to: url)
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             } catch {
                 library.errorMessage = error.localizedDescription

@@ -85,11 +85,23 @@ mark.illegible { background: var(--illegible); color: inherit; padding: 0 2px; b
 .katex { font-size: 1.08em; }
 .katex-error { color: var(--error) !important; font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; }
 
-/* Печать в PDF A4 (этап экспорта). */
+/* Титул PDF (заполняется только при экспорте). */
+#print-heading { max-width: 720px; margin: 0 auto; padding: 32px 32px 0; }
+#print-heading p { margin: 0; font-family: var(--interface); font-size: 0.8em; color: var(--muted); }
+#print-heading .print-subject { text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; color: var(--accent); }
+#print-heading h1 { font-size: 2.2em; letter-spacing: -0.02em; margin: 0.25em 0 0.2em; }
+#print-heading .print-date { padding-bottom: 1.2em; border-bottom: 2px solid var(--accent); margin-bottom: 0.4em; }
+
+/* Печать в PDF A4: поля задаёт NSPrintInfo (18 × 16 мм), колонтитулы рисует PDFFooter. */
 @page { size: A4; margin: 18mm 16mm; }
 @media print {
-  :root { --bg: #ffffff; --text: #000000; --muted: #555555; --accent: #9a5f00; --accent-soft: rgba(154, 95, 0, 0.10); }
-  main { max-width: none; padding: 0; }
-  h1, h2, h3 { break-after: avoid; }
-  .math-display, blockquote, table, pre { break-inside: avoid; }
+  :root { --bg: #ffffff; --text: #000000; --muted: #555555; --accent: #9a5f00; --accent-soft: rgba(154, 95, 0, 0.10);
+          --rule: rgba(0, 0, 0, 0.15); --surface: rgba(0, 0, 0, 0.04); --illegible: rgba(245, 184, 61, 0.45); }
+  /* Подложки цитат и формул печатаются, а не выбрасываются. */
+  body { font-size: 11pt; line-height: 1.5; orphans: 3; widows: 3; -webkit-print-color-adjust: exact; }
+  main, #print-heading { max-width: none; padding: 0; }
+  h1, h2, h3, h4 { break-after: avoid; }
+  h2 { margin-top: 1.4em; }
+  .math-display, blockquote, table, pre, figure, li { break-inside: avoid; }
+  a { color: inherit; text-decoration: none; }
 }
