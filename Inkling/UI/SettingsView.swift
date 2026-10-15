@@ -34,7 +34,7 @@ private struct GeneralSettings: View {
     var body: some View {
         Form {
             LabeledContent("Папка хранения") {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Spacing.s) {
                     Text(settings.storageRoot.path)
                         .textSelection(.enabled)
                         .lineLimit(2)
@@ -51,7 +51,7 @@ private struct GeneralSettings: View {
                 }
             }
             LabeledContent("Промпты") {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Spacing.s) {
                     HStack {
                         Button("Открыть папку промптов") {
                             let prompts = PromptLibrary(root: settings.storageRoot)
@@ -184,8 +184,8 @@ private struct OllamaModelPicker: View {
         }
         if let error = engines.ollamaModelsError {
             Label(error.userMessage, systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-                .font(.callout)
+                .foregroundStyle(Color.statusError)
+                .font(.meta)
         }
     }
 }
@@ -222,7 +222,7 @@ private struct ConnectionCheckRow: View {
 
     var body: some View {
         LabeledContent("Подключение") {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: Spacing.s) {
                 HStack {
                     Button("Проверить подключение") { engines.checkConnection(engine) }
                         .disabled(engines.checking.contains(engine))
@@ -240,7 +240,7 @@ private struct ConnectionCheckRow: View {
 
     @ViewBuilder
     private func reportView(_ report: ConnectionReport) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Spacing.xxs) {
             if let path = report.binaryPath {
                 Text("Путь: \(path) (\(report.binarySource ?? ""))").textSelection(.enabled)
             }
@@ -250,21 +250,21 @@ private struct ConnectionCheckRow: View {
             if report.isOK, let model = report.model {
                 Label("Работает: ответила модель \(model) за \(String(format: "%.1f", report.duration ?? 0)) с",
                       systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Color.statusSuccess)
             }
             if let error = report.error {
                 Label(error.userMessage, systemImage: "xmark.octagon.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.statusError)
                 if !error.details.isEmpty {
                     DisclosureGroup("Подробности", isExpanded: $showDetails) {
                         Text(error.details)
-                            .font(.caption.monospaced())
+                            .font(.mono)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
         }
-        .font(.callout)
+        .font(.meta)
     }
 }

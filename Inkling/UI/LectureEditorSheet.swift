@@ -10,7 +10,6 @@ struct LectureEditorSheet: View {
     private static let newSubjectTag = "\u{0}new-subject"
 
     @Environment(Library.self) private var library
-    @Environment(\.dismiss) private var dismiss
 
     let mode: Mode
     @State private var subjectChoice = ""
@@ -21,37 +20,22 @@ struct LectureEditorSheet: View {
     @FocusState private var topicFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(isEditing ? "Изменить лекцию" : "Новая лекция")
-                .font(.title2.weight(.semibold))
-
-            Form {
-                Picker("Предмет", selection: $subjectChoice) {
-                    ForEach(library.subjectNames, id: \.self) { Text($0).tag($0) }
-                    Divider()
-                    Text("Новый предмет…").tag(Self.newSubjectTag)
-                }
-                if subjectChoice == Self.newSubjectTag {
-                    TextField("Название предмета", text: $newSubjectName)
-                }
-                TextField("Тема", text: $topic, prompt: Text("Например, Окислительно-восстановительные реакции"))
-                    .focused($topicFocused)
-                DatePicker("Дата", selection: $date, displayedComponents: .date)
-                    .datePickerStyle(.field)
+        FormSheet(title: isEditing ? "Изменить лекцию" : "Новая лекция",
+                  subtitle: isEditing ? nil : "Фото конспекта и слайды добавляются внутри лекции.",
+                  confirmTitle: isEditing ? "Сохранить" : "Создать", canConfirm: canSave, confirm: save) {
+            Picker("Предмет", selection: $subjectChoice) {
+                ForEach(library.subjectNames, id: \.self) { Text($0).tag($0) }
+                Divider()
+                Text("Новый предмет…").tag(Self.newSubjectTag)
             }
-            .formStyle(.columns)
-
-            HStack {
-                Spacer()
-                Button("Отмена", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button(isEditing ? "Сохранить" : "Создать") { save() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canSave)
+            if subjectChoice == Self.newSubjectTag {
+                TextField("Название предмета", text: $newSubjectName)
             }
+            TextField("Тема", text: $topic, prompt: Text("Например, Окислительно-восстановительные реакции"))
+                .focused($topicFocused)
+            DatePicker("Дата", selection: $date, displayedComponents: .date)
+                .datePickerStyle(.field)
         }
-        .padding(20)
-        .frame(width: 480)
         .onAppear(perform: load)
     }
 
@@ -88,16 +72,15 @@ struct LectureEditorSheet: View {
         topicFocused = true
     }
 
-    private func save() {
+    /// `true` — лист можно закрыть; при ошибке он остаётся открытым, сообщение показывает Library.
+    private func save() -> Bool {
         let day = CalendarDate(date)
-        let ok: Bool
         switch mode {
         case .create:
-            ok = library.createLecture(subject: resolvedSubject, topic: topic, date: day)
+            return library.createLecture(subject: resolvedSubject, topic: topic, date: day)
         case .edit(let id):
-            ok = library.updateLecture(id: id, subject: resolvedSubject, topic: topic, date: day)
+            return library.updateLecture(id: id, subject: resolvedSubject, topic: topic, date: day)
         }
-        if ok { dismiss() }
     }
 }
 
@@ -109,29 +92,17 @@ struct SubjectNameSheet: View {
     }
 
     @Environment(Library.self) private var library
-    @Environment(\.dismiss) private var dismiss
 
     let mode: Mode
     @State private var name = ""
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(title).font(.title2.weight(.semibold))
+        FormSheet(title: title, width: SheetWidth.compact, confirmTitle: actionTitle,
+                  canConfirm: !name.trimmingCharacters(in: .whitespaces).isEmpty, confirm: save) {
             TextField("Название предмета", text: $name)
                 .focused($focused)
-                .onSubmit(save)
-            HStack {
-                Spacer()
-                Button("Отмена", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button(actionTitle, action: save)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
         }
-        .padding(20)
-        .frame(width: 400)
         .onAppear {
             if case .rename(let old) = mode { name = old }
             focused = true
@@ -146,13 +117,11 @@ struct SubjectNameSheet: View {
         if case .rename = mode { "Переименовать" } else { "Создать" }
     }
 
-    private func save() {
-        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        let ok: Bool
+    private func save() -> Bool {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         switch mode {
-        case .create: ok = library.createSubject(named: name)
-        case .rename(let old): ok = library.renameSubject(old, to: name)
+        case .create: return library.createSubject(named: name)
+        case .rename(let old): return library.renameSubject(old, to: name)
         }
-        if ok { dismiss() }
     }
 }

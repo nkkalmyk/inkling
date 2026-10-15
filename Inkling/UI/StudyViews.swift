@@ -799,6 +799,7 @@ struct StudyItemEditor: View {
     var body: some View {
         FormSheet(title: title, subtitle: "Можно использовать Markdown и формулы: $…$, $$…$$, \\ce{…}.",
                   width: SheetWidth.wide, confirmTitle: "Сохранить", canConfirm: draft.problems().isEmpty,
+                  fitsContent: false,
                   destructive: (title: "Удалить", action: delete),
                   confirm: {
                       save(draft)
