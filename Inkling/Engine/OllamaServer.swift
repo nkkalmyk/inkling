@@ -89,6 +89,7 @@ actor OllamaServer {
             return Status()
         }
         owned.set(process)
+        try? "\(process.processIdentifier)".write(to: Self.pidURL, atomically: true, encoding: .utf8)
 
         let deadline = Date().addingTimeInterval(startupTimeout)
         while Date() < deadline {
@@ -100,6 +101,7 @@ actor OllamaServer {
         }
         if process.isRunning { process.terminate() }
         owned.set(nil)
+        try? FileManager.default.removeItem(at: Self.pidURL)
         let log = (try? String(contentsOf: Self.logURL, encoding: .utf8)) ?? ""
         startError = .ollamaUnavailable("ollama serve не ответил за \(Int(startupTimeout)) с.\n" + String(log.suffix(2000)))
         return Status()
@@ -123,6 +125,25 @@ actor OllamaServer {
         while process.isRunning, Date() < deadline { usleep(50_000) }
         if process.isRunning { kill(process.processIdentifier, SIGKILL) }
         owned.set(nil)
+        try? FileManager.default.removeItem(at: Self.pidURL)
+    }
+
+    /// PID сервера, запущенного приложением. Если приложение упало или было убито, сервер (~9 ГБ памяти) остаётся
+    /// в системе; при следующем запуске по этому файлу он находится и гасится.
+    static let pidURL = FileManager.default.temporaryDirectory.appendingPathComponent("Inkling-ollama.pid")
+
+    /// Гасит сервер, оставшийся от прошлого запуска. Трогает только процесс с PID из файла и только если его
+    /// исполняемый файл называется `executableName`: переиспользованный системой PID чужого процесса не пострадает.
+    /// Возвращает `true`, если процесс был найден и ему отправлен сигнал.
+    @discardableResult
+    nonisolated static func reapOrphan(pidFile: URL = pidURL, executableName: String = "ollama") -> Bool {
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        guard let text = try? String(contentsOf: pidFile, encoding: .utf8),
+              let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 else { return false }
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0,
+              URL(fileURLWithPath: String(cString: buffer)).lastPathComponent == executableName else { return false }
+        return kill(pid, SIGTERM) == 0
     }
 
     // MARK: Один запрос за раз

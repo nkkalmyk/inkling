@@ -17,6 +17,22 @@ enum ImportStaging {
         return url
     }
 
+    /// Удаляет папки `Inkling-import-*`, оставшиеся от прошлых запусков (приложение закрыли при открытом вопросе
+    /// о разделе PDF или оно упало). Свежие не трогает: их могут использовать. Возвращает число удалённых.
+    @discardableResult
+    nonisolated static func removeStale(in temporary: URL = FileManager.default.temporaryDirectory,
+                                        olderThan age: TimeInterval = 24 * 3600, now: Date = Date()) -> Int {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: temporary.path)) ?? []
+        var removed = 0
+        for name in names where name.hasPrefix("Inkling-import-") {
+            let url = temporary.appendingPathComponent(name, isDirectory: true)
+            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            guard let modified, now.timeIntervalSince(modified) > age else { continue }
+            if (try? FileManager.default.removeItem(at: url)) != nil { removed += 1 }
+        }
+        return removed
+    }
+
     /// Файлы из провайдеров в исходном порядке. Ссылки на файлы возвращаются как есть, данные копируются в `staging`.
     static func files(from providers: [NSItemProvider], staging: URL) async -> [URL] {
         var urls: [URL] = []

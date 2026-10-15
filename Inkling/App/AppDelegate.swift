@@ -11,6 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency NSServ
         // Без регистрации AppKit не спрашивает приложение (validRequestor), примет ли оно данные из Служб,
         // и пункт «Импорт с iPhone» остаётся серым: Камера непрерывности считает, что принимать некому.
         NSApp.registerServicesMenuSendTypes([], returnTypes: ContinuityCamera.returnTypes)
+        // Остатки аварийного выхода: сервер Ollama прошлого запуска и временные копии импорта.
+        OllamaServer.reapOrphan()
+        ImportStaging.removeStale()
     }
 
     /// Сервер Ollama, запущенный приложением, гасится вместе с ним (SPEC, раздел 13, этап 8).
