@@ -2,7 +2,7 @@ name: Inkling
 options:
   bundleIdPrefix: com.nkalmykov
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "26.0"
   developmentLanguage: ru
   createIntermediateGroups: true
 

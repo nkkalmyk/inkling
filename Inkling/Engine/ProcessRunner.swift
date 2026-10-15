@@ -97,7 +97,7 @@ private final class SpawnedChild: @unchecked Sendable {
         posix_spawn_file_actions_adddup2(&actions, inPipe[0], 0)
         posix_spawn_file_actions_adddup2(&actions, outPipe[1], 1)
         posix_spawn_file_actions_adddup2(&actions, errPipe[1], 2)
-        posix_spawn_file_actions_addchdir_np(&actions, workingDirectory)
+        posix_spawn_file_actions_addchdir(&actions, workingDirectory)
 
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)
