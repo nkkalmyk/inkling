@@ -2,7 +2,7 @@
 
 ## Что нужно
 
-- Mac на Apple Silicon, macOS 14 или новее.
+- Mac на Apple Silicon, macOS 26 или новее.
 - Xcode (из App Store) и XcodeGen: `brew install xcodegen`.
 - Claude Code с выполненным входом (`claude`, затем вход через подписку Claude Pro).
 
