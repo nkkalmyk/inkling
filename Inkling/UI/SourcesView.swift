@@ -10,16 +10,17 @@ struct SourcesView: View {
 
     @State private var selection: Set<String> = []
     @State private var activeSection: SourceSection = .notes
+    /// Ширина ленты миниатюр, общая для всех лекций.
+    @AppStorage("sources.stripWidth") private var stripWidth = 220.0
 
     var body: some View {
         VStack(spacing: 0) {
             RecognitionBar(lecture: lecture)
-            HSplitView {
+            ResizableSplit(leadingWidth: $stripWidth, range: 180...300) {
                 ThumbnailStrip(lecture: lecture, selection: $selection, activeSection: $activeSection,
                                addFiles: addFiles)
-                    .frame(minWidth: 180, idealWidth: 220, maxWidth: 300)
+            } trailing: {
                 detail
-                    .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .onPasteCommand(of: ImportStaging.acceptedTypes) { providers in
@@ -112,6 +113,9 @@ private struct ThumbnailStrip: View {
             }
         }
         .listStyle(.sidebar)
+        // Без материала сайдбара: в macOS 26 он продлевается под тулбар, и граница ленты
+        // прочерчивала линию через переключатель разделов.
+        .scrollContentBackground(.hidden)
         .contextMenu(forSelectionType: String.self) { ids in
             menu(for: ids)
         }

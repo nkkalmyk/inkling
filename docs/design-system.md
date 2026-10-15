@@ -92,6 +92,7 @@
 | `EmptyState` | пустой экран (обёртка `ContentUnavailableView`) |
 | `FormSheet` | лист с формой: заголовок, поля, Esc/Return; закрывается, если `confirm` вернул `true` |
 | `HistoryPopover` | история версий с предпросмотром и «Восстановить» |
+| `ResizableSplit` | две колонки с перетаскиваемой границей там, где они начинаются у верха окна (`HSplitView` в macOS 26 продлевает разделитель в тулбар) |
 | `QuizOptionStyle` | вариант ответа (верно/неверно значком) |
 | `ScoreRing` | итог теста и карточек |
 
@@ -114,7 +115,8 @@
 2. Пустое состояние — `EmptyState`; ошибка и «устарело» — `InlineNotice` в шапке; прогресс — `Activity`
    в `LectureActivityIndicator`, а не полоса в экране.
 3. Главная кнопка — `prominentAction()`, одна на экран. Значки-кнопки — `IconButton`.
-4. Списки с выбором — `List(selection:)` (стрелки, ⇧/⌘, Delete), не `onTapGesture`.
+4. Списки с выбором — `List(selection:)` (стрелки, ⇧/⌘, Delete), не `onTapGesture`. Список `.sidebar`
+   вне настоящего сайдбара — с `.scrollContentBackground(.hidden)`: материал сайдбара уходит под тулбар.
 5. Каждое действие экрана доступно с клавиатуры или из строки меню.
 6. Анимации — через `Motion`; проверьте «Уменьшить движение».
 7. Компонент дизайн-системы — с `#Preview` в `ThemePair`.
