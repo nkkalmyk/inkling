@@ -23,16 +23,29 @@ struct LectureView: View {
         _visited = State(initialValue: [tab])
     }
 
-    private var primary: LecturePrimaryAction? {
-        LecturePrimaryAction.next(for: lecture, recognition: recognition, assembly: assembly, study: study)
+    /// Следующий шаг. Считается не в body (он читает тексты всех страниц), а при изменении лекции
+    /// или её работ: иначе каждое переключение вкладки читало бы диск.
+    @State private var primary: LecturePrimaryAction?
+
+    /// От чего зависит следующий шаг.
+    private struct PrimaryKey: Equatable {
+        var meta: LectureMeta
+        var busy: [Bool]
+    }
+
+    private var primaryKey: PrimaryKey {
+        PrimaryKey(meta: lecture.meta, busy: [recognition.isBusy(lecture.id), assembly.isRunning(lecture.id),
+                                              study.isRunning(lecture.id), study.errors[lecture.id] != nil])
     }
 
     var body: some View {
         VStack(spacing: 0) {
             notices
-            if tab.isStudy { studyModePicker }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onChange(of: primaryKey, initial: true) {
+            primary = LecturePrimaryAction.next(for: lecture, recognition: recognition, assembly: assembly, study: study)
         }
         .motion(.standard, value: lecture.hasConflict)
         .motion(.standard, value: lecture.meta.dateAdjustment)
@@ -90,18 +103,11 @@ struct LectureView: View {
         .background(Color.surfaceStudy)
     }
 
-    /// Открытые вкладки живут в ZStack, видна одна. Повторное переключение — смена видимости,
-    /// а не сборка экрана заново (конспект и формулы — это веб-вью, их создание заметно тормозит).
+    /// Открытые вкладки живут каждая в своём хост-виде, видна одна (`KeptAliveTabs`). Повторное
+    /// переключение — смена видимости, а не сборка экрана заново.
     private var content: some View {
-        ZStack {
-            ForEach(LectureTab.allCases.filter(visited.contains)) { item in
-                let active = item == tab
-                tabContent(item)
-                    .opacity(active ? 1 : 0)
-                    .allowsHitTesting(active)
-                    .accessibilityHidden(!active)
-                    .environment(\.isActiveTab, active)
-            }
+        KeptAliveTabs(tabs: LectureTab.allCases.filter(visited.contains), active: tab, revision: lecture) { item in
+            tabContent(item)
         }
     }
 
@@ -114,8 +120,22 @@ struct LectureView: View {
         if lecture.meta.study != nil { visited.insert(lastStudyTab) }
     }
 
+    /// Вкладки самопроверки несут свой переключатель режима: высота общей области при переходе
+    /// между зонами не меняется, и скрытые вкладки не раскладываются заново.
     @ViewBuilder
     private func tabContent(_ item: LectureTab) -> some View {
+        if item.isStudy {
+            VStack(spacing: 0) {
+                studyModePicker
+                screen(item)
+            }
+        } else {
+            screen(item)
+        }
+    }
+
+    @ViewBuilder
+    private func screen(_ item: LectureTab) -> some View {
         switch item {
         case .sources:
             SourcesView(lecture: lecture)
