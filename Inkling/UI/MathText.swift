@@ -23,6 +23,17 @@ struct MathText: View {
             || text.contains("|") || text.contains("```") || text.contains("\n- ") || text.contains("\n1. ")
     }
 
+    /// Однострочное превью для списков, где формулы не рисуются: простые формулы без `$`
+    /// («$AB$» → «AB»), сложные (с командами `\…`) — многоточием.
+    static func preview(_ text: String) -> AttributedString {
+        let plain = text.replacing(/\$\$?([^$]+)\$\$?/) { match in
+            let formula = String(match.output.1)
+            if formula.contains("\\") { return "…" }
+            return formula.filter { !"{}^_".contains($0) }
+        }
+        return attributed(plain.replacingOccurrences(of: "\n", with: " "))
+    }
+
     static func attributed(_ text: String) -> AttributedString {
         (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
             ?? AttributedString(text)
