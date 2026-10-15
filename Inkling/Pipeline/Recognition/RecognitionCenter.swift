@@ -124,7 +124,7 @@ final class RecognitionCenter {
     // MARK: Одна страница
 
     private func process(_ job: Job) async {
-        guard let lecture = library.lecture(id: job.lectureID) ?? (try? library.store.findLecture(id: job.lectureID)) ?? nil,
+        guard let lecture = library.lecture(id: job.lectureID) ?? (try? library.store.findLecture(id: job.lectureID, hint: library.lecture(id: job.lectureID)?.folder)) ?? nil,
               let location = lecture.meta.page(job.pageID) else {
             finish(job, failed: false)
             return
@@ -175,7 +175,7 @@ final class RecognitionCenter {
     /// Записывает текст страницы (прежний — в историю) и описание в `meta.json`. Папка ищется заново:
     /// лекцию могли переименовать, пока шёл запрос.
     private func save(_ response: AIResponse, job: Job, imageHash: String?) throws {
-        guard let lecture = try library.store.findLecture(id: job.lectureID),
+        guard let lecture = try library.store.findLecture(id: job.lectureID, hint: library.lecture(id: job.lectureID)?.folder),
               let location = lecture.meta.page(job.pageID) else { return }
         let previous = lecture.meta.pageText(job.pageID)
         // Локальная модель иногда заворачивает весь ответ в ```markdown — снимаем, как при сборке.
