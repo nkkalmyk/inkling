@@ -100,7 +100,7 @@ private struct PageEditor: View {
                 Label("История", systemImage: "clock.arrow.circlepath")
             }
             .popover(isPresented: $showHistory, arrowEdge: .bottom) {
-                HistoryPopover(lecture: lecture, pageID: pageID, section: section)
+                PageHistoryPopover(lecture: lecture, pageID: pageID, section: section)
             }
         }
         .disabled(busy)
@@ -255,7 +255,7 @@ private struct PageEditor: View {
 
 // MARK: История
 
-private struct HistoryPopover: View {
+private struct PageHistoryPopover: View {
     @Environment(Library.self) private var library
     let lecture: LectureRecord
     let pageID: String
