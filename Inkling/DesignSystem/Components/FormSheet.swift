@@ -8,6 +8,8 @@ struct FormSheet<Fields: View>: View {
     var width: CGFloat = SheetWidth.regular
     let confirmTitle: String
     var canConfirm = true
+    /// Короткая форма подстраивает высоту под поля; длинная (редактор вопроса) прокручивается в заданной высоте.
+    var fitsContent = true
     /// Необязательная разрушающая кнопка слева («Удалить»). Лист закрывается после неё.
     var destructive: (title: String, action: () -> Void)?
     let confirm: () -> Bool
@@ -31,6 +33,8 @@ struct FormSheet<Fields: View>: View {
             Form(content: fields)
                 .formStyle(.grouped)
                 .scrollBounceBehavior(.basedOnSize)
+                .scrollDisabled(fitsContent)
+                .fixedSize(horizontal: false, vertical: fitsContent)
 
             HStack {
                 if let destructive {
@@ -64,7 +68,6 @@ struct FormSheet<Fields: View>: View {
             TextField("Тема", text: $topic)
             DatePicker("Дата", selection: $date, displayedComponents: .date)
         }
-        .frame(height: 320)
     }
     .frame(width: 1040, height: 380)
 }
