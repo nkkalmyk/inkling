@@ -1,5 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Ножка «i» с рукописным наклоном и хвостиком внизу. -->
+  <!-- Ножка «i» с рукописным наклоном и хвостиком внизу: матовое стекло. -->
+  <defs>
+    <linearGradient id="stem" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E9E4FF"/>
+    </linearGradient>
+  </defs>
   <path d="M470 430 C 500 420, 545 425, 548 452 L 506 690 C 500 728, 528 742, 566 712 C 584 698, 604 708, 594 730 C 560 790, 452 800, 434 742 C 428 722, 430 700, 434 680 Z"
-        fill="#F4F1EA"/>
+        fill="url(#stem)"/>
 </svg>
