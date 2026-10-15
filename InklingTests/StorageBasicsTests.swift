@@ -185,3 +185,22 @@ struct AppEnvironmentTests {
         #expect(InklingApp.isRunningTests)
     }
 }
+
+@Suite("meta.json: небезопасные пути страниц")
+struct UnsafePagePathTests {
+    @Test func pagesWithTraversalAreDropped() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","date":"2026-10-15","subject":"П","topic":"Т","notes":[
+          {"id":"../../../Documents/x","source":{"image":{"file":"ok.jpg"}},"crop":{"original":{}},"rotation":0,"addedAt":"2026-10-15T10:00:00Z"},
+          {"id":"good-1","source":{"image":{"file":"../../secret.docx"}},"crop":{"original":{}},"rotation":0,"addedAt":"2026-10-15T10:00:00Z"},
+          {"id":"good-2","source":{"image":{"file":"ok.jpg"}},"crop":{"original":{}},"rotation":0,"addedAt":"2026-10-15T10:00:00Z"}]}
+        """
+        let meta = try JSONCoding.makeDecoder().decode(LectureMeta.self, from: Data(json.utf8))
+        #expect(meta.notes.map(\.id) == ["good-2"])
+    }
+
+    @Test func generatedIDsAreSafe() {
+        #expect(PageID.isSafe(PageID.make()))
+        #expect(!PageID.isSafe("a/b") && !PageID.isSafe("..") && !PageID.isSafe(""))
+    }
+}

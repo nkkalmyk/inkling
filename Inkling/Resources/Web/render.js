@@ -7,6 +7,17 @@
   var md = global.markdownit({ html: false, linkify: true, typographer: false, breaks: false });
   var PH = 'INKLINGMATH';
 
+  // Удалённые картинки не грузим: ответ модели мог собрать адрес с данными лекции (канал утечки).
+  // Вместо них — подпись; картинки data: и относительные остаются.
+  var defaultImage = md.renderer.rules.image;
+  md.renderer.rules.image = function (tokens, idx, options, env, self) {
+    var src = tokens[idx].attrGet('src') || '';
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(src) && !/^data:/i.test(src)) {
+      return escapeHTML(tokens[idx].content || '');
+    }
+    return defaultImage(tokens, idx, options, env, self);
+  };
+
   // Находит формулы $...$ и $$...$$ вне кода и заменяет их метками INKLINGMATH<n>X.
   function extractMath(src) {
     var formulas = [];
@@ -111,7 +122,7 @@
       });
       return f.display ? '<div class="math-display">' + html + '</div>' : html;
     } catch (e) {
-      return '<span class="katex-error" title="' + escapeHTML(String(e && e.message || e)) + '">' + escapeHTML(f.tex) + '</span>';
+      return '<span class="katex-error" title="' + escapeHTML(String(e && e.message || e)).replace(/"/g, '&quot;') + '">' + escapeHTML(f.tex) + '</span>';
     }
   }
 
@@ -119,13 +130,14 @@
     var extracted = extractMath(markdown || '');
     var html = md.render(extracted.text);
     // Формула одна в абзаце — выключенная, без обёртки <p>.
-    html = html.replace(new RegExp('<p>(' + PH + '(\\d+)X)</p>', 'g'), function (_, all, idx) {
+    html = html.replace(new RegExp('<p>(' + PH + '(\\d+)X)</p>', 'g'), function (whole, all, idx) {
       var f = extracted.formulas[+idx];
-      return f && f.display ? renderFormula(f) : '<p>' + renderFormula(f) + '</p>';
+      if (!f) return whole;  // метка из самого текста, а не от extractMath
+      return f.display ? renderFormula(f) : '<p>' + renderFormula(f) + '</p>';
     });
-    html = html.replace(new RegExp(PH + '(\\d+)X', 'g'), function (_, idx) {
+    html = html.replace(new RegExp(PH + '(\\d+)X', 'g'), function (whole, idx) {
       var f = extracted.formulas[+idx];
-      return f ? renderFormula(f) : '';
+      return f ? renderFormula(f) : whole;
     });
     html = html.replace(/\[неразборчиво\]/g, '<mark class="illegible">[неразборчиво]</mark>');
     html = html.replace(/<blockquote>\s*<p>(⚠️|⚠)/g, '<blockquote class="callout warn"><p>$1');

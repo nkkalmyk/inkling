@@ -5,7 +5,7 @@
 # Результат: $OUT/<метка>.{out,err,exit}
 set -u
 label="$1"; shift
-OUT="${OUT:-/Users/user/study-app-local/docs/cli-experiments/raw}"
+OUT="${OUT:-$(cd "$(dirname "$0")/.." && pwd)/docs/cli-experiments/raw}"
 mkdir -p "$OUT"
 W=$(mktemp -d "${SCRATCH:-/tmp}/run.XXXX")
 for f in ${IMAGES:-}; do cp "$f" "$W/"; done
