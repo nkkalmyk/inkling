@@ -9,9 +9,11 @@ import Vision
 enum ImageProcessingError: LocalizedError {
     case unreadable(String)
     case encodingFailed
+    case tooLarge(String)
 
     var errorDescription: String? {
         switch self {
+        case .tooLarge(let name): "Изображение «\(name)» слишком большое (больше 300 мегапикселей)."
         case .unreadable(let name): "Не удалось прочитать изображение «\(name)»."
         case .encodingFailed: "Не удалось сохранить изображение в JPEG."
         }
@@ -21,6 +23,9 @@ enum ImageProcessingError: LocalizedError {
 /// Предобработка фото рукописи (SPEC, раздел 3.2): поворот по EXIF, обрезка и выпрямление документа,
 /// поворот пользователем, уменьшение до ~2000 px, JPEG ~0.85. Только системные фреймворки.
 enum ImageProcessor {
+    /// Потолок размера исходной картинки (фото с телефона — 12–50 мегапикселей).
+    static let maxPixels = 300_000_000
+
     static let maxDimension: CGFloat = 2000
     static let jpegQuality: CGFloat = 0.85
 
@@ -35,6 +40,13 @@ enum ImageProcessor {
 
     /// Картинка с уже применённой EXIF-ориентацией, начало координат в (0, 0). HEIC читается так же.
     static func loadOriented(_ url: URL) throws -> CIImage {
+        // Размер читается из заголовка, до декодирования: «бомба» в картинке не должна съесть память.
+        if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+           let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int,
+           w * h > maxPixels {
+            throw ImageProcessingError.tooLarge(url.lastPathComponent)
+        }
         guard let image = CIImage(contentsOf: url, options: [.applyOrientationProperty: true]) else {
             throw ImageProcessingError.unreadable(url.lastPathComponent)
         }
