@@ -46,7 +46,12 @@ struct QuizSession: Equatable, Sendable {
     /// Варианты текущего вопроса в порядке показа: (исходный индекс, текст).
     var currentOptions: [(original: Int, text: String)] {
         guard let item = current else { return [] }
-        return (optionOrder[item.id] ?? Array(item.options.indices)).map { ($0, item.options[$0]) }
+        // Порядок хранится по id: у повторяющегося id (ручная правка файла) он может быть от другого вопроса.
+        var order = optionOrder[item.id] ?? []
+        if order.count != item.options.count || !order.allSatisfy(item.options.indices.contains) {
+            order = Array(item.options.indices)
+        }
+        return order.map { ($0, item.options[$0]) }
     }
 
     var currentAnswer: Answer? { current.flatMap { answers[$0.id] } }
