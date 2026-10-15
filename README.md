@@ -105,11 +105,14 @@ xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' bu
 
 | Папка | Что внутри |
 |---|---|
-| `Inkling/App` | точка входа, настройки, центры распознавания и движков, Камера непрерывности |
+| `Inkling/App` | точка входа, `AppDelegate`, настройки, центр движков |
+| `Inkling/Library` | состояние библиотеки для интерфейса, импорт и правка источников |
+| `Inkling/Pipeline` | конвейер: `Recognition` (страницы), `Assembly` (конспект), `Study` (учебные материалы) |
 | `Inkling/Engine` | `AIEngine`, Claude Code, Ollama, поиск бинарников, запуск процессов, распознавание лимитов |
-| `Inkling/Import`, `Processing` | импорт файлов, обработка фото и PDF |
-| `Inkling/Assembly`, `Study` | сборка конспекта и учебные материалы |
-| `Inkling/Storage` | файловое хранилище, атомарная запись, iCloud, история |
+| `Inkling/Import` | импорт файлов, буфер обмена, Камера непрерывности |
+| `Inkling/Processing` | обработка фото и PDF, загрузка картинок страниц |
+| `Inkling/Storage` | файловое хранилище, атомарная запись, iCloud, история, `konspekt.md` |
+| `Inkling/UI` | экраны по папкам: `Sidebar`, `Lecture`, `Sources`, `Notes`, `Study`, `Settings` |
 | `Inkling/Export` | Markdown, PDF, Anki |
 | `Inkling/DesignSystem` | токены и компоненты интерфейса |
 | `Inkling/Resources/Web` | рендер конспекта: KaTeX, mhchem, markdown-it |
