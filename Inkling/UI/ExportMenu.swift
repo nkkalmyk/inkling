@@ -22,8 +22,9 @@ final class ExportController {
 
     func update(_ lecture: LectureRecord) { self.lecture = lecture }
 
-    var hasKonspekt: Bool { konspekt != nil }
-    var hasStudy: Bool { study != nil }
+    /// По метаданным лекции, без чтения файлов: тулбар и меню спрашивают это на каждую перерисовку.
+    var hasKonspekt: Bool { lecture.meta.konspekt != nil }
+    var hasStudy: Bool { lecture.meta.study != nil }
 
     private var konspekt: String? { KonspektStore(folder: lecture.folder).read() }
     private var study: StudyMaterials? { StudyStore(folder: lecture.folder).readStudy() }
