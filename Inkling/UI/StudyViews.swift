@@ -161,7 +161,7 @@ private struct StudyStart<Actions: View>: View {
     var body: some View {
         VStack(spacing: Spacing.l) {
             Image(systemName: systemImage)
-                .font(.system(size: 44))
+                .font(.illustration)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Color.accentColor)
                 .accessibilityHidden(true)
@@ -299,9 +299,9 @@ struct QuestionsView: View {
             Text("Кратко").font(.sectionTitle)
             ForEach(Array(materials.summary.enumerated()), id: \.offset) { _, point in
                 HStack(alignment: .top, spacing: Spacing.s) {
-                    // Маркер по середине первой строки текста для чтения (кегль 15, интерлиньяж ~1.6).
+                    // Маркер по середине первой строки текста для чтения (интерлиньяж ~1,6 кегля).
                     Circle().fill(Color.accentColor).frame(width: 6, height: 6)
-                        .padding(.top, 9)
+                        .padding(.top, (Font.readingSize * 1.6 - 6) / 2)
                         .accessibilityHidden(true)
                     MathText(markdown: point)
                 }
