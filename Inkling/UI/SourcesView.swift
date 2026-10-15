@@ -194,7 +194,8 @@ private struct ThumbnailStrip: View {
     }
 }
 
-/// Заголовок раздела ленты: название, число страниц, «+». Правый щелчок — «Добавить файлы…» и «Импорт с iPhone».
+/// Заголовок раздела ленты: название, число страниц, «+» с меню «Добавить файлы…» и «Импорт с iPhone»
+/// (то же меню и по правому щелчку).
 private struct SectionHeader: View {
     let section: SourceSection
     let count: Int
@@ -209,7 +210,8 @@ private struct SectionHeader: View {
                 Text("\(count)").foregroundStyle(.tertiary).monospacedDigit()
             }
             Spacer()
-            IconButton("Добавить файлы…", systemImage: "plus", action: addFiles)
+            ContinuityCameraButton(onAddFiles: addFiles, onImport: onImport)
+                .fixedSize()
         }
         .background { ContinuityCameraAnchor(onAddFiles: addFiles, onImport: onImport) }
         .accessibilityElement(children: .contain)
@@ -231,11 +233,15 @@ private struct EmptyDropRow: View {
                 .accessibilityHidden(true)
             Text(section == .notes ? "Перетащите сюда фото рукописи или PDF-скан" : "Перетащите сюда PDF со слайдами")
                 .font(.callout)
-            Text("Или ⌘V, или правый щелчок → «Импорт с iPhone»")
+            Text("Или ⌘V, или снимите на iPhone:")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            ContinuityCameraButton(title: "Добавить…", onAddFiles: addFiles, onImport: onImport)
+                .fixedSize()
+                .padding(.top, Spacing.xxs)
         }
         .multilineTextAlignment(.center)
+        .padding(.vertical, Spacing.m)
         .frame(maxWidth: .infinity, minHeight: 120)
         .surface(.sunken, radius: Radius.control)
         .background { ContinuityCameraAnchor(onAddFiles: addFiles, onImport: onImport) }

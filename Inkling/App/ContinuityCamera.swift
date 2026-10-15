@@ -106,3 +106,84 @@ struct ContinuityCameraAnchor: NSViewRepresentable {
         }
     }
 }
+
+/// Кнопка «Добавить» с меню по обычному щелчку: «Добавить файлы…» и «Импорт с iPhone»
+/// (системный пункт сам наполняется командами «Сфотографировать», «Сканировать документы»).
+/// Нужна, потому что правый щелчок на тачпаде может быть выключен. Сделана на AppKit:
+/// системный пункт Камеры непрерывности работает только в NSMenu, а снимок получает
+/// первый ответчик — эта кнопка.
+struct ContinuityCameraButton: NSViewRepresentable {
+    /// `nil` — только значок «+»; иначе обычная кнопка с подписью.
+    var title: String?
+    var help = "Добавить файлы или снять с iPhone"
+    var onAddFiles: () -> Void
+    var onImport: (NSPasteboard) -> Void
+
+    func makeNSView(context: Context) -> ButtonView {
+        let button = ButtonView()
+        configure(button)
+        return button
+    }
+
+    func updateNSView(_ button: ButtonView, context: Context) {
+        configure(button)
+    }
+
+    private func configure(_ button: ButtonView) {
+        button.onAddFiles = onAddFiles
+        button.onImport = onImport
+        button.toolTip = help
+        button.setAccessibilityLabel(title ?? "Добавить")
+        if let title {
+            button.title = title
+            button.image = nil
+            button.bezelStyle = .push
+            button.isBordered = true
+        } else {
+            button.title = ""
+            button.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Добавить")
+            button.bezelStyle = .accessoryBarAction
+            button.isBordered = false
+        }
+    }
+
+    final class ButtonView: NSButton, @preconcurrency NSServicesMenuRequestor {
+        var onAddFiles: () -> Void = {}
+        var onImport: (NSPasteboard) -> Void = { _ in }
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            target = self
+            action = #selector(showMenu)
+            setContentHuggingPriority(.required, for: .horizontal)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) не используется") }
+
+        override var acceptsFirstResponder: Bool { true }
+
+        @objc private func showMenu() {
+            // Снимок с iPhone система отдаёт первому ответчику: становимся им до показа меню.
+            window?.makeFirstResponder(self)
+            let menu = NSMenu()
+            menu.addItem(withTitle: "Добавить файлы…", action: #selector(addFiles), keyEquivalent: "").target = self
+            menu.addItem(.separator())
+            menu.addItem(ContinuityCamera.menuItem())
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self)
+        }
+
+        @objc private func addFiles() { onAddFiles() }
+
+        override func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?,
+                                     returnType: NSPasteboard.PasteboardType?) -> Any? {
+            if ContinuityCamera.accepts(sendType: sendType, returnType: returnType) { return self }
+            return super.validRequestor(forSendType: sendType, returnType: returnType)
+        }
+
+        func readSelection(from pasteboard: NSPasteboard) -> Bool {
+            onImport(pasteboard)
+            return true
+        }
+    }
+}
