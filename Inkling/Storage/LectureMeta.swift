@@ -105,6 +105,19 @@ struct ArtifactInfo: Codable, Equatable, Sendable {
     var parts = 1
     /// Сколько нераспознанных страниц пропущено при сборке.
     var skippedPages = 0
+    /// Есть, если конспект дополнен кнопкой «Дополнить». Пересборка создаёт описание заново, и дополнение сбрасывается.
+    var enrichment: EnrichmentInfo?
+}
+
+/// Как был дополнен конспект (`Enrichment`): сколько блоков осталось и сколько убрал проверяющий проход.
+struct EnrichmentInfo: Codable, Equatable, Sendable {
+    var createdAt: Date
+    var engine: EngineID?
+    var model: String?
+    var added = 0
+    var removedByCheck = 0
+    /// Проверяющий проход отработал; если нет, блоки не проверены.
+    var verified = true
 }
 
 struct DateAdjustment: Codable, Equatable, Sendable {

@@ -34,7 +34,7 @@ final class StudyCenter {
 
     /// Хеш текущего конспекта — входные данные учебных материалов.
     static func inputHash(_ lecture: LectureRecord) -> String? {
-        KonspektStore(folder: lecture.folder).read().map(FileHash.sha256)
+        KonspektStore(folder: lecture.folder).read().map { FileHash.sha256(Enrichment.removing(from: $0)) }
     }
 
     /// Конспект изменился после подготовки материалов.
@@ -50,7 +50,8 @@ final class StudyCenter {
     func generate(_ lectureID: UUID) {
         guard runs[lectureID] == nil, let lecture = library.lecture(id: lectureID) else { return }
         errors[lectureID] = nil
-        let raw = KonspektStore(folder: lecture.folder).read() ?? ""
+        // Учебные материалы строятся по авторскому тексту: блоки «Дополнить» в них и в хеш не входят.
+        let raw = Enrichment.removing(from: KonspektStore(folder: lecture.folder).read() ?? "")
         let konspekt = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !konspekt.isEmpty else {
             errors[lectureID] = .invalidOutput("Сначала соберите конспект: материалы готовятся только по нему.")
