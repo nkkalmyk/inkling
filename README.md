@@ -107,7 +107,7 @@ xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' bu
 |---|---|
 | `Inkling/App` | точка входа, `AppDelegate`, настройки, центр движков |
 | `Inkling/Library` | состояние библиотеки для интерфейса, импорт и правка источников |
-| `Inkling/Pipeline` | конвейер: `Recognition` (страницы), `Assembly` (конспект), `Study` (учебные материалы) |
+| `Inkling/Pipeline` | конвейер: `Recognition` (страницы), `Assembly` (конспект), `Study` (учебные материалы), `Prompts` (шаблоны запросов) |
 | `Inkling/Engine` | `AIEngine`, Claude Code, Ollama, поиск бинарников, запуск процессов, распознавание лимитов |
 | `Inkling/Import` | импорт файлов, буфер обмена, Камера непрерывности |
 | `Inkling/Processing` | обработка фото и PDF, загрузка картинок страниц |
@@ -121,6 +121,7 @@ xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' bu
 
 - [`SPEC.md`](SPEC.md) — техническое задание и принятые решения (раздел 13)
 - [`docs/design-system.md`](docs/design-system.md) — дизайн-система: цвета, шрифты, компоненты
+- [`docs/AUDIT.md`](docs/AUDIT.md) — аудит безопасности и надёжности, статус исправлений
 - [`docs/cli-notes.md`](docs/cli-notes.md) — разведка CLI: флаги, форматы ответов, ошибки
 - [`docs/local-models.md`](docs/local-models.md) — сравнение локальных моделей
 - [`docs/e2e-report.md`](docs/e2e-report.md) — отчёт о сквозном прогоне
