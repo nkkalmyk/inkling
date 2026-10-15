@@ -14,7 +14,8 @@ struct NotesView: View {
     @State private var confirm: Confirmation?
     @State private var showHistory = false
     @State private var katexErrors = 0
-    @State private var showErrorDetails = false
+    @Environment(\.lectureRequests) private var requests
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Confirmation: Identifiable {
         case overwriteManual, skipUnrecognized(Int)
@@ -28,12 +29,23 @@ struct NotesView: View {
     var body: some View {
         let readiness = assembly.readiness(lecture)
         VStack(spacing: 0) {
-            if let run = assembly.runs[lecture.id] {
-                runningBar(run)
-            } else if let error = assembly.errors[lecture.id] {
-                errorBar(error)
-            } else if readiness.isStale {
-                staleBar
+            if !assembly.isRunning(lecture.id) {
+                if let error = assembly.errors[lecture.id] {
+                    InlineNotice(.error, "Конспект не собран. \(error.userMessage)", systemImage: "exclamationmark.octagon.fill",
+                                 details: error.details, dismiss: { assembly.errors[lecture.id] = nil }) {
+                        Button("Повторить") { start(force: true) }
+                    }
+                    .transition(.notice(reduceMotion: reduceMotion))
+                    Divider()
+                } else if readiness.isStale {
+                    InlineNotice(.info, "Устарело: тексты или порядок страниц изменились после сборки.",
+                                 systemImage: "clock.arrow.circlepath") {
+                        Button("Пересобрать") { start(force: false) }
+                            .disabled(recognition.isBusy(lecture.id))
+                    }
+                    .transition(.notice(reduceMotion: reduceMotion))
+                    Divider()
+                }
             }
             if info == nil && text.isEmpty {
                 emptyState(readiness)
@@ -46,6 +58,14 @@ struct NotesView: View {
                     NotesWebView(markdown: text) { katexErrors = $0 }
                 }
             }
+        }
+        .motion(.standard, value: assembly.errors[lecture.id] == nil)
+        .motion(.standard, value: readiness.isStale)
+        .focusedSceneValue(\.notesEditing, info == nil && text.isEmpty ? nil : $editing)
+        .task(id: requests.wrappedValue.assemble) {
+            guard requests.wrappedValue.assemble else { return }
+            requests.wrappedValue.assemble = false
+            start(force: false)
         }
         .onAppear(perform: load)
         .onChange(of: revision) { load() }
@@ -77,7 +97,7 @@ struct NotesView: View {
         } actions: {
             if readiness.plan != nil, !assembly.isRunning(lecture.id) {
                 Button("Собрать конспект") { start(force: false) }
-                    .buttonStyle(.borderedProminent)
+                    .prominentAction()
                     .disabled(recognition.isBusy(lecture.id))
             }
             if recognition.isBusy(lecture.id) {
@@ -150,67 +170,6 @@ struct NotesView: View {
         let missing = input.unrecognizedNotes + input.unrecognizedSlides
         if missing > 0 { lines.append("Не распознано: \(missing) — они не попадут в конспект.") }
         return lines.joined(separator: "\n")
-    }
-
-    private func runningBar(_ run: AssemblyCenter.Run) -> some View {
-        HStack(spacing: 10) {
-            ProgressView(value: Double(run.finishedCalls), total: Double(max(run.totalCalls, 1))).frame(width: 140)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                let elapsed = Int(context.date.timeIntervalSince(run.startedAt))
-                Text((run.merging ? "Склейка частей" : run.totalCalls > 1
-                      ? "Сборка: готово частей \(run.finishedCalls) из \(run.totalCalls - 1)" : "Сборка конспекта")
-                     + (run.engine.map { " · \($0.title)" } ?? "")
-                     + " · \(elapsed / 60):\(String(format: "%02d", elapsed % 60))")
-            }
-            if let note = run.note { Text(note).foregroundStyle(.orange).lineLimit(1) }
-            Spacer()
-            Button("Отменить") { assembly.cancel(lecture.id) }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private func errorBar(_ error: AIError) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(.red)
-                Text("Конспект не собран. \(error.userMessage)")
-                Spacer()
-                Button("Повторить") { start(force: true) }
-                Button { assembly.errors[lecture.id] = nil } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.borderless)
-            }
-            if !error.details.isEmpty {
-                DisclosureGroup("Подробности", isExpanded: $showErrorDetails) {
-                    Text(error.details).font(.caption.monospaced()).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .font(.caption)
-            }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.red.opacity(0.08))
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private var staleBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "clock.badge.exclamationmark").foregroundStyle(.orange)
-            Text("Устарело: тексты или порядок страниц изменились после сборки.")
-            Spacer()
-            Button("Пересобрать") { start(force: false) }
-                .disabled(recognition.isBusy(lecture.id))
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.orange.opacity(0.1))
-        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var confirmTitle: String {

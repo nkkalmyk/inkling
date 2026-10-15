@@ -1,65 +1,86 @@
 import SwiftUI
 
-/// Экран лекции. На этапе 1 вкладки — заготовки, содержимое появляется на этапах 2–6.
+/// Экран лекции: две зоны в тулбаре («Источники», «Конспект» и «Самопроверка»), следующий шаг
+/// главной кнопкой, идущая работа — индикатором активности, сообщения — в шапке.
 struct LectureView: View {
-    enum Tab: String, CaseIterable, Identifiable {
-        case sources, notes, questions, quiz, flashcards
+    @Environment(Library.self) private var library
+    @Environment(RecognitionCenter.self) private var recognition
+    @Environment(AssemblyCenter.self) private var assembly
+    @Environment(StudyCenter.self) private var study
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let lecture: LectureRecord
 
-        var id: String { rawValue }
+    @State private var tab: LectureTab
+    @State private var lastStudyTab: LectureTab = .questions
+    @State private var requests = LectureRequests()
+    @State private var export: ExportController?
 
-        var title: String {
-            switch self {
-            case .sources: "Источники"
-            case .notes: "Конспект"
-            case .questions: "Вопросы"
-            case .quiz: "Тест"
-            case .flashcards: "Карточки"
-            }
-        }
+    init(lecture: LectureRecord, tab: LectureTab = .sources) {
+        self.lecture = lecture
+        _tab = State(initialValue: tab)
     }
 
-    @Environment(Library.self) private var library
-    let lecture: LectureRecord
-    @State private var tab: Tab = .sources
+    private var primary: LecturePrimaryAction? {
+        LecturePrimaryAction.next(for: lecture, recognition: recognition, assembly: assembly, study: study)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            if lecture.hasConflict {
-                ConflictBanner { library.revealInFinder(lecture.folder) }
-            }
-            if let adjustment = lecture.meta.dateAdjustment {
-                DateAdjustedBanner(newDate: lecture.meta.date, previousDate: adjustment.previousDate,
-                                   revert: { library.revertDateAdjustment(lectureID: lecture.id) },
-                                   dismiss: { library.acceptDateAdjustment(lectureID: lecture.id) })
-            }
+            notices
+            if tab.isStudy { studyModePicker }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .motion(.standard, value: lecture.hasConflict)
+        .motion(.standard, value: lecture.meta.dateAdjustment)
         .navigationTitle(lecture.meta.topic)
         .navigationSubtitle("\(lecture.meta.subject) · \(lecture.meta.date.formatted)")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("Раздел", selection: $tab) {
-                    ForEach(Tab.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
-            ToolbarItem {
-                EngineModeMenu()
-            }
-            ToolbarItem {
-                ExportMenu(lecture: lecture)
-            }
-            ToolbarItem {
-                Button {
-                    library.sheet = .editLecture(lecture.id)
-                } label: {
-                    Label("Изменить", systemImage: "pencil")
-                }
-                .help("Изменить тему, дату или предмет")
-            }
+        .toolbar { toolbar }
+        .environment(\.lectureRequests, $requests)
+        .focusedSceneValue(\.lectureCommands, commands)
+        .sheet(isPresented: Binding(get: { export?.askAnki ?? false }, set: { export?.askAnki = $0 })) {
+            if let export { AnkiExportSheet(export: export) }
         }
+        .onAppear { export = ExportController(library: library, lecture: lecture) }
+        .onChange(of: lecture) { export?.update(lecture) }
+        .onChange(of: tab) { if tab.isStudy { lastStudyTab = tab } }
+    }
+
+    // MARK: Шапка
+
+    @ViewBuilder
+    private var notices: some View {
+        if lecture.hasConflict {
+            InlineNotice(.info, "У этой лекции есть конфликтные копии iCloud. Приложение не перезаписывает их само: "
+                         + "проверьте файлы в Finder.", systemImage: "exclamationmark.icloud") {
+                Button("Показать в Finder") { library.revealInFinder(lecture.folder) }
+            }
+            .transition(.notice(reduceMotion: reduceMotion))
+            Divider()
+        }
+        if let adjustment = lecture.meta.dateAdjustment {
+            InlineNotice(.info, "Дата изменена по фото: \(lecture.meta.date.formatted) "
+                         + "(было \(adjustment.previousDate.formatted)).",
+                         systemImage: "calendar.badge.clock",
+                         dismiss: { library.acceptDateAdjustment(lectureID: lecture.id) }) {
+                Button("Вернуть") { library.revertDateAdjustment(lectureID: lecture.id) }
+            }
+            .transition(.notice(reduceMotion: reduceMotion))
+            Divider()
+        }
+    }
+
+    /// Режимы самопроверки: вторая ступень навигации внутри тёплой зоны.
+    private var studyModePicker: some View {
+        Picker("Режим", selection: $tab) {
+            ForEach(LectureTab.studyTabs) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .padding(.vertical, Spacing.s)
+        .frame(maxWidth: .infinity)
+        .background(Color.surfaceStudy)
     }
 
     @ViewBuilder
@@ -77,48 +98,77 @@ struct LectureView: View {
             FlashcardsView(lecture: lecture, showNotes: { tab = .notes })
         }
     }
-}
 
-private struct DateAdjustedBanner: View {
-    let newDate: CalendarDate
-    let previousDate: CalendarDate
-    let revert: () -> Void
-    let dismiss: () -> Void
+    // MARK: Тулбар
 
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "calendar.badge.clock").foregroundStyle(.blue)
-            Text("Дата изменена по фото: \(newDate.formatted) (было \(previousDate.formatted)).")
-                .font(.callout)
-            Spacer()
-            Button("Вернуть", action: revert)
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            Picker("Раздел", selection: zoneBinding) {
+                ForEach(LectureZoneItem.allCases) { Text($0.title).tag($0) }
             }
-            .buttonStyle(.borderless)
-            .help("Оставить новую дату")
+            .pickerStyle(.segmented)
+            .labelsHidden()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.blue.opacity(0.1))
+        ToolbarItem {
+            LectureActivityIndicator(lecture: lecture, exportingPDFSince: export?.exportingPDFSince)
+        }
+        if let primary {
+            ToolbarItem {
+                Button { perform(primary) } label: {
+                    Label(primary.title, systemImage: primary.systemImage)
+                        .labelStyle(.titleAndIcon)
+                }
+                .prominentAction()
+                .help("Следующий шаг (⌘↩)")
+            }
+        }
+        ToolbarItem {
+            EngineModeMenu()
+        }
+        ToolbarItem {
+            Menu {
+                if let export { ExportMenuItems(export: export) }
+                Divider()
+                Button("Изменить лекцию…") { library.sheet = .editLecture(lecture.id) }
+                Button("Показать в Finder") { library.revealInFinder(lecture.folder) }
+            } label: {
+                Label("Ещё", systemImage: "ellipsis")
+            }
+            .help("Экспорт, изменение лекции")
+        }
     }
-}
 
-private struct ConflictBanner: View {
-    let reveal: () -> Void
+    private var zoneBinding: Binding<LectureZoneItem> {
+        Binding(get: { LectureZoneItem(tab) }, set: { item in
+            switch item {
+            case .sources: tab = .sources
+            case .notes: tab = .notes
+            case .study: tab = lastStudyTab
+            }
+        })
+    }
 
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
-            Text("У этой лекции есть конфликтные копии iCloud. Приложение не перезаписывает их само: проверьте файлы в Finder.")
-                .font(.callout)
-            Spacer()
-            Button("Показать в Finder", action: reveal)
+    private func perform(_ action: LecturePrimaryAction) {
+        switch action {
+        case .recognize(let pages):
+            recognition.recognize(lectureID: lecture.id, pageIDs: pages)
+        case .assemble:
+            tab = .notes
+            requests.assemble = true
+        case .prepareStudy:
+            if !tab.isStudy { tab = lastStudyTab }
+            requests.prepareStudy = true
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.yellow.opacity(0.15))
+    }
+
+    private var commands: LectureCommands {
+        LectureCommands(
+            tab: $tab, primary: primary, perform: perform,
+            exportMarkdown: export?.hasKonspekt == true ? { export?.exportMarkdown() } : nil,
+            exportPDF: export?.hasKonspekt == true && export?.exportingPDFSince == nil ? { export?.exportPDF() } : nil,
+            exportAnki: export?.hasStudy == true ? { export?.askAnki = true } : nil,
+            edit: { library.sheet = .editLecture(lecture.id) },
+            reveal: { library.revealInFinder(lecture.folder) })
     }
 }

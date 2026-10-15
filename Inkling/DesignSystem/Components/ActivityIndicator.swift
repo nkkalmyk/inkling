@@ -9,7 +9,8 @@ struct Activity: Identifiable {
     var detail: String?
     /// Доля готового от 0 до 1; `nil` — сколько осталось, неизвестно.
     var fraction: Double?
-    var startedAt: Date
+    /// Когда началось; `nil` — время не показывается.
+    var startedAt: Date?
     /// Примечание движка: «лимит Claude, перешли на локальную модель».
     var note: String?
     var cancel: (() -> Void)?
@@ -30,8 +31,8 @@ struct ActivityIndicator: View {
                     progress(first.fraction)
                         .controlSize(.small)
                     Text(activities.count == 1 ? first.title : "Задач: \(activities.count)")
-                    if activities.count == 1 {
-                        ElapsedText(since: first.startedAt)
+                    if activities.count == 1, let startedAt = first.startedAt {
+                        ElapsedText(since: startedAt)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -70,7 +71,9 @@ private struct ActivityList: View {
                     HStack(alignment: .firstTextBaseline) {
                         Text(activity.title).font(.headline)
                         Spacer()
-                        ElapsedText(since: activity.startedAt).foregroundStyle(.secondary)
+                        if let startedAt = activity.startedAt {
+                            ElapsedText(since: startedAt).foregroundStyle(.secondary)
+                        }
                     }
                     if let fraction = activity.fraction {
                         ProgressView(value: fraction)

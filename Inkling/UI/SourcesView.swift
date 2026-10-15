@@ -15,7 +15,7 @@ struct SourcesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            RecognitionBar(lecture: lecture, showNotes: showNotes)
+            RecognitionBar(lecture: lecture)
             content
         }
     }
@@ -36,7 +36,6 @@ struct SourcesView: View {
             PageDetailView(lecture: lecture, pageID: selection)
                 .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .overlay(alignment: .bottom) { progressOverlay }
         .onPasteCommand(of: ImportStaging.acceptedTypes) { providers in
             library.importProviders(providers, into: activeSection, lectureID: lecture.id)
         }
@@ -48,27 +47,6 @@ struct SourcesView: View {
         }
         .onChange(of: lecture.meta) {
             if let selection, lecture.meta.page(selection) == nil { self.selection = nil }
-        }
-    }
-
-    @ViewBuilder
-    private var progressOverlay: some View {
-        if let progress = library.importProgress, progress.lectureID == lecture.id {
-            HStack(spacing: 10) {
-                if progress.total > 0 {
-                    ProgressView(value: Double(progress.done), total: Double(progress.total))
-                        .frame(width: 160)
-                    Text("Импорт: \(progress.done) из \(progress.total)")
-                } else {
-                    ProgressView().controlSize(.small)
-                    Text("Подготовка импорта…")
-                }
-            }
-            .font(.callout)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.regularMaterial, in: Capsule())
-            .padding(12)
         }
     }
 
@@ -334,130 +312,33 @@ struct SlidePageMenu: View {
 
 // MARK: Распознавание
 
-/// Полоса над источниками: прогресс распознавания, отмена, остановившая очередь ошибка, «Распознать нераспознанные».
+/// Ошибка, остановившая очередь распознавания (нет входа, лимит, нет движка). Прогресс показывает тулбар.
 private struct RecognitionBar: View {
     @Environment(RecognitionCenter.self) private var recognition
-    @Environment(AssemblyCenter.self) private var assembly
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let lecture: LectureRecord
-    let showNotes: () -> Void
-    @State private var showDetails = false
 
     var body: some View {
         VStack(spacing: 0) {
-            if let batch = recognition.batches[lecture.id] {
-                running(batch)
-            } else if let error = recognition.blockingError {
-                blocked(error)
-            } else if !pending.isEmpty {
-                idle
-            } else if canAssemble {
-                readyToAssemble
+            if let error = recognition.blockingError, recognition.batches[lecture.id] == nil {
+                InlineNotice(.error, error.userMessage, systemImage: "exclamationmark.octagon.fill",
+                             details: error.details, dismiss: { recognition.blockingError = nil }) {
+                    if case .rateLimited = error {} else {
+                        Button("Настройки…") { openSettings() }
+                    }
+                    if !pending.isEmpty {
+                        Button("Повторить") { recognition.recognize(lectureID: lecture.id, pageIDs: pending) }
+                    }
+                }
+                .transition(.notice(reduceMotion: reduceMotion))
+                Divider()
             }
         }
-    }
-
-    /// Всё распознано, а конспекта нет или он устарел.
-    private var canAssemble: Bool {
-        guard !assembly.isRunning(lecture.id) else { return false }
-        let readiness = assembly.readiness(lecture)
-        return readiness.plan != nil && (lecture.meta.konspekt == nil || readiness.isStale)
-    }
-
-    private var readyToAssemble: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle").foregroundStyle(.green)
-            Text(lecture.meta.konspekt == nil ? "Все страницы распознаны." : "Страницы изменились после сборки конспекта.")
-            Spacer()
-            Button(lecture.meta.konspekt == nil ? "Собрать конспект" : "Пересобрать конспект") {
-                showNotes()
-                if lecture.meta.konspekt?.manuallyEdited != true { assembly.assemble(lecture.id) }
-            }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
+        .motion(.standard, value: recognition.blockingError == nil)
     }
 
     private var pending: [String] { recognition.pendingPages(in: lecture) }
-
-    private func running(_ batch: RecognitionCenter.Batch) -> some View {
-        HStack(spacing: 10) {
-            ProgressView(value: Double(batch.done + batch.failed), total: Double(max(batch.total, 1)))
-                .frame(width: 160)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                let elapsed = Int(context.date.timeIntervalSince(batch.startedAt))
-                Text("Распознавание: \(batch.done + batch.failed) из \(batch.total)"
-                     + (batch.engine.map { " · \($0.title)" } ?? "")
-                     + " · \(elapsed / 60):\(String(format: "%02d", elapsed % 60))")
-            }
-            if batch.failed > 0 {
-                Text("ошибок: \(batch.failed)").foregroundStyle(.red)
-            }
-            if let note = batch.note {
-                Text(note).foregroundStyle(.orange).lineLimit(1)
-            }
-            Spacer()
-            Button("Отменить") { recognition.cancel(lectureID: lecture.id) }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private func blocked(_ error: AIError) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(.red)
-                Text(error.userMessage)
-                Spacer()
-                if case .rateLimited = error {} else {
-                    Button("Настройки…") { openSettings() }
-                }
-                if !pending.isEmpty {
-                    Button("Повторить") { recognition.recognize(lectureID: lecture.id, pageIDs: pending) }
-                }
-                Button {
-                    recognition.blockingError = nil
-                } label: {
-                    Image(systemName: "xmark")
-                }
-                .buttonStyle(.borderless)
-            }
-            if !error.details.isEmpty {
-                DisclosureGroup("Подробности", isExpanded: $showDetails) {
-                    Text(error.details)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .font(.caption)
-            }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.red.opacity(0.08))
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private var idle: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "text.viewfinder").foregroundStyle(.secondary)
-            Text("Не распознано страниц: \(pending.count)")
-            Spacer()
-            Button("Распознать") { recognition.recognize(lectureID: lecture.id, pageIDs: pending) }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
-    }
 }
 
 /// Значок состояния текста на миниатюре.

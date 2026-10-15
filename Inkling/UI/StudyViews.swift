@@ -8,25 +8,43 @@ struct StudyContainer<Content: View>: View {
     @ViewBuilder let content: (StudyMaterials, StudyProgress) -> Content
 
     @State private var confirmRegenerate = false
-    @State private var showDetails = false
+    @Environment(\.lectureRequests) private var requests
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let store = study.store(lecture)
         let _ = study.revision(lecture.id)
         let materials = store.readStudy()
         VStack(spacing: 0) {
-            if let run = study.runs[lecture.id] {
-                runningBar(run)
-            } else if let error = study.errors[lecture.id] {
-                errorBar(error)
-            } else if materials != nil, study.isStale(lecture) {
-                staleBar
+            if !study.isRunning(lecture.id) {
+                if let error = study.errors[lecture.id] {
+                    InlineNotice(.error, "Материалы не подготовлены. \(error.userMessage)",
+                                 systemImage: "exclamationmark.octagon.fill", details: error.details,
+                                 dismiss: { study.errors[lecture.id] = nil }) {
+                        if hasKonspekt { Button("Повторить") { study.generate(lecture.id) } }
+                    }
+                    .transition(.notice(reduceMotion: reduceMotion))
+                    Divider()
+                } else if materials != nil, study.isStale(lecture) {
+                    InlineNotice(.info, "Устарело: конспект изменился после подготовки материалов.",
+                                 systemImage: "clock.arrow.circlepath") {
+                        Button("Подготовить заново", action: regenerate)
+                    }
+                    .transition(.notice(reduceMotion: reduceMotion))
+                    Divider()
+                }
             }
             if let materials {
                 content(materials, store.readProgress())
             } else {
                 emptyState
             }
+        }
+        .motion(.standard, value: study.errors[lecture.id] == nil)
+        .task(id: requests.wrappedValue.prepareStudy) {
+            guard requests.wrappedValue.prepareStudy else { return }
+            requests.wrappedValue.prepareStudy = false
+            if materials == nil { study.generate(lecture.id) } else { regenerate() }
         }
         .confirmationDialog("Подготовить материалы заново?", isPresented: $confirmRegenerate) {
             Button("Подготовить") { study.generate(lecture.id) }
@@ -55,7 +73,7 @@ struct StudyContainer<Content: View>: View {
         } actions: {
             if hasKonspekt {
                 Button("Подготовить материалы") { study.generate(lecture.id) }
-                    .buttonStyle(.borderedProminent)
+                    .prominentAction()
                     .disabled(study.isRunning(lecture.id))
             } else {
                 Button("Перейти к конспекту", action: showNotes)
@@ -63,63 +81,6 @@ struct StudyContainer<Content: View>: View {
         }
     }
 
-    private func runningBar(_ run: StudyCenter.Run) -> some View {
-        HStack(spacing: 10) {
-            ProgressView().controlSize(.small)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                let elapsed = Int(context.date.timeIntervalSince(run.startedAt))
-                Text("Готовлю вопросы, тест и карточки" + (run.engine.map { " · \($0.title)" } ?? "")
-                     + " · \(elapsed / 60):\(String(format: "%02d", elapsed % 60))")
-            }
-            if let note = run.note { Text(note).foregroundStyle(.orange).lineLimit(1) }
-            Spacer()
-            Button("Отменить") { study.cancel(lecture.id) }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private func errorBar(_ error: AIError) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(.red)
-                Text("Материалы не подготовлены. \(error.userMessage)")
-                Spacer()
-                if hasKonspekt { Button("Повторить") { study.generate(lecture.id) } }
-                Button { study.errors[lecture.id] = nil } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.borderless)
-            }
-            if !error.details.isEmpty {
-                DisclosureGroup("Подробности", isExpanded: $showDetails) {
-                    Text(error.details).font(.caption.monospaced()).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .font(.caption)
-            }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.red.opacity(0.08))
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private var staleBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "clock.badge.exclamationmark").foregroundStyle(.orange)
-            Text("Устарело: конспект изменился после подготовки материалов.")
-            Spacer()
-            Button("Пересобрать", action: regenerate)
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.orange.opacity(0.1))
-        .overlay(alignment: .bottom) { Divider() }
-    }
 }
 
 /// Строка с источником материалов и кнопкой «Подготовить заново».
@@ -374,7 +335,7 @@ struct QuizView: View {
             }
             HStack {
                 Button("Начать тест") { begin(available, onlyMistakes: false) }
-                    .buttonStyle(.borderedProminent)
+                    .prominentAction()
                     .disabled(available.isEmpty)
                 Button("Только ошибки (\(mistakes.count))") { begin(mistakes, onlyMistakes: true) }
                     .disabled(mistakes.isEmpty)
@@ -412,7 +373,7 @@ struct QuizView: View {
                     HStack {
                         Spacer()
                         Button(session.index + 1 < session.items.count ? "Дальше" : "Результат") { advance() }
-                            .buttonStyle(.borderedProminent)
+                            .prominentAction()
                             .keyboardShortcut(.defaultAction)
                     }
                 }
@@ -470,7 +431,7 @@ struct QuizView: View {
             HStack {
                 Button("Пройти заново") { begin(available, onlyMistakes: false) }
                 Button("Только ошибки (\(mistakes.count))") { begin(mistakes, onlyMistakes: true) }
-                    .buttonStyle(.borderedProminent)
+                    .prominentAction()
                     .disabled(mistakes.isEmpty)
             }
         }
@@ -546,7 +507,7 @@ struct FlashcardsView: View {
             }
             HStack {
                 Button("Начать") { begin(cards.shuffled(), onlyUnknown: false) }
-                    .buttonStyle(.borderedProminent)
+                    .prominentAction()
                     .disabled(cards.isEmpty)
                 Button("Повторить незнакомые (\(unknown.count))") { begin(unknown.shuffled(), onlyUnknown: true) }
                     .disabled(unknown.isEmpty)
@@ -588,7 +549,7 @@ struct FlashcardsView: View {
                     .controlSize(.large)
                 Button { mark(known: true) } label: { Label("Знаю", systemImage: "arrow.right") }
                     .controlSize(.large)
-                    .buttonStyle(.borderedProminent)
+                    .prominentAction()
             }
         }
     }
@@ -613,7 +574,7 @@ struct FlashcardsView: View {
                     begin(materials.flashcards.filter { !progress.flagged.contains($0.id) }.shuffled(), onlyUnknown: false)
                 }
                 Button("Повторить незнакомые (\(unknown.count))") { begin(unknown.shuffled(), onlyUnknown: true) }
-                    .buttonStyle(.borderedProminent)
+                    .prominentAction()
                     .disabled(unknown.isEmpty)
             }
         }
