@@ -38,7 +38,14 @@ struct ClaudeCodeEngine: AIEngine {
     /// (например, если приложение запущено из сессии Claude Code), плюс нужные каталоги в PATH.
     static func environment(base: [String: String], extraPath: [String]) -> [String: String] {
         let blockedPrefixes = ["CLAUDECODE", "CLAUDE_CODE_", "CLAUDE_AGENT_SDK", "ANTHROPIC_"]
-        var env = base.filter { key, _ in !blockedPrefixes.contains { key.hasPrefix($0) } }
+        // Чужие секреты окружения Claude Code не нужны: вход идёт через его собственное хранилище.
+        let secretPrefixes = ["AWS_", "GITHUB_", "GH_", "NPM_TOKEN", "OPENAI_", "GOOGLE_API", "GEMINI_"]
+        let secretSuffixes = ["_TOKEN", "_SECRET", "_PASSWORD", "_API_KEY", "_SECRET_KEY"]
+        var env = base.filter { key, _ in
+            !blockedPrefixes.contains { key.hasPrefix($0) }
+                && !secretPrefixes.contains { key.hasPrefix($0) }
+                && !secretSuffixes.contains { key.hasSuffix($0) }
+        }
         let systemPath = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         let current = (env["PATH"] ?? "").split(separator: ":").map(String.init)
         var path: [String] = []
