@@ -179,6 +179,7 @@ struct ICloudTests {
 }
 
 @Suite("Приложение")
+@MainActor
 struct AppEnvironmentTests {
     @Test func detectsTestRun() {
         // Иначе тестовый запуск открыл бы настоящую папку ~/Documents/Inkling.
