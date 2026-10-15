@@ -427,3 +427,12 @@ struct AssemblyLiveTests {
         #expect(!text.contains("--- Страница"))
     }
 }
+
+@Suite("Подстановки в промптах")
+struct PromptRenderTests {
+    @Test func substitutedTextIsNotExpandedAgain() {
+        let out = PromptLibrary.render("Тема: {тема}\n{конспект}\n{нет}",
+                                       values: ["тема": "Матрицы", "конспект": "см. {тема} и {предмет}"])
+        #expect(out == "Тема: Матрицы\nсм. {тема} и {предмет}\n{нет}")
+    }
+}
