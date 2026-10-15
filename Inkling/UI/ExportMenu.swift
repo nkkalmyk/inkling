@@ -107,7 +107,12 @@ struct AnkiExportSheet: View {
                       Task { export.exportAnki() }
                       return true
                   }) {
-            Toggle("Добавить вопросы с ответами", isOn: $export.includeQuestions)
+            // Не Toggle: любой Toggle в окне выключает в SwiftUI «Импорт с iPhone» (Камеру непрерывности).
+            Picker("Что сохранить", selection: $export.includeQuestions) {
+                Text("Только карточки").tag(false)
+                Text("Карточки и вопросы с ответами").tag(true)
+            }
+            .pickerStyle(.radioGroup)
         }
     }
 }

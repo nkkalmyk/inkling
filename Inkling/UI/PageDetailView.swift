@@ -160,10 +160,15 @@ private struct PageEditor: View {
             .fixedSize()
             .help(page.heuristicReason.map { "Эвристика выбрала картинку: \($0)" } ?? "Текстовый слой выглядит нормально")
         }
-        Toggle("Не в конспект", isOn: Binding(
-            get: { page.excluded },
-            set: { library.setSlideExcluded($0, for: page.id, lectureID: lecture.id) }))
-            .help("Не включать слайд в конспект (титульник, «Спасибо за внимание»)")
+        // Не Toggle: любой Toggle в окне выключает в SwiftUI «Импорт с iPhone» (Камеру непрерывности).
+        Button {
+            library.setSlideExcluded(!page.excluded, for: page.id, lectureID: lecture.id)
+        } label: {
+            Label("Не в конспект", systemImage: page.excluded ? "checkmark.square.fill" : "square")
+                .labelStyle(.titleAndIcon)
+        }
+        .accessibilityValue(page.excluded ? "Включено" : "Выключено")
+        .help("Не включать слайд в конспект (титульник, «Спасибо за внимание»)")
     }
 
     // MARK: Статус и текст

@@ -24,6 +24,13 @@ struct SourcesView: View {
                 detail
             }
         }
+        // «Импорт с iPhone» (Камера непрерывности): SwiftUI отдаёт снимок этому экрану, он идёт в выбранный раздел.
+        .importsItemProviders([.image, .pdf]) { providers in
+            ccLog.notice("importsItemProviders count=\(providers.count, privacy: .public) active=\(isActive, privacy: .public)") // DEBUGCC
+            guard isActive else { return false }
+            library.importProviders(providers, into: activeSection, lectureID: lecture.id)
+            return true
+        }
         .onPasteCommand(of: ImportStaging.acceptedTypes) { providers in
             guard isActive else { return }
             library.importProviders(providers, into: activeSection, lectureID: lecture.id)
@@ -97,7 +104,8 @@ private struct ThumbnailStrip: View {
                 Section {
                     rows(section)
                     if pageIDs(section).isEmpty {
-                        EmptyDropRow(section: section, addFiles: { addFiles(section) }) { pasteboard in
+                        EmptyDropRow(section: section, onOpen: { activeSection = section },
+                                     addFiles: { addFiles(section) }) { pasteboard in
                             activeSection = section
                             library.importPasteboard(pasteboard, into: section, lectureID: lecture.id)
                         }
@@ -110,7 +118,7 @@ private struct ThumbnailStrip: View {
                     }
                 } header: {
                     SectionHeader(section: section, count: pageIDs(section).count, isActive: activeSection == section,
-                                  addFiles: { addFiles(section) }) { pasteboard in
+                                  onOpen: { activeSection = section }, addFiles: { addFiles(section) }) { pasteboard in
                         activeSection = section
                         library.importPasteboard(pasteboard, into: section, lectureID: lecture.id)
                     }
@@ -200,6 +208,7 @@ private struct SectionHeader: View {
     let section: SourceSection
     let count: Int
     let isActive: Bool
+    let onOpen: () -> Void
     let addFiles: () -> Void
     let onImport: (NSPasteboard) -> Void
 
@@ -210,7 +219,7 @@ private struct SectionHeader: View {
                 Text("\(count)").foregroundStyle(.tertiary).monospacedDigit()
             }
             Spacer()
-            ContinuityCameraButton(onAddFiles: addFiles, onImport: onImport)
+            ContinuityCameraButton(onOpen: onOpen, onAddFiles: addFiles, onImport: onImport)
                 .fixedSize()
         }
         .background { ContinuityCameraAnchor(onAddFiles: addFiles, onImport: onImport) }
@@ -222,6 +231,7 @@ private struct SectionHeader: View {
 /// Пустой раздел: куда перетащить файлы и как ещё их добавить.
 private struct EmptyDropRow: View {
     let section: SourceSection
+    let onOpen: () -> Void
     let addFiles: () -> Void
     let onImport: (NSPasteboard) -> Void
 
@@ -236,7 +246,7 @@ private struct EmptyDropRow: View {
             Text("Или ⌘V, или снимите на iPhone:")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            ContinuityCameraButton(title: "Добавить…", onAddFiles: addFiles, onImport: onImport)
+            ContinuityCameraButton(title: "Добавить…", onOpen: onOpen, onAddFiles: addFiles, onImport: onImport)
                 .fixedSize()
                 .padding(.top, Spacing.xxs)
         }
@@ -359,9 +369,16 @@ struct SlidePageMenu: View {
                 Text("Распознать как картинку").tag(SlideMode.image)
             }
         }
-        Toggle("Не включать в конспект", isOn: Binding(
-            get: { page.excluded },
-            set: { library.setSlideExcluded($0, for: page.id, lectureID: lecture.id) }))
+        // Не Toggle: любой Toggle в окне выключает в SwiftUI «Импорт с iPhone» (Камеру непрерывности).
+        Button {
+            library.setSlideExcluded(!page.excluded, for: page.id, lectureID: lecture.id)
+        } label: {
+            if page.excluded {
+                Label("Не включать в конспект", systemImage: "checkmark")
+            } else {
+                Text("Не включать в конспект")
+            }
+        }
         Divider()
         Button("Удалить слайд", role: .destructive) {
             library.deletePages([page.id], in: .slides, lectureID: lecture.id)
