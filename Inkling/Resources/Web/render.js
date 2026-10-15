@@ -122,7 +122,7 @@
       });
       return f.display ? '<div class="math-display">' + html + '</div>' : html;
     } catch (e) {
-      return '<span class="katex-error" title="' + escapeHTML(String(e && e.message || e)) + '">' + escapeHTML(f.tex) + '</span>';
+      return '<span class="katex-error" title="' + escapeHTML(String(e && e.message || e)).replace(/"/g, '&quot;') + '">' + escapeHTML(f.tex) + '</span>';
     }
   }
 
