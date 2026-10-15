@@ -60,26 +60,6 @@
       }
     },
     {
-      "name": "lens",
-      "layers": [
-        {
-          "glass": true,
-          "image-name": "lens.svg",
-          "name": "lens"
-        }
-      ],
-      "blur-material": 0.5,
-      "shadow": {
-        "kind": "neutral",
-        "opacity": 0.35
-      },
-      "specular": true,
-      "translucency": {
-        "enabled": true,
-        "value": 0.6
-      }
-    },
-    {
       "name": "glow",
       "layers": [
         {
