@@ -88,12 +88,24 @@ struct PromptLibrary: Sendable {
         return ((try? String(contentsOf: url, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Подставляет `{ключ}`; незнакомые подстановки остаются как есть.
+    /// Подставляет `{ключ}` за один проход: подставленный текст заново не разбирается,
+    /// поэтому `{тема}` внутри конспекта остаётся как есть. Незнакомые подстановки остаются.
     static func render(_ template: String, values: [String: String]) -> String {
-        var result = template
-        for (key, value) in values {
-            result = result.replacingOccurrences(of: "{\(key)}", with: value)
+        var result = ""
+        var rest = template[...]
+        while let open = rest.firstIndex(of: "{") {
+            result += rest[..<open]
+            let afterOpen = rest.index(after: open)
+            if let close = rest[afterOpen...].firstIndex(of: "}"),
+               let value = values[String(rest[afterOpen..<close])] {
+                result += value
+                rest = rest[rest.index(after: close)...]
+            } else {
+                result.append("{")
+                rest = rest[afterOpen...]
+            }
         }
+        result += rest
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 

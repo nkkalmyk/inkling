@@ -28,6 +28,20 @@ struct RenderJSTests {
         context.objectForKeyedSubscript("InklingRender")!.invokeMethod("toHTML", withArguments: [markdown])!.toString()
     }
 
+    @Test func remoteImagesAreNotRendered() {
+        let out = html("![схема](https://evil.example/p.png?d=1) и ![](//evil.example/x.png)")
+        #expect(!out.contains("<img") && !out.contains("evil.example"))
+        #expect(out.contains("схема"))
+    }
+
+    @Test func pagesDeclareContentSecurityPolicy() throws {
+        let web = try #require(NotesWebView.webFolder)
+        for file in ["notes.html", "snippet.html"] {
+            let text = try String(contentsOf: web.appendingPathComponent(file), encoding: .utf8)
+            #expect(text.contains("Content-Security-Policy"), "\(file)")
+        }
+    }
+
     @Test func bundleContainsWebAssets() throws {
         let web = try #require(NotesWebView.webFolder)
         for file in ["notes.html", "notes.css", "render.js", "vendor/katex/katex.min.css",
@@ -425,5 +439,14 @@ struct AssemblyLiveTests {
         #expect(text.contains(#"\ce{"#))
         #expect(text.contains("⚠️"), "Ошибку «+2» модель должна пометить")
         #expect(!text.contains("--- Страница"))
+    }
+}
+
+@Suite("Подстановки в промптах")
+struct PromptRenderTests {
+    @Test func substitutedTextIsNotExpandedAgain() {
+        let out = PromptLibrary.render("Тема: {тема}\n{конспект}\n{нет}",
+                                       values: ["тема": "Матрицы", "конспект": "см. {тема} и {предмет}"])
+        #expect(out == "Тема: Матрицы\nсм. {тема} и {предмет}\n{нет}")
     }
 }
