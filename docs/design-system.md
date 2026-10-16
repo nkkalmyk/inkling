@@ -32,6 +32,7 @@
 | `.surfaceStudy` / `.surfaceStudyRaised` | фон и карточки самопроверки | тёплые `StudySurface*` |
 | `.statusError` / `.statusSuccess` | ошибка / успех | системные красный и зелёный |
 | `.statusNeutral` | сведения и предупреждения | `.secondary` |
+| `.selectionNeutral` | выбранный сегмент переключателя разделов | `unemphasizedSelectedContentBackgroundColor` |
 | `NSColor.appAccent` | тот же акцент в AppKit-видах: пометки `[неразборчиво]` и `[?догадка]` в редакторе страницы | `AccentColor` |
 
 Текст — системные `.primary`, `.secondary`, `.tertiary`. Шестнадцатеричных цветов в экранах нет.
@@ -96,6 +97,7 @@
 | `EmptyState` | пустой экран (обёртка `ContentUnavailableView`) |
 | `FormSheet` | лист с формой: заголовок, поля, Esc/Return; закрывается, если `confirm` вернул `true` |
 | `HistoryPopover` | история версий с предпросмотром и «Восстановить» |
+| `.sectionSwitcher(.primary / .inline)` | переключатель разделов и режимов: капсула и нейтральный выбранный сегмент, как в тулбаре; `.primary` — под тулбаром, `.inline` — в строке экрана. Переключатели значений в формах — системные |
 | `ResizableSplit` | две колонки с перетаскиваемой границей там, где они начинаются у верха окна (`HSplitView` в macOS 26 продлевает разделитель в тулбар) |
 | `QuizOptionStyle` | вариант ответа (верно/неверно значком) |
 | `ScoreRing` | итог теста и карточек |

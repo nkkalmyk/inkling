@@ -98,9 +98,7 @@ struct LectureView: View {
         Picker("Режим", selection: $tab) {
             ForEach(LectureTab.studyTabs) { Text($0.title).tag($0) }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
+        .sectionSwitcher()
         .padding(.vertical, Spacing.s)
         .frame(maxWidth: .infinity)
         .background(Color.surfaceStudy)
