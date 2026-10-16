@@ -31,7 +31,7 @@ struct DetailedBandsTests {
     @Test func detailedBandsProduceJPEGsFromHugeOriginal() throws {
         let original = image(width: 6000, height: 8000)
         let parts = try ImageProcessor.detailedBands(original, crop: .original, rotation: 0)
-        #expect(parts.count == ImageProcessor.detailedBandCount)
+        #expect(parts.count == ImageProcessor.detailedLayout.count)
         #expect(parts.allSatisfy { $0.starts(with: [0xFF, 0xD8]) })
         // Длинная сторона страницы сжата до 4500, а не до обычных 2000.
         let first = try #require(CIImage(data: parts[0]))

@@ -241,33 +241,65 @@ enum ImageProcessor {
 
     // MARK: Режим «Подробно»
 
-    /// Размер длинной стороны при разбиении на фрагменты: крупнее обычных 2000 px, чтобы мелкие детали не терялись.
-    static let detailedMaxDimension: CGFloat = 4500
-    static let detailedBandCount = 3
-    /// Доля высоты фрагмента, которая перекрывается с соседним: строка на стыке целиком попадает в один из них.
-    static let detailedOverlap: Double = 0.2
+    /// Как нарезать страницу: ряды сверху вниз, в ряду колонки слева направо; соседние фрагменты перекрываются.
+    struct DetailedLayout: Equatable, Sendable {
+        var rows: Int
+        var columns: Int
+        var rowOverlap: Double = 0.2
+        var columnOverlap: Double = 0.25
 
-    /// Режет картинку на горизонтальные фрагменты сверху вниз с перекрытием.
-    static func bands(of image: CIImage, count: Int, overlap: Double) -> [CIImage] {
-        let n = max(count, 1)
-        let extent = image.extent
-        guard n > 1, extent.height > 0 else { return [image] }
-        let o = min(max(overlap, 0), 0.5)
-        let height = extent.height / (Double(n) - Double(n - 1) * o)
-        let step = height * (1 - o)
-        return (0..<n).map { index in
-            // У CIImage начало координат внизу, поэтому первый фрагмент — самый верхний.
-            let top = extent.maxY - Double(index) * step
-            let y = max(top - height, extent.minY)
-            let rect = CGRect(x: extent.minX, y: y, width: extent.width, height: min(height, top - y))
-            return normalized(image.cropped(to: rect.integral))
+        var count: Int { rows * columns }
+
+        /// Для промпта: как расположены фрагменты.
+        var description: String {
+            if columns == 1 {
+                return "Фрагменты идут сверху вниз, соседние перекрываются примерно на пятую часть высоты."
+            }
+            return "Фрагменты образуют сетку из \(rows) рядов по \(columns) колонки: сначала верхний ряд слева направо, "
+                + "затем следующий. Соседние перекрываются; строки текста, которые пересекают стык колонок, "
+                + "склей по перекрытию в одну строку."
         }
     }
 
-    /// JPEG-фрагменты страницы для распознавания «Подробно», сверху вниз.
-    static func detailedBands(_ original: CIImage, crop: CropMode, rotation: Int) throws -> [Data] {
+    /// Размер длинной стороны при разбиении на фрагменты: крупнее обычных 2000 px, чтобы мелкие детали не терялись.
+    static let detailedMaxDimension: CGFloat = 4500
+    nonisolated(unsafe) static var detailedLayout = DetailedLayout(rows: 3, columns: 2)
+
+    /// Режет картинку на фрагменты по сетке `layout`, ряды сверху вниз, внутри ряда слева направо.
+    static func tiles(of image: CIImage, layout: DetailedLayout) -> [CIImage] {
+        let extent = image.extent
+        guard layout.count > 1, extent.width > 0, extent.height > 0 else { return [image] }
+        func spans(total: Double, count: Int, overlap: Double) -> [(start: Double, length: Double)] {
+            guard count > 1 else { return [(0, total)] }
+            let o = min(max(overlap, 0), 0.5)
+            let length = total / (Double(count) - Double(count - 1) * o)
+            let step = length * (1 - o)
+            return (0..<count).map { (start: min(Double($0) * step, total - length), length: length) }
+        }
+        let rows = spans(total: extent.height, count: max(layout.rows, 1), overlap: layout.rowOverlap)
+        let columns = spans(total: extent.width, count: max(layout.columns, 1), overlap: layout.columnOverlap)
+        var result: [CIImage] = []
+        for row in rows {
+            // У CIImage начало координат внизу, поэтому первый ряд — самый верхний.
+            let y = extent.maxY - row.start - row.length
+            for column in columns {
+                let rect = CGRect(x: extent.minX + column.start, y: y, width: column.length, height: row.length).integral
+                result.append(normalized(image.cropped(to: rect)))
+            }
+        }
+        return result
+    }
+
+    /// Только ряды (одна колонка): удобно для тестов и простых случаев.
+    static func bands(of image: CIImage, count: Int, overlap: Double) -> [CIImage] {
+        tiles(of: image, layout: DetailedLayout(rows: count, columns: 1, rowOverlap: overlap))
+    }
+
+    /// JPEG-фрагменты страницы для распознавания «Подробно».
+    static func detailedBands(_ original: CIImage, crop: CropMode, rotation: Int,
+                              layout: DetailedLayout = detailedLayout) throws -> [Data] {
         let (image, _) = prepared(original, crop: crop, rotation: rotation, maxDimension: detailedMaxDimension)
-        return try bands(of: image, count: detailedBandCount, overlap: detailedOverlap).map { try jpegData($0, quality: 0.9) }
+        return try tiles(of: image, layout: layout).map { try jpegData($0, quality: 0.9) }
     }
 
     static func jpegData(_ image: CIImage, quality: CGFloat = jpegQuality) throws -> Data {

@@ -390,7 +390,14 @@ struct DetailedRecognitionLiveTests {
         let center = RecognitionCenter(library: library, router: { router }, timeout: { 240 }, maxParallel: { 1 })
         library.recognition = center
         var outputs: [(String, String)] = []
-        for (name, detailed) in [("normal", false), ("detailed", true)] {
+        let layouts: [String: ImageProcessor.DetailedLayout] = [
+            "rows3": .init(rows: 3, columns: 1), "rows5": .init(rows: 5, columns: 1),
+            "grid2x3": .init(rows: 3, columns: 2), "grid2x4": .init(rows: 4, columns: 2),
+        ]
+        let variants = (environment["INKLING_LIVE_VARIANTS"] ?? "normal,rows3").split(separator: ",").map(String.init)
+        for name in variants {
+            let detailed = name != "normal"
+            if let layout = layouts[name] { ImageProcessor.detailedLayout = layout }
             let started = Date()
             center.recognize(lectureID: lectureID, pageIDs: [pageID], detailed: detailed)
             for _ in 0..<1500 where center.isBusy(lectureID) { try await Task.sleep(for: .milliseconds(200)) }

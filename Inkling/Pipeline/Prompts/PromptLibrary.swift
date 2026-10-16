@@ -118,11 +118,13 @@ struct PromptLibrary: Sendable {
     """
 
     /// Режим «Подробно»: страница одним запросом по нескольким фрагментам (`imageNames` — сверху вниз).
-    func detailedRecognitionPrompt(subject: String, topic: String, imageNames: [String]) throws -> String {
+    func detailedRecognitionPrompt(subject: String, topic: String, imageNames: [String],
+                                   layout: String = ImageProcessor.detailedLayout.description) throws -> String {
         Self.render(try template("recognize-detailed.md"), values: [
             "предмет": subject,
             "тема": topic,
             "вставка_предмета": subjectInsert(subject),
+            "раскладка": layout,
             "фрагменты": imageNames.enumerated().map { "\($0.offset + 1). ./\($0.element)" }.joined(separator: "\n"),
         ])
     }
