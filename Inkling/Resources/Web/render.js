@@ -139,6 +139,8 @@
   function toHTML(markdown) {
     var extracted = extractMath(markdown || '');
     var html = md.render(extracted.text);
+    // `[?слово]` — догадка модели по смыслу там, где почерк не читается; до подстановки формул, пока они ещё метки.
+    html = html.replace(/\[\?([^\]\n<>]+)\]/g, '<mark class="guess" title="Догадка модели по смыслу: проверьте по фото">$1</mark>');
     // Формула одна в абзаце — выключенная, без обёртки <p>.
     html = html.replace(new RegExp('<p>(' + PH + '(\\d+)X)</p>', 'g'), function (whole, all, idx) {
       var f = extracted.formulas[+idx];

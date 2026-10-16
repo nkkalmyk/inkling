@@ -105,6 +105,7 @@ figure.diagram figcaption { color: var(--muted); font: 0.85em var(--interface); 
 .diagram .swatch { display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; }
 .diagram-error { color: var(--error); font: 0.9em var(--interface); }
 
+mark.guess { background: none; color: inherit; border-bottom: 2px dotted var(--accent); padding: 0; }
 mark.illegible { background: var(--illegible); color: inherit; padding: 0 2px; border-radius: 4px; }
 
 .math-display { margin: 0.8em 0; overflow-x: auto; overflow-y: hidden; }
