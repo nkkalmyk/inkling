@@ -135,8 +135,11 @@ struct NotesView: View {
                     .help("Формулы с ошибкой показаны исходным LaTeX красным")
             }
             Spacer()
-            Button(info == nil ? "Собрать" : "Пересобрать") { start(force: false) }
-                .disabled(assembly.isRunning(lecture.id) || readiness.plan == nil || recognition.isBusy(lecture.id))
+            // При «Устарело» кнопка «Пересобрать» есть в уведомлении над шапкой — здесь не повторяем.
+            if !readiness.isStale || assembly.errors[lecture.id] != nil {
+                Button(info == nil ? "Собрать" : "Пересобрать") { start(force: false) }
+                    .disabled(assembly.isRunning(lecture.id) || readiness.plan == nil || recognition.isBusy(lecture.id))
+            }
             if info != nil {
                 Button("Дополнить") { enrich() }
                     .disabled(assembly.isRunning(lecture.id) || enrichment.isRunning(lecture.id)

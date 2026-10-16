@@ -16,8 +16,9 @@ struct Activity: Identifiable {
     var cancel: (() -> Void)?
 }
 
-/// Индикатор активности для тулбара, как в Xcode: компактная строка, по щелчку — подробности и отмена.
-/// Когда ничего не идёт, ничего и не показывает.
+/// Индикатор активности для тулбара: только кружок прогресса (и число задач, если их несколько),
+/// по щелчку — названия, время, подробности и отмена. Подпись в самом тулбаре делала из него широкую
+/// капсулу и выталкивала соседние кнопки в меню переполнения. Когда ничего не идёт, ничего не показывает.
 struct ActivityIndicator: View {
     let activities: [Activity]
     @State private var showDetails = false
@@ -27,18 +28,15 @@ struct ActivityIndicator: View {
             Button {
                 showDetails.toggle()
             } label: {
-                HStack(spacing: Spacing.s) {
+                HStack(spacing: Spacing.xs) {
                     progress(first.fraction)
                         .controlSize(.small)
-                    Text(activities.count == 1 ? first.title : "Задач: \(activities.count)")
-                    if activities.count == 1, let startedAt = first.startedAt {
-                        ElapsedText(since: startedAt)
-                            .foregroundStyle(.secondary)
+                    if activities.count > 1 {
+                        Text("\(activities.count)").font(.meta).monospacedDigit()
                     }
                 }
-                .font(.meta)
             }
-            .help("Что сейчас выполняется")
+            .help(activities.map(\.title).joined(separator: ", ") + " — подробности и отмена по щелчку")
             .accessibilityLabel(accessibilityLabel)
             .popover(isPresented: $showDetails, arrowEdge: .bottom) {
                 ActivityList(activities: activities)

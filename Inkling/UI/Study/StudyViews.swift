@@ -42,6 +42,7 @@ struct StudyContainer<Content: View>: View {
                 emptyState
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.surfaceStudy)
         .motion(.standard, value: study.errors[lecture.id] == nil)
         .task(id: requests.wrappedValue.prepareStudy && isActive) {
@@ -102,12 +103,15 @@ private struct StudyToolbar<Trailing: View>: View {
             }
             Spacer()
             trailing()
-            Button("Подготовить заново") {
-                let progress = study.store(lecture).readProgress()
-                if lecture.meta.study?.manuallyEdited == true || !progress.isEmpty { confirm = true }
-                else { study.generate(lecture.id) }
+            // Когда материалы устарели, «Подготовить заново» уже есть в уведомлении над строкой.
+            if !study.isStale(lecture) {
+                Button("Подготовить заново") {
+                    let progress = study.store(lecture).readProgress()
+                    if lecture.meta.study?.manuallyEdited == true || !progress.isEmpty { confirm = true }
+                    else { study.generate(lecture.id) }
+                }
+                .disabled(study.isRunning(lecture.id))
             }
-            .disabled(study.isRunning(lecture.id))
         }
         .font(.meta)
         .padding(.horizontal, Spacing.m)
@@ -209,7 +213,10 @@ struct QuestionsView: View {
                 Divider()
                 HSplitView {
                     VStack(spacing: 0) {
-                        filters.padding(Spacing.s)
+                        filters
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, Spacing.l)
+                            .padding(.vertical, Spacing.s)
                         list(materials: materials, items: items, progress: progress)
                     }
                     .frame(minWidth: 220, idealWidth: 280, maxWidth: 360)
@@ -387,7 +394,7 @@ struct QuizView: View {
                 }
                 .frame(maxWidth: ReadingWidth.focused)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(Spacing.xl)
+                .padding(Spacing.xxl)
             }
             .sheet(item: $editing) { target in
                 StudyItemEditor(target: target, materials: materials) { study.saveEdited($0, lectureID: lecture.id) }
@@ -580,7 +587,7 @@ struct FlashcardsView: View {
                 }
                 .frame(maxWidth: ReadingWidth.focused)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(Spacing.xl)
+                .padding(Spacing.xxl)
             }
             .sheet(item: $editing) { target in
                 StudyItemEditor(target: target, materials: materials) { study.saveEdited($0, lectureID: lecture.id) }
