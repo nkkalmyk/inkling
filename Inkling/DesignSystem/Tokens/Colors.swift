@@ -29,6 +29,11 @@ extension Color {
     static let statusSuccess = Color.green
     /// Предупреждения и сведения («устарело», «в очереди») цвета не получают.
     static let statusNeutral = Color.secondary
+
+    // MARK: Выбор
+
+    /// Выбранный сегмент переключателя разделов: нейтральная заливка, как у переключателя в тулбаре.
+    static let selectionNeutral = Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
 }
 
 /// Те же роли для AppKit-видов (редактор текста страницы).

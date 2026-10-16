@@ -123,9 +123,7 @@ struct NotesView: View {
                 Text("Просмотр").tag(false)
                 Text("Правка").tag(true)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+            .sectionSwitcher(.inline)
             .onChange(of: editing) { if !editing { flushSave() } }
 
             provenance
