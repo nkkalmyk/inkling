@@ -74,6 +74,13 @@ struct PDFExportTests {
 
 @Suite("Куда сохраняется PDF")
 struct ExportLocationTests {
+    @Test func pdfNameGroupsBySubjectAndSortsByDate() {
+        #expect(ExportLocation.pdfBaseName(subject: "Математический анализ", topic: "пределы функций", date: .d("2026-10-09"))
+                == "Математический анализ — 2026-10-09 — Пределы функций")
+        #expect(ExportLocation.pdfBaseName(subject: "Химия", topic: "ОВР: основы/баланс", date: .d("2026-10-14"))
+                == "Химия — 2026-10-14 — ОВР- основы-баланс")
+    }
+
     @Test func pdfGoesToKonspektyFolderInDocuments() throws {
         let dir = try TempDir()
         let url = try ExportLocation.pdfURL(baseName: "2026-10-09 — пределы функций", documents: dir.url)
