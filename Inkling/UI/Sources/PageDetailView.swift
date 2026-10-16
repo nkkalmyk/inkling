@@ -114,15 +114,7 @@ private struct PageEditor: View {
             if let note { noteControls(note) }
             if let slide { slideControls(slide) }
             Divider().frame(height: 18)
-            Button("Распознать заново") { rerecognize(detailed: false) }
-            .disabled(isRunning || (slide.map { !$0.usesImage } ?? false))
-            .help(slide.map { !$0.usesImage } ?? false ? "Слайд берётся из текстового слоя; переключите режим на «Картинка»" : "")
-            if section == .notes {
-                Button("Подробно") { rerecognize(detailed: true) }
-                    .disabled(isRunning)
-                    .help("Страница читается шестью увеличенными фрагментами (сетка 3×2) одним запросом: лучше мелкие индексы, штрихи и "
-                          + "значки, но дольше и расходует больше лимита. Только через Claude.")
-            }
+            rerecognizeButton
             Button {
                 flushSave()
                 showHistory = true
@@ -137,6 +129,30 @@ private struct PageEditor: View {
             }
         }
         .disabled(busy)
+    }
+
+    /// «Распознать заново»; у страницы тетради в меню кнопки — подробное чтение фрагментами.
+    @ViewBuilder
+    private var rerecognizeButton: some View {
+        if section == .notes {
+            Menu {
+                Button("Распознать подробно") { rerecognize(detailed: true) }
+                    .help("Страница читается шестью увеличенными фрагментами (сетка 3×2) одним запросом: лучше мелкие "
+                          + "индексы, штрихи и значки, но дольше и расходует больше лимита. Только через Claude.")
+            } label: {
+                Text("Распознать заново")
+            } primaryAction: {
+                rerecognize(detailed: false)
+            }
+            .fixedSize()
+            .disabled(isRunning)
+            .help("Щелчок — обычное распознавание, стрелка — «Распознать подробно» (только через Claude)")
+        } else {
+            let textLayer = slide.map { !$0.usesImage } ?? false
+            Button("Распознать заново") { rerecognize(detailed: false) }
+                .disabled(isRunning || textLayer)
+                .help(textLayer ? "Слайд берётся из текстового слоя; переключите режим на «Картинка»" : "")
+        }
     }
 
     @ViewBuilder

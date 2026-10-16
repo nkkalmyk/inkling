@@ -30,3 +30,9 @@ extension Color {
     /// Предупреждения и сведения («устарело», «в очереди») цвета не получают.
     static let statusNeutral = Color.secondary
 }
+
+/// Те же роли для AppKit-видов (редактор текста страницы).
+extension NSColor {
+    /// Янтарный акцент приложения: пометки `[неразборчиво]` и догадок модели.
+    static let appAccent = NSColor(named: "AccentColor") ?? .controlAccentColor
+}
