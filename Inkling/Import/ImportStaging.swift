@@ -17,14 +17,14 @@ enum ImportStaging {
         return url
     }
 
-    /// Удаляет папки `Inkling-import-*`, оставшиеся от прошлых запусков (приложение закрыли при открытом вопросе
+    /// Удаляет папки `Inkling-import-*` и `Inkling-bands-*`, оставшиеся от прошлых запусков (приложение закрыли при открытом вопросе
     /// о разделе PDF или оно упало). Свежие не трогает: их могут использовать. Возвращает число удалённых.
     @discardableResult
     nonisolated static func removeStale(in temporary: URL = FileManager.default.temporaryDirectory,
                                         olderThan age: TimeInterval = 24 * 3600, now: Date = Date()) -> Int {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: temporary.path)) ?? []
         var removed = 0
-        for name in names where name.hasPrefix("Inkling-import-") {
+        for name in names where name.hasPrefix("Inkling-import-") || name.hasPrefix("Inkling-bands-") {
             let url = temporary.appendingPathComponent(name, isDirectory: true)
             let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
             guard let modified, now.timeIntervalSince(modified) > age else { continue }

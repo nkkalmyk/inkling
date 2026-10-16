@@ -1,3 +1,4 @@
+import CoreImage
 import Foundation
 import Observation
 
@@ -26,6 +27,8 @@ final class RecognitionCenter {
     private struct Job: Equatable {
         var lectureID: UUID
         var pageID: String
+        /// Режим «Подробно»: страница читается по перекрывающимся фрагментам, только через Claude.
+        var detailed = false
     }
 
     private(set) var states: [String: PageState] = [:]
@@ -56,14 +59,14 @@ final class RecognitionCenter {
     // MARK: Очередь
 
     /// Ставит страницы в очередь; уже стоящие или идущие пропускаются.
-    func recognize(lectureID: UUID, pageIDs: [String]) {
+    func recognize(lectureID: UUID, pageIDs: [String], detailed: Bool = false) {
         blockingError = nil
         var batch = batches[lectureID] ?? Batch()
         for id in pageIDs {
             if case .queued = states[id] { continue }
             if case .running = states[id] { continue }
             states[id] = .queued
-            queue.append(Job(lectureID: lectureID, pageID: id))
+            queue.append(Job(lectureID: lectureID, pageID: id, detailed: detailed))
             batch.total += 1
         }
         guard batch.total > batch.done + batch.failed else { return }
@@ -132,14 +135,31 @@ final class RecognitionCenter {
         let paths = LecturePaths(folder: lecture.folder)
         let image = location.section == .notes ? paths.notePhoto(job.pageID) : paths.slideImage(job.pageID)
         let request: AIRequest
+        var bandsFolder: URL?
+        defer { if let bandsFolder { try? FileManager.default.removeItem(at: bandsFolder) } }
         do {
-            let prompt = try library.prompts.recognitionPrompt(section: location.section, subject: lecture.meta.subject,
-                                                               topic: lecture.meta.topic, imageName: image.lastPathComponent)
             guard FileManager.default.fileExists(atPath: image.path) else {
                 throw AIError.invalidOutput("Нет картинки страницы: \(image.lastPathComponent)")
             }
-            request = AIRequest(prompt: prompt, systemPrompt: PromptLibrary.recognitionSystemPrompt, images: [image],
-                                format: .text, timeout: timeout())
+            if job.detailed, location.section == .notes {
+                let page = lecture.meta.notes[location.index]
+                let original = paths.original(page.source, in: .notes)
+                let folder = try await Self.writeBands(of: page, original: original)
+                bandsFolder = folder
+                let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.sorted() ?? []
+                let prompt = try library.prompts.detailedRecognitionPrompt(subject: lecture.meta.subject, topic: lecture.meta.topic,
+                                                                           imageNames: names)
+                var detailedRequest = AIRequest(prompt: prompt, systemPrompt: PromptLibrary.recognitionSystemPrompt,
+                                                images: names.map { folder.appendingPathComponent($0) }, format: .text,
+                                                timeout: timeout() * 2)
+                detailedRequest.requiredEngine = .claude
+                request = detailedRequest
+            } else {
+                let prompt = try library.prompts.recognitionPrompt(section: location.section, subject: lecture.meta.subject,
+                                                                   topic: lecture.meta.topic, imageName: image.lastPathComponent)
+                request = AIRequest(prompt: prompt, systemPrompt: PromptLibrary.recognitionSystemPrompt, images: [image],
+                                    format: .text, timeout: timeout())
+            }
         } catch {
             fail(job, error as? AIError ?? .invalidOutput(error.localizedDescription))
             return
@@ -170,6 +190,25 @@ final class RecognitionCenter {
         case .failure(let error):
             fail(job, error)
         }
+    }
+
+    /// Нарезает оригинал страницы на фрагменты для режима «Подробно» (вне главного потока) и пишет их во временную папку.
+    nonisolated private static func writeBands(of page: NotePage, original: URL) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) {
+            let image: CIImage
+            switch page.source {
+            case .image: image = try ImageProcessor.loadOriented(original)
+            case .pdfPage(_, let index): image = try PDFTools.renderPage(original, index: index)
+            }
+            let bands = try ImageProcessor.detailedBands(image, crop: page.crop, rotation: page.rotation)
+            let folder = FileManager.default.temporaryDirectory
+                .appendingPathComponent("Inkling-bands-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            for (index, data) in bands.enumerated() {
+                try data.write(to: folder.appendingPathComponent("part\(index + 1).jpg"))
+            }
+            return folder
+        }.value
     }
 
     /// Записывает текст страницы (прежний — в историю) и описание в `meta.json`. Папка ищется заново:
