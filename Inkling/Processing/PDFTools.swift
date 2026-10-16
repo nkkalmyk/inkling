@@ -5,9 +5,11 @@ import PDFKit
 enum PDFToolsError: LocalizedError {
     case unreadable(String)
     case pageMissing(Int)
+    case tooManyPages(String, Int)
 
     var errorDescription: String? {
         switch self {
+        case .tooManyPages(let name, let count): "В PDF «\(name)» \(count) страниц, больше допустимых \(PDFTools.maxPages)."
         case .unreadable(let name): "Не удалось открыть PDF «\(name)». Возможно, файл повреждён или защищён паролем."
         case .pageMissing(let index): "В PDF нет страницы \(index + 1)."
         }
@@ -19,9 +21,15 @@ enum PDFTools {
     /// Средняя длина текстового слоя на первых страницах, с которой PDF считается слайдами.
     static let slidesTextThreshold = 50
 
+    /// Потолок числа страниц: больше — почти наверняка не конспект, а покадровый рендер съест время и память.
+    static let maxPages = 2000
+
     static func open(_ url: URL) throws -> PDFDocument {
         guard let document = PDFDocument(url: url), !document.isLocked else {
             throw PDFToolsError.unreadable(url.lastPathComponent)
+        }
+        guard document.pageCount <= maxPages else {
+            throw PDFToolsError.tooManyPages(url.lastPathComponent, document.pageCount)
         }
         return document
     }

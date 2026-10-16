@@ -4,6 +4,7 @@ import SwiftUI
 struct NotesView: View {
     @Environment(Library.self) private var library
     @Environment(AssemblyCenter.self) private var assembly
+    @Environment(EnrichmentCenter.self) private var enrichment
     @Environment(RecognitionCenter.self) private var recognition
     let lecture: LectureRecord
 
@@ -30,6 +31,14 @@ struct NotesView: View {
     var body: some View {
         let readiness = assembly.readiness(lecture)
         VStack(spacing: 0) {
+            if let error = enrichment.errors[lecture.id], !enrichment.isRunning(lecture.id) {
+                InlineNotice(.error, "Конспект не дополнен. \(error.userMessage)", systemImage: "exclamationmark.octagon.fill",
+                             details: error.details, dismiss: { enrichment.errors[lecture.id] = nil }) {
+                    Button("Повторить") { enrich() }
+                }
+                .transition(.notice(reduceMotion: reduceMotion))
+                Divider()
+            }
             if !assembly.isRunning(lecture.id) {
                 if let error = assembly.errors[lecture.id] {
                     InlineNotice(.error, "Конспект не собран. \(error.userMessage)", systemImage: "exclamationmark.octagon.fill",
@@ -122,6 +131,9 @@ struct NotesView: View {
             Spacer()
             Button(info == nil ? "Собрать" : "Пересобрать") { start(force: false) }
                 .disabled(assembly.isRunning(lecture.id) || readiness.plan == nil || recognition.isBusy(lecture.id))
+            if info != nil {
+                enrichButton(busy: assembly.isRunning(lecture.id))
+            }
             Button {
                 flushSave()
                 showHistory = true
@@ -141,9 +153,26 @@ struct NotesView: View {
     }
 
     @ViewBuilder
+    private func enrichButton(busy: Bool) -> some View {
+        if let run = enrichment.runs[lecture.id] {
+            HStack(spacing: Spacing.xs) {
+                ProgressView().controlSize(.small)
+                Text(run.stage == .verifying ? "Проверяю добавленное…" : "Дополняю…")
+                Button("Отменить") { enrichment.cancel(lecture.id) }
+            }
+        } else {
+            Button(info?.enrichment == nil ? "Дополнить" : "Дополнить заново") { enrich() }
+                .disabled(busy || recognition.isBusy(lecture.id))
+                .help("Добавить резюме, пояснения, примеры и схемы помеченными блоками. Текст автора не меняется; "
+                      + "добавленное проверяется вторым проходом. Работает только через Claude.")
+        }
+    }
+
+    @ViewBuilder
     private var provenance: some View {
         if let info {
             Text(describe(info)).foregroundStyle(.secondary).lineLimit(1)
+                .help(enrichmentHelp(info))
                 .help(info.skippedPages > 0 ? "При сборке пропущено нераспознанных страниц: \(info.skippedPages)" : "")
             ReviewBadge(engine: info.engine, manuallyEdited: info.manuallyEdited)
         }
@@ -156,8 +185,18 @@ struct NotesView: View {
         if let mode = info.mode { parts.append(mode.title) }
         if info.parts > 1 { parts.append("частей: \(info.parts)") }
         parts.append(info.updatedAt.stamp)
+        if info.enrichment != nil { parts.append("дополнен") }
         if info.manuallyEdited { parts.append("правлено вручную") }
         return parts.joined(separator: " · ")
+    }
+
+    private func enrichmentHelp(_ info: ArtifactInfo) -> String {
+        guard let e = info.enrichment else {
+            return info.skippedPages > 0 ? "При сборке пропущено нераспознанных страниц: \(info.skippedPages)" : ""
+        }
+        var text = "Дополнено \(e.createdAt.stamp): блоков \(e.added)"
+        if e.removedByCheck > 0 { text += ", убрано проверкой \(e.removedByCheck)" }
+        return text
     }
 
     private func planDescription(_ plan: AssemblyPlan, _ input: AssemblyInput) -> String {
@@ -188,6 +227,11 @@ struct NotesView: View {
         }
         editing = false
         assembly.assemble(lecture.id)
+    }
+
+    private func enrich() {
+        flushSave()
+        enrichment.enrich(lecture.id)
     }
 
     private func load() {

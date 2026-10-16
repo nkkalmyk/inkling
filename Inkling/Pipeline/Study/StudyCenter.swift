@@ -34,7 +34,7 @@ final class StudyCenter {
 
     /// Хеш текущего конспекта — входные данные учебных материалов.
     static func inputHash(_ lecture: LectureRecord) -> String? {
-        KonspektStore(folder: lecture.folder).read().map(FileHash.sha256)
+        KonspektStore(folder: lecture.folder).read().map { FileHash.sha256(Enrichment.removing(from: $0)) }
     }
 
     /// Конспект изменился после подготовки материалов.
@@ -50,7 +50,8 @@ final class StudyCenter {
     func generate(_ lectureID: UUID) {
         guard runs[lectureID] == nil, let lecture = library.lecture(id: lectureID) else { return }
         errors[lectureID] = nil
-        let raw = KonspektStore(folder: lecture.folder).read() ?? ""
+        // Учебные материалы строятся по авторскому тексту: блоки «Дополнить» в них и в хеш не входят.
+        let raw = Enrichment.removing(from: KonspektStore(folder: lecture.folder).read() ?? "")
         let konspekt = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !konspekt.isEmpty else {
             errors[lectureID] = .invalidOutput("Сначала соберите конспект: материалы готовятся только по нему.")
@@ -118,7 +119,7 @@ final class StudyCenter {
     """
 
     private func save(_ study: StudyMaterials, response: AIResponse, inputHash: String, lectureID: UUID) throws {
-        guard let lecture = try library.store.findLecture(id: lectureID) else { throw LibraryError.lectureNotFound }
+        guard let lecture = try library.store.findLecture(id: lectureID, hint: library.lecture(id: lectureID)?.folder) else { throw LibraryError.lectureNotFound }
         let now = JSONCoding.rounded(Date())
         try StudyStore(folder: lecture.folder).writeNew(study, previous: lecture.meta.study)
         let info = ArtifactInfo(engine: response.engine, model: response.model, createdAt: now, updatedAt: now,

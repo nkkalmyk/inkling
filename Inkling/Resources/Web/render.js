@@ -18,6 +18,16 @@
     return defaultImage(tokens, idx, options, env, self);
   };
 
+  // ```plot и ```svg — графики и схемы из «Дополнить» (diagram.js). Остальные блоки кода — как обычно.
+  var defaultFence = md.renderer.rules.fence;
+  md.renderer.rules.fence = function (tokens, idx, options, env, self) {
+    var info = (tokens[idx].info || '').trim().toLowerCase();
+    var diagram = global.InklingDiagram;
+    if (diagram && info === 'plot') return diagram.plot(tokens[idx].content);
+    if (diagram && info === 'svg') return diagram.svg(tokens[idx].content);
+    return defaultFence ? defaultFence(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options);
+  };
+
   // Находит формулы $...$ и $$...$$ вне кода и заменяет их метками INKLINGMATH<n>X.
   function extractMath(src) {
     var formulas = [];
@@ -129,6 +139,8 @@
   function toHTML(markdown) {
     var extracted = extractMath(markdown || '');
     var html = md.render(extracted.text);
+    // `[?слово]` — догадка модели по смыслу там, где почерк не читается; до подстановки формул, пока они ещё метки.
+    html = html.replace(/\[\?([^\]\n<>]+)\]/g, '<mark class="guess" title="Догадка модели по смыслу: проверьте по фото">$1</mark>');
     // Формула одна в абзаце — выключенная, без обёртки <p>.
     html = html.replace(new RegExp('<p>(' + PH + '(\\d+)X)</p>', 'g'), function (whole, all, idx) {
       var f = extracted.formulas[+idx];
@@ -142,6 +154,10 @@
     html = html.replace(/\[неразборчиво\]/g, '<mark class="illegible">[неразборчиво]</mark>');
     html = html.replace(/<blockquote>\s*<p>(⚠️|⚠)/g, '<blockquote class="callout warn"><p>$1');
     html = html.replace(/<blockquote>\s*<p>(📎)/g, '<blockquote class="callout slides"><p>$1');
+    html = html.replace(/<blockquote>\s*<p>(💡)/g, '<blockquote class="callout explain"><p>$1');
+    html = html.replace(/<blockquote>\s*<p>(📝)/g, '<blockquote class="callout example"><p>$1');
+    html = html.replace(/<blockquote>\s*<p>(🔗)/g, '<blockquote class="callout link"><p>$1');
+    html = html.replace(/<h2>(\s*🧭)/g, '<h2 class="summary-heading">$1');
     return html;
   }
 

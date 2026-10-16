@@ -80,6 +80,16 @@ struct PageTextEditor: NSViewRepresentable {
                 let next = found.location + found.length
                 search = NSRange(location: next, length: full.length - next)
             }
+            // Догадки модели `[?слово]`: подчёркнуты точками, без перехода к фото.
+            if let guesses = try? NSRegularExpression(pattern: #"\[\?[^\]\n]+\]"#) {
+                for match in guesses.matches(in: storage.string, range: full) {
+                    storage.addAttributes([
+                        .underlineStyle: NSUnderlineStyle.patternDot.rawValue | NSUnderlineStyle.single.rawValue,
+                        .underlineColor: NSColor.systemOrange,
+                        .toolTip: "Догадка модели по смыслу: проверьте по фото",
+                    ], range: match.range)
+                }
+            }
             storage.endEditing()
             textView.typingAttributes = [.font: PageTextEditor.font, .foregroundColor: NSColor.textColor]
         }

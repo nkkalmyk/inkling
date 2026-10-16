@@ -51,13 +51,22 @@ extension Library {
     func importFiles(_ urls: [URL], into section: SourceSection, lectureID: UUID, staging: URL? = nil) {
         let pdfs = urls.filter { SourceImporter.kind(of: $0) == .pdf }
         let others = urls.filter { SourceImporter.kind(of: $0) != .pdf }
-        let guesses = pdfs.compactMap { try? PDFTools.guessSection($0) }
-        if let mismatch = guesses.first(where: { $0 != section }) {
-            pdfQuestion = PDFSectionQuestion(lectureID: lectureID, requested: section, guess: mismatch,
-                                             pdfs: pdfs, others: others, staging: staging)
+        guard !pdfs.isEmpty else {
+            runImport([(section, urls)], lectureID: lectureID, staging: staging)
             return
         }
-        runImport([(section, urls)], lectureID: lectureID, staging: staging)
+        // Открытие PDF для оценки текстового слоя может быть долгим: делаем это вне главного потока.
+        Task {
+            let guesses = await Task.detached(priority: .userInitiated) {
+                pdfs.compactMap { try? PDFTools.guessSection($0) }
+            }.value
+            if let mismatch = guesses.first(where: { $0 != section }) {
+                pdfQuestion = PDFSectionQuestion(lectureID: lectureID, requested: section, guess: mismatch,
+                                                 pdfs: pdfs, others: others, staging: staging)
+                return
+            }
+            runImport([(section, urls)], lectureID: lectureID, staging: staging)
+        }
     }
 
     /// Ответ на вопрос о разделе PDF; `nil` — отмена.
@@ -77,7 +86,7 @@ extension Library {
 
     private func runImport(_ groups: [(SourceSection, [URL])], lectureID: UUID, staging: URL?) {
         let groups = groups.filter { !$0.1.isEmpty }
-        guard !groups.isEmpty, let lecture = (try? store.findLecture(id: lectureID)) ?? nil else {
+        guard !groups.isEmpty, let lecture = (try? store.findLecture(id: lectureID, hint: lecture(id: lectureID)?.folder)) ?? nil else {
             if let staging { try? FileManager.default.removeItem(at: staging) }
             return
         }

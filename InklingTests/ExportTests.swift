@@ -71,3 +71,26 @@ struct PDFExportTests {
         }
     }
 }
+
+@Suite("Куда сохраняется PDF")
+struct ExportLocationTests {
+    @Test func pdfNameIsTopicSubjectDate() {
+        #expect(ExportLocation.pdfBaseName(subject: "Математический анализ", topic: "пределы функций", date: .d("2026-10-09"))
+                == "Пределы функций — Математический анализ — 2026-10-09")
+        #expect(ExportLocation.pdfBaseName(subject: "Химия", topic: "ОВР: основы/баланс", date: .d("2026-10-14"))
+                == "ОВР- основы-баланс — Химия — 2026-10-14")
+    }
+
+    @Test func pdfGoesToKonspektyFolderInDocuments() throws {
+        let dir = try TempDir()
+        let url = try ExportLocation.pdfURL(baseName: "2026-10-09 — пределы функций", documents: dir.url)
+        #expect(url.deletingLastPathComponent().lastPathComponent == "Конспекты")
+        #expect(url.deletingLastPathComponent().deletingLastPathComponent().path == dir.url.path)
+        #expect(url.lastPathComponent == "2026-10-09 — пределы функций.pdf")
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path, isDirectory: &isDirectory))
+        #expect(isDirectory.boolValue)
+        // Повтор не падает на уже существующей папке.
+        #expect(try ExportLocation.pdfURL(baseName: "x", documents: dir.url).lastPathComponent == "x.pdf")
+    }
+}

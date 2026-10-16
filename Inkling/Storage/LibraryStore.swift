@@ -154,8 +154,24 @@ struct LibraryStore: Sendable {
     }
 
     /// Ищет лекцию по `id` во всей библиотеке: путь мог измениться снаружи.
-    func findLecture(id: UUID) throws -> LectureRecord? {
-        try loadSubjects().lazy.flatMap(\.lectures).first { $0.id == id }
+    /// Если известна последняя папка лекции (`hint`), сначала проверяется она: одно чтение вместо обхода библиотеки.
+    /// Без совпадения обход идёт до первой найденной лекции, без сортировки и без чтения остальных.
+    func findLecture(id: UUID, hint: URL? = nil) throws -> LectureRecord? {
+        if let hint, let record = lectureRecord(at: hint), record.id == id { return record }
+        for subjectFolder in try subdirectories(of: root) where !subjectFolder.lastPathComponent.hasPrefix("_") {
+            for lectureFolder in try subdirectories(of: subjectFolder) {
+                if let record = lectureRecord(at: lectureFolder), record.id == id { return record }
+            }
+        }
+        return nil
+    }
+
+    /// Лекция по папке, если `meta.json` на месте, скачан и читается.
+    private func lectureRecord(at lectureFolder: URL) -> LectureRecord? {
+        let metaURL = lectureFolder.appendingPathComponent(Self.metaFileName)
+        guard ICloud.availability(of: metaURL) == .local,
+              let meta = try? readMeta(in: lectureFolder) else { return nil }
+        return LectureRecord(meta: meta, folder: lectureFolder, hasConflict: ICloud.hasConflicts(metaURL))
     }
 
     // MARK: Предметы
