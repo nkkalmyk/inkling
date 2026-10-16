@@ -42,7 +42,8 @@ final class ExportController {
         // PDF сразу падает в «Документы → Конспекты», без панели сохранения.
         let url: URL
         do {
-            url = try ExportLocation.pdfURL(baseName: baseName)
+            url = try ExportLocation.pdfURL(baseName: ExportLocation.pdfBaseName(
+                subject: lecture.meta.subject, topic: lecture.meta.topic, date: lecture.meta.date))
         } catch {
             library.errorMessage = "Не удалось создать папку «\(ExportLocation.pdfFolderName)»: \(error.localizedDescription)"
             return
