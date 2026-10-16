@@ -33,8 +33,12 @@ struct DetailedBandsTests {
         let parts = try ImageProcessor.detailedBands(original, crop: .original, rotation: 0)
         #expect(parts.count == ImageProcessor.detailedLayout.count)
         #expect(parts.allSatisfy { $0.starts(with: [0xFF, 0xD8]) })
-        // Длинная сторона страницы сжата до 4500, а не до обычных 2000.
+        // Страница сжата до 4500 по длинной стороне (3375×4500), а не до обычных 2000; фрагмент сетки 3×2 — около 1930×1730.
         let first = try #require(CIImage(data: parts[0]))
-        #expect(first.extent.width > 3000)
+        #expect(abs(first.extent.width - 1929) <= 3)
+        #expect(abs(first.extent.height - 1731) <= 3)
+        let single = try ImageProcessor.detailedBands(original, crop: .original, rotation: 0,
+                                                       layout: .init(rows: 1, columns: 1))
+        #expect(single.count == 1)
     }
 }
