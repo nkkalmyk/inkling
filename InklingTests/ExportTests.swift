@@ -74,11 +74,11 @@ struct PDFExportTests {
 
 @Suite("Куда сохраняется PDF")
 struct ExportLocationTests {
-    @Test func pdfNameGroupsBySubjectAndSortsByDate() {
+    @Test func pdfNameIsTopicSubjectDate() {
         #expect(ExportLocation.pdfBaseName(subject: "Математический анализ", topic: "пределы функций", date: .d("2026-10-09"))
-                == "Математический анализ — 2026-10-09 — Пределы функций")
+                == "Пределы функций — Математический анализ — 2026-10-09")
         #expect(ExportLocation.pdfBaseName(subject: "Химия", topic: "ОВР: основы/баланс", date: .d("2026-10-14"))
-                == "Химия — 2026-10-14 — ОВР- основы-баланс")
+                == "ОВР- основы-баланс — Химия — 2026-10-14")
     }
 
     @Test func pdfGoesToKonspektyFolderInDocuments() throws {
