@@ -90,6 +90,15 @@ struct RenderJSTests {
         }
     }
 
+    @Test func modelGuessIsMarked() {
+        let out = html("Равны [?определители] матриц и [?$A^T$] тоже.")
+        #expect(out.contains("<mark class=\"guess\""))
+        #expect(out.contains(">определители</mark>"))
+        #expect(out.contains("class=\"katex\""))
+        #expect(!out.contains("[?"))
+        #expect(html("Просто [скобки] и [ссылка?]").contains("[скобки]"))
+    }
+
     @Test func markdownAndInlineMath() {
         let out = html("# Тема\n\nФормула $a_1 * b_2$ в тексте.")
         #expect(out.contains("<h1>Тема</h1>"))
