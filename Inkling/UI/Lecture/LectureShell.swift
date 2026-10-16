@@ -348,7 +348,10 @@ struct ActivityRoot: View {
     let content: AnyView
 
     var body: some View {
+        // Хост-вид центрирует корень по его собственному размеру: вкладка должна занимать всю область,
+        // иначе фон зоны и пустые состояния собираются комком посередине.
         content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environment(\.isActiveTab, activity.isActive)
             .accessibilityHidden(!activity.isActive)
     }
