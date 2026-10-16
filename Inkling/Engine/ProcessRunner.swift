@@ -206,7 +206,15 @@ private final class LockedBuffer: @unchecked Sendable {
     private let lock = NSLock()
     private var storage = Data()
 
-    func append(_ bytes: ArraySlice<UInt8>) { lock.withLock { storage.append(contentsOf: bytes) } }
+    /// Потолок объёма: лишнее отбрасывается, но канал читается дальше, чтобы процесс не завис на записи.
+    static let limit = 32 * 1024 * 1024
+
+    func append(_ bytes: ArraySlice<UInt8>) {
+        lock.withLock {
+            let room = max(Self.limit - storage.count, 0)
+            storage.append(contentsOf: bytes.prefix(room))
+        }
+    }
     var data: Data { lock.withLock { storage } }
 }
 

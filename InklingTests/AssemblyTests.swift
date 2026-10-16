@@ -17,7 +17,7 @@ struct RenderJSTests {
         context.evaluateScript("var self = this; var globalThis = this;")
         let web = NotesWebView.webFolder!
         for file in ["vendor/katex/katex.min.js", "vendor/katex/contrib/mhchem.min.js",
-                     "vendor/markdown-it/markdown-it.umd.min.js", "render.js"] {
+                     "vendor/markdown-it/markdown-it.umd.min.js", "diagram.js", "render.js"] {
             context.evaluateScript(try! String(contentsOf: web.appendingPathComponent(file), encoding: .utf8),
                                    withSourceURL: web.appendingPathComponent(file))
         }
@@ -44,10 +44,59 @@ struct RenderJSTests {
 
     @Test func bundleContainsWebAssets() throws {
         let web = try #require(NotesWebView.webFolder)
-        for file in ["notes.html", "notes.css", "render.js", "vendor/katex/katex.min.css",
+        for file in ["notes.html", "notes.css", "render.js", "diagram.js", "vendor/katex/katex.min.css",
                      "vendor/katex/fonts/KaTeX_Main-Regular.woff2", "vendor/VERSIONS.md"] {
             #expect(FileManager.default.fileExists(atPath: web.appendingPathComponent(file).path), "\(file)")
         }
+    }
+
+    // MARK: Блоки «Дополнить»
+
+    @Test func enrichmentCalloutsGetClasses() {
+        let out = html("> 💡 Пояснение: просто.\n\n> 📝 Пример: два плюс два.\n\n> 🔗 Связи: см. выше.\n\n## 🧭 Главное\n\n- пункт")
+        #expect(out.contains("callout explain"))
+        #expect(out.contains("callout example"))
+        #expect(out.contains("callout link"))
+        #expect(out.contains("summary-heading"))
+    }
+
+    @Test func plotBlockRendersCurveWithoutNetwork() {
+        let spec = #"{"title":"Парабола","x":[-3,3],"functions":[{"expr":"x^2 - 1","label":"y = x² − 1"}],"points":[{"x":1,"y":0,"label":"A"}]}"#
+        let out = html("```plot\n\(spec)\n```")
+        #expect(out.contains("<svg"))
+        #expect(out.contains("class=\"curve c0\""))
+        #expect(out.contains("Парабола"))
+        #expect(!out.contains("diagram-error"))
+    }
+
+    @Test func plotRejectsUnknownNamesAndBrokenJSON() {
+        let bad = html("```plot\n{\"x\":[0,1],\"functions\":[{\"expr\":\"alert(1)\"}]}\n```")
+        #expect(bad.contains("diagram-error"))
+        #expect(!bad.contains("<svg"))
+        #expect(html("```plot\nне json\n```").contains("diagram-error"))
+    }
+
+    @Test func svgIsSanitized() {
+        let source = """
+        <svg viewBox="0 0 100 100" onload="alert(1)"><script>alert(2)</script>\
+        <a href="javascript:alert(3)"><circle cx="50" cy="50" r="10" fill="red" style="x"/></a>\
+        <image href="https://evil.example/x.png"/><text x="5" y="5">H₂O &lt;b&gt;</text></svg>
+        """
+        let out = html("```svg\n\(source)\n```")
+        #expect(out.contains("<circle"))
+        #expect(out.contains("<text"))
+        for forbidden in ["onload", "<script", "javascript", "<a ", "<image", "evil.example", "style="] {
+            #expect(!out.contains(forbidden), "\(forbidden)")
+        }
+    }
+
+    @Test func modelGuessIsMarked() {
+        let out = html("Равны [?определители] матриц и [?$A^T$] тоже.")
+        #expect(out.contains("<mark class=\"guess\""))
+        #expect(out.contains(">определители</mark>"))
+        #expect(out.contains("class=\"katex\""))
+        #expect(!out.contains("[?"))
+        #expect(html("Просто [скобки] и [ссылка?]").contains("[скобки]"))
     }
 
     @Test func markdownAndInlineMath() {

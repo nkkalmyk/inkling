@@ -124,7 +124,7 @@ final class AssemblyCenter {
     /// Пишет `konspekt.md` (прежний — в историю) и описание в `meta.json`. Папка ищется заново.
     private func save(_ text: String, response: AIResponse, plan: AssemblyPlan, input: AssemblyInput, lectureID: UUID) throws {
         guard !text.isEmpty else { throw AIError.invalidOutput("Модель вернула пустой конспект.") }
-        guard let lecture = try library.store.findLecture(id: lectureID) else { throw LibraryError.lectureNotFound }
+        guard let lecture = try library.store.findLecture(id: lectureID, hint: library.lecture(id: lectureID)?.folder) else { throw LibraryError.lectureNotFound }
         let now = JSONCoding.rounded(Date())
         try KonspektStore(folder: lecture.folder).write(text + "\n", previous: lecture.meta.konspekt)
         let info = ArtifactInfo(engine: response.engine, model: response.model, createdAt: now, updatedAt: now,

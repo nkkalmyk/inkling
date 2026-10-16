@@ -9,9 +9,11 @@ import Vision
 enum ImageProcessingError: LocalizedError {
     case unreadable(String)
     case encodingFailed
+    case tooLarge(String)
 
     var errorDescription: String? {
         switch self {
+        case .tooLarge(let name): "Изображение «\(name)» слишком большое (больше 300 мегапикселей)."
         case .unreadable(let name): "Не удалось прочитать изображение «\(name)»."
         case .encodingFailed: "Не удалось сохранить изображение в JPEG."
         }
@@ -21,6 +23,9 @@ enum ImageProcessingError: LocalizedError {
 /// Предобработка фото рукописи (SPEC, раздел 3.2): поворот по EXIF, обрезка и выпрямление документа,
 /// поворот пользователем, уменьшение до ~2000 px, JPEG ~0.85. Только системные фреймворки.
 enum ImageProcessor {
+    /// Потолок размера исходной картинки (фото с телефона — 12–50 мегапикселей).
+    static let maxPixels = 300_000_000
+
     static let maxDimension: CGFloat = 2000
     static let jpegQuality: CGFloat = 0.85
 
@@ -35,6 +40,13 @@ enum ImageProcessor {
 
     /// Картинка с уже применённой EXIF-ориентацией, начало координат в (0, 0). HEIC читается так же.
     static func loadOriented(_ url: URL) throws -> CIImage {
+        // Размер читается из заголовка, до декодирования: «бомба» в картинке не должна съесть память.
+        if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+           let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int,
+           w * h > maxPixels {
+            throw ImageProcessingError.tooLarge(url.lastPathComponent)
+        }
         guard let image = CIImage(contentsOf: url, options: [.applyOrientationProperty: true]) else {
             throw ImageProcessingError.unreadable(url.lastPathComponent)
         }
@@ -203,8 +215,9 @@ enum ImageProcessor {
         var pixelSize: CGSize
     }
 
-    /// Полный конвейер для фото рукописи. Для `.auto(nil)` документ ищется заново.
-    static func process(_ original: CIImage, crop: CropMode, rotation: Int, detect: Bool = true) throws -> Result {
+    /// Обрезка, выпрямление и поворот без сжатия до JPEG; длинная сторона не больше `maxDimension`.
+    static func prepared(_ original: CIImage, crop: CropMode, rotation: Int, maxDimension: CGFloat,
+                         detect: Bool = true) -> (image: CIImage, detected: Quad?) {
         var image = original
         var detected: Quad?
         switch crop {
@@ -217,8 +230,76 @@ enum ImageProcessor {
         case .manual(let quad):
             image = perspectiveCorrected(image, quad: quad)
         }
-        image = resized(rotated(image, quarterTurns: rotation), maxDimension: maxDimension)
+        return (resized(rotated(image, quarterTurns: rotation), maxDimension: maxDimension), detected)
+    }
+
+    /// Полный конвейер для фото рукописи. Для `.auto(nil)` документ ищется заново.
+    static func process(_ original: CIImage, crop: CropMode, rotation: Int, detect: Bool = true) throws -> Result {
+        let (image, detected) = prepared(original, crop: crop, rotation: rotation, maxDimension: maxDimension, detect: detect)
         return Result(jpeg: try jpegData(image), detectedQuad: detected, pixelSize: image.extent.size)
+    }
+
+    // MARK: Режим «Подробно»
+
+    /// Как нарезать страницу: ряды сверху вниз, в ряду колонки слева направо; соседние фрагменты перекрываются.
+    struct DetailedLayout: Equatable, Sendable {
+        var rows: Int
+        var columns: Int
+        var rowOverlap: Double = 0.2
+        var columnOverlap: Double = 0.25
+
+        var count: Int { rows * columns }
+
+        /// Для промпта: как расположены фрагменты.
+        var description: String {
+            if columns == 1 {
+                return "Фрагменты идут сверху вниз, соседние перекрываются примерно на пятую часть высоты."
+            }
+            return "Фрагменты образуют сетку из \(rows) рядов по \(columns) колонки: сначала верхний ряд слева направо, "
+                + "затем следующий. Соседние перекрываются; строки текста, которые пересекают стык колонок, "
+                + "склей по перекрытию в одну строку."
+        }
+    }
+
+    /// Размер длинной стороны при разбиении на фрагменты: крупнее обычных 2000 px, чтобы мелкие детали не терялись.
+    static let detailedMaxDimension: CGFloat = 4500
+    nonisolated(unsafe) static var detailedLayout = DetailedLayout(rows: 3, columns: 2)
+
+    /// Режет картинку на фрагменты по сетке `layout`, ряды сверху вниз, внутри ряда слева направо.
+    static func tiles(of image: CIImage, layout: DetailedLayout) -> [CIImage] {
+        let extent = image.extent
+        guard layout.count > 1, extent.width > 0, extent.height > 0 else { return [image] }
+        func spans(total: Double, count: Int, overlap: Double) -> [(start: Double, length: Double)] {
+            guard count > 1 else { return [(0, total)] }
+            let o = min(max(overlap, 0), 0.5)
+            let length = total / (Double(count) - Double(count - 1) * o)
+            let step = length * (1 - o)
+            return (0..<count).map { (start: min(Double($0) * step, total - length), length: length) }
+        }
+        let rows = spans(total: extent.height, count: max(layout.rows, 1), overlap: layout.rowOverlap)
+        let columns = spans(total: extent.width, count: max(layout.columns, 1), overlap: layout.columnOverlap)
+        var result: [CIImage] = []
+        for row in rows {
+            // У CIImage начало координат внизу, поэтому первый ряд — самый верхний.
+            let y = extent.maxY - row.start - row.length
+            for column in columns {
+                let rect = CGRect(x: extent.minX + column.start, y: y, width: column.length, height: row.length).integral
+                result.append(normalized(image.cropped(to: rect)))
+            }
+        }
+        return result
+    }
+
+    /// Только ряды (одна колонка): удобно для тестов и простых случаев.
+    static func bands(of image: CIImage, count: Int, overlap: Double) -> [CIImage] {
+        tiles(of: image, layout: DetailedLayout(rows: count, columns: 1, rowOverlap: overlap))
+    }
+
+    /// JPEG-фрагменты страницы для распознавания «Подробно».
+    static func detailedBands(_ original: CIImage, crop: CropMode, rotation: Int,
+                              layout: DetailedLayout = detailedLayout) throws -> [Data] {
+        let (image, _) = prepared(original, crop: crop, rotation: rotation, maxDimension: detailedMaxDimension)
+        return try tiles(of: image, layout: layout).map { try jpegData($0, quality: 0.9) }
     }
 
     static func jpegData(_ image: CIImage, quality: CGFloat = jpegQuality) throws -> Data {

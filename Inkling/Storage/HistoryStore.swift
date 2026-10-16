@@ -34,13 +34,14 @@ struct HistoryStore: Sendable {
         stampFormatter.date(from: stamp)
     }
 
-    private static var stampFormatter: DateFormatter {
+    /// Создаётся один раз: `DateFormatter` дорог, а `entries()` вызывает его на каждый файл. Только чтение, поэтому безопасен.
+    private nonisolated(unsafe) static let stampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "UTC")
         formatter.dateFormat = "yyyyMMdd'T'HHmmss.SSS'Z'"
         return formatter
-    }
+    }()
 
     /// Сохраняет копию файла. Повтор последней сохранённой версии не дублируется.
     func save<Info: Encodable>(_ file: URL, info: Info?, now: Date = Date()) throws {
