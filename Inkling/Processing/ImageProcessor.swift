@@ -215,8 +215,9 @@ enum ImageProcessor {
         var pixelSize: CGSize
     }
 
-    /// Полный конвейер для фото рукописи. Для `.auto(nil)` документ ищется заново.
-    static func process(_ original: CIImage, crop: CropMode, rotation: Int, detect: Bool = true) throws -> Result {
+    /// Обрезка, выпрямление и поворот без сжатия до JPEG; длинная сторона не больше `maxDimension`.
+    static func prepared(_ original: CIImage, crop: CropMode, rotation: Int, maxDimension: CGFloat,
+                         detect: Bool = true) -> (image: CIImage, detected: Quad?) {
         var image = original
         var detected: Quad?
         switch crop {
@@ -229,8 +230,44 @@ enum ImageProcessor {
         case .manual(let quad):
             image = perspectiveCorrected(image, quad: quad)
         }
-        image = resized(rotated(image, quarterTurns: rotation), maxDimension: maxDimension)
+        return (resized(rotated(image, quarterTurns: rotation), maxDimension: maxDimension), detected)
+    }
+
+    /// Полный конвейер для фото рукописи. Для `.auto(nil)` документ ищется заново.
+    static func process(_ original: CIImage, crop: CropMode, rotation: Int, detect: Bool = true) throws -> Result {
+        let (image, detected) = prepared(original, crop: crop, rotation: rotation, maxDimension: maxDimension, detect: detect)
         return Result(jpeg: try jpegData(image), detectedQuad: detected, pixelSize: image.extent.size)
+    }
+
+    // MARK: Режим «Подробно»
+
+    /// Размер длинной стороны при разбиении на фрагменты: крупнее обычных 2000 px, чтобы мелкие детали не терялись.
+    static let detailedMaxDimension: CGFloat = 4500
+    static let detailedBandCount = 3
+    /// Доля высоты фрагмента, которая перекрывается с соседним: строка на стыке целиком попадает в один из них.
+    static let detailedOverlap: Double = 0.2
+
+    /// Режет картинку на горизонтальные фрагменты сверху вниз с перекрытием.
+    static func bands(of image: CIImage, count: Int, overlap: Double) -> [CIImage] {
+        let n = max(count, 1)
+        let extent = image.extent
+        guard n > 1, extent.height > 0 else { return [image] }
+        let o = min(max(overlap, 0), 0.5)
+        let height = extent.height / (Double(n) - Double(n - 1) * o)
+        let step = height * (1 - o)
+        return (0..<n).map { index in
+            // У CIImage начало координат внизу, поэтому первый фрагмент — самый верхний.
+            let top = extent.maxY - Double(index) * step
+            let y = max(top - height, extent.minY)
+            let rect = CGRect(x: extent.minX, y: y, width: extent.width, height: min(height, top - y))
+            return normalized(image.cropped(to: rect.integral))
+        }
+    }
+
+    /// JPEG-фрагменты страницы для распознавания «Подробно», сверху вниз.
+    static func detailedBands(_ original: CIImage, crop: CropMode, rotation: Int) throws -> [Data] {
+        let (image, _) = prepared(original, crop: crop, rotation: rotation, maxDimension: detailedMaxDimension)
+        return try bands(of: image, count: detailedBandCount, overlap: detailedOverlap).map { try jpegData($0, quality: 0.9) }
     }
 
     static func jpegData(_ image: CIImage, quality: CGFloat = jpegQuality) throws -> Data {

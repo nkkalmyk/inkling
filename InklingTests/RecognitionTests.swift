@@ -366,3 +366,44 @@ struct HistoryFormatTests {
         #expect(entries[1].info(PageText.self)?.origin == .model)
     }
 }
+
+/// Сравнение обычного и подробного распознавания одной настоящей страницы (по флагу, тратит лимит).
+/// `INKLING_LIVE_PAGE` — путь к фото; результаты пишутся в `INKLING_LIVE_OUT_DIR` (`normal.md`, `detailed.md`).
+@Suite("Распознавание: обычное и подробное", .enabled(if: ProcessInfo.processInfo.environment["INKLING_LIVE_CLAUDE"] == "1"))
+@MainActor
+struct DetailedRecognitionLiveTests {
+    @Test func comparesNormalAndDetailed() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        let page = URL(fileURLWithPath: try #require(environment["INKLING_LIVE_PAGE"], "задайте INKLING_LIVE_PAGE"))
+        let dir = try TempDir()
+        let library = Library(root: dir.url.appendingPathComponent("Inkling"),
+                              trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: library.root)
+        #expect(library.createLecture(subject: "Высшая алгебра", topic: "Сравнение", date: .d("2026-10-16")))
+        let lectureID = try #require(library.selection)
+        let folder = try #require(library.lecture(id: lectureID)).folder
+        let result = SourceImporter(paths: LecturePaths(folder: folder)).importFiles([page], into: .notes)
+        library.mutate(lectureID) { $0.appendImported(result) }
+        let pageID = try #require(result.notes.first?.id)
+
+        let router = EngineRouter(primary: ClaudeCodeEngine(config: .init()), fallback: nil, settings: .init())
+        let center = RecognitionCenter(library: library, router: { router }, timeout: { 240 }, maxParallel: { 1 })
+        library.recognition = center
+        var outputs: [(String, String)] = []
+        for (name, detailed) in [("normal", false), ("detailed", true)] {
+            let started = Date()
+            center.recognize(lectureID: lectureID, pageIDs: [pageID], detailed: detailed)
+            for _ in 0..<1500 where center.isBusy(lectureID) { try await Task.sleep(for: .milliseconds(200)) }
+            let lecture = try #require(library.lecture(id: lectureID))
+            let text = try #require(PageTextStore(paths: LecturePaths(folder: lecture.folder)).read(pageID, in: .notes),
+                                    "\(name): \(String(describing: center.state(of: pageID)))")
+            let illegible = text.components(separatedBy: "[неразборчиво]").count - 1
+            let guesses = text.components(separatedBy: "[?").count - 1
+            print("\(name): \(Int(Date().timeIntervalSince(started))) с, символов \(text.count), неразборчиво \(illegible), догадок \(guesses)")
+            outputs.append((name, text))
+        }
+        if let out = environment["INKLING_LIVE_OUT_DIR"] {
+            for (name, text) in outputs { try text.write(toFile: "\(out)/\(name).md", atomically: true, encoding: .utf8) }
+        }
+    }
+}

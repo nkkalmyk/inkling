@@ -117,6 +117,16 @@ struct PromptLibrary: Sendable {
     В ответе выведи только Markdown страницы, без вступлений и пояснений.
     """
 
+    /// Режим «Подробно»: страница одним запросом по нескольким фрагментам (`imageNames` — сверху вниз).
+    func detailedRecognitionPrompt(subject: String, topic: String, imageNames: [String]) throws -> String {
+        Self.render(try template("recognize-detailed.md"), values: [
+            "предмет": subject,
+            "тема": topic,
+            "вставка_предмета": subjectInsert(subject),
+            "фрагменты": imageNames.enumerated().map { "\($0.offset + 1). ./\($0.element)" }.joined(separator: "\n"),
+        ])
+    }
+
     func recognitionPrompt(section: SourceSection, subject: String, topic: String, imageName: String) throws -> String {
         let name = section == .notes ? "recognize.md" : "recognize-slide.md"
         let body = Self.render(try template(name), values: [

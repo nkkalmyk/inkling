@@ -31,6 +31,7 @@ private struct PageEditor: View {
     @State private var zoom: ZoomableImageView.ZoomRequest?
     @State private var saveTask: Task<Void, Never>?
     @State private var confirmRerecognize = false
+    @State private var rerecognizeDetailed = false
     @State private var showHistory = false
     /// Ширина панели: в узкой фото и текст встают друг под другом.
     @State private var width: CGFloat = 0
@@ -75,11 +76,20 @@ private struct PageEditor: View {
         .onChange(of: revision) { loadText() }
         .onDisappear(perform: flushSave)
         .confirmationDialog("Текст правился вручную", isPresented: $confirmRerecognize) {
-            Button("Распознать заново") { recognition.recognize(lectureID: lecture.id, pageIDs: [pageID]) }
+            Button("Распознать заново") {
+                recognition.recognize(lectureID: lecture.id, pageIDs: [pageID], detailed: rerecognizeDetailed)
+            }
             Button("Отмена", role: .cancel) {}
         } message: {
             Text("Ваша версия сохранится в истории, её можно будет восстановить.")
         }
+    }
+
+    private func rerecognize(detailed: Bool) {
+        flushSave()
+        rerecognizeDetailed = detailed
+        if info?.manuallyEdited == true { confirmRerecognize = true }
+        else { recognition.recognize(lectureID: lecture.id, pageIDs: [pageID], detailed: detailed) }
     }
 
     private var imagePane: some View {
@@ -104,13 +114,15 @@ private struct PageEditor: View {
             if let note { noteControls(note) }
             if let slide { slideControls(slide) }
             Divider().frame(height: 18)
-            Button("Распознать заново") {
-                flushSave()
-                if info?.manuallyEdited == true { confirmRerecognize = true }
-                else { recognition.recognize(lectureID: lecture.id, pageIDs: [pageID]) }
-            }
+            Button("Распознать заново") { rerecognize(detailed: false) }
             .disabled(isRunning || (slide.map { !$0.usesImage } ?? false))
             .help(slide.map { !$0.usesImage } ?? false ? "Слайд берётся из текстового слоя; переключите режим на «Картинка»" : "")
+            if section == .notes {
+                Button("Подробно") { rerecognize(detailed: true) }
+                    .disabled(isRunning)
+                    .help("Страница читается тремя увеличенными фрагментами одним запросом: лучше мелкие индексы, штрихи и "
+                          + "значки, но дольше и расходует больше лимита. Только через Claude.")
+            }
             Button {
                 flushSave()
                 showHistory = true
