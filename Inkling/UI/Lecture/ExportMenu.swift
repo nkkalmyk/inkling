@@ -38,7 +38,15 @@ final class ExportController {
     }
 
     func exportPDF() {
-        guard exportingPDFSince == nil, let konspekt, let url = savePanel(name: "\(baseName).pdf", type: .pdf) else { return }
+        guard exportingPDFSince == nil, let konspekt else { return }
+        // PDF сразу падает в «Документы → Конспекты», без панели сохранения.
+        let url: URL
+        do {
+            url = try ExportLocation.pdfURL(baseName: baseName)
+        } catch {
+            library.errorMessage = "Не удалось создать папку «\(ExportLocation.pdfFolderName)»: \(error.localizedDescription)"
+            return
+        }
         exportingPDFSince = .now
         let title = lecture.meta.topic
         let heading = PrintHeading(subject: lecture.meta.subject, topic: lecture.meta.topic,
@@ -86,7 +94,7 @@ struct ExportMenuItems: View {
     var body: some View {
         Button("Конспект в Markdown…") { export.exportMarkdown() }
             .disabled(!export.hasKonspekt)
-        Button("Конспект в PDF…") { export.exportPDF() }
+        Button("Конспект в PDF") { export.exportPDF() }
             .disabled(!export.hasKonspekt || export.exportingPDFSince != nil)
         Button("Карточки для Anki…") { export.askAnki = true }
             .disabled(!export.hasStudy)

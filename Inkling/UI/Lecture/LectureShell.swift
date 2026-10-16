@@ -196,7 +196,7 @@ struct LectureMenuCommands: View {
         Menu("Экспорт") {
             Button("Конспект в Markdown…") { commands?.exportMarkdown?() }
                 .disabled(commands?.exportMarkdown == nil)
-            Button("Конспект в PDF…") { commands?.exportPDF?() }
+            Button("Конспект в PDF") { commands?.exportPDF?() }
                 .disabled(commands?.exportPDF == nil)
             Button("Карточки для Anki…") { commands?.exportAnki?() }
                 .disabled(commands?.exportAnki == nil)
