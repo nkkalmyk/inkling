@@ -267,8 +267,9 @@ private struct ThumbnailRow<Thumbnail: View>: View {
 
     var body: some View {
         VStack(spacing: Spacing.xs) {
+            // Значок — в углу самой картинки, а не строки: фото уже ленты и стоит по центру.
             thumbnail()
-                .frame(maxWidth: .infinity, maxHeight: 180)
+                .frame(maxHeight: 180)
                 .overlay(alignment: .bottomLeading) { RecognitionBadge(pageID: id, lecture: lecture) }
                 .overlay {
                     if library.busyPages.contains(id) {
@@ -277,6 +278,7 @@ private struct ThumbnailRow<Thumbnail: View>: View {
                             .background(.regularMaterial, in: RoundedRectangle.ds(Radius.control))
                     }
                 }
+                .frame(maxWidth: .infinity)
             Text("\(number)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
