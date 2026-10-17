@@ -123,6 +123,8 @@ xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' bu
 
 ### Документация
 
+- [`docs/INSTALL.md`](docs/INSTALL.md) — установка для человека
+- [`AGENTS.md`](AGENTS.md) — установка для ИИ-агента и правила работы с репозиторием
 - [`CHANGELOG.md`](CHANGELOG.md) — что менялось в каждой версии
 - [`docs/HISTORY.md`](docs/HISTORY.md) — история создания: этапы, решения, хронология
 - [`docs/PROBLEMS.md`](docs/PROBLEMS.md) — проблемы, ограничения и что дальше

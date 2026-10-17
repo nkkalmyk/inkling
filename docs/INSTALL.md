@@ -1,15 +1,30 @@
-# Inkling: сборка и установка
+# Inkling: установка
+
+Инструкция для человека. Если вы ИИ-агент, читайте [`AGENTS.md`](../AGENTS.md): там те же шаги в виде проверяемого сценария.
 
 ## Что нужно
 
 - Mac на Apple Silicon, macOS 26 или новее.
-- Xcode (из App Store) и XcodeGen: `brew install xcodegen`.
-- Claude Code с выполненным входом (`claude`, затем вход через подписку Claude Pro).
+- Один ИИ-движок с выполненным входом (своих ключей API у Inkling нет):
+  - **Claude Code** по подписке Claude Pro (основной): `claude`, затем вход через подписку;
+  - или **Codex** по подписке ChatGPT (не проверен вживую, см. ниже);
+  - или только локальная **Ollama** (медленнее и хуже на плотном почерке, см. ниже).
+- Для сборки из исходников ещё Xcode (из App Store) и XcodeGen: `brew install xcodegen`.
 
-## Сборка
+## Способ 1. Готовая сборка (проще всего)
+
+1. Откройте [Releases](https://github.com/nkkalmyk/inkling/releases) и скачайте `Inkling-<версия>.zip` последнего релиза.
+   Репозиторий приватный: войдите в GitHub под аккаунтом с доступом.
+2. Распакуйте архив, перетащите `Inkling.app` в «Программы».
+3. Первый запуск: правый щелчок по `Inkling.app` → «Открыть» → «Открыть». Приложение подписано Personal Team и не нотаризовано,
+   поэтому обычный двойной щелчок покажет «Не удаётся открыть». Достаточно один раз. Подробности — раздел «Если ругается Gatekeeper».
+4. Проверьте контрольную сумму (по желанию): `shasum -a 256 Inkling-<версия>.zip` должна совпасть с суммой в описании релиза.
+5. Настройки (⌘,) → «Движок» → «Проверить подключение»: должно показать путь к движку, версию и «Работает».
+
+## Способ 2. Сборка из исходников
 
 ```
-cd ~/study-app-local
+gh repo clone nkkalmyk/inkling && cd inkling
 xcodegen generate
 xcodebuild -scheme Inkling -configuration Release -destination 'platform=macOS' -derivedDataPath build/DerivedData build
 ```
@@ -18,7 +33,7 @@ xcodebuild -scheme Inkling -configuration Release -destination 'platform=macOS' 
 
 Тесты: `xcodebuild -scheme Inkling -destination 'platform=macOS' test` (живые вызовы Claude по умолчанию выключены, см. `CLAUDE.md`).
 
-## Установка
+### Установка собранного приложения
 
 ```
 ditto build/DerivedData/Build/Products/Release/Inkling.app /Applications/Inkling.app
