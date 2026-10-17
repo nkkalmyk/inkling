@@ -1,0 +1,19 @@
+name: build-test
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build-test:
+    # Нужен Xcode 26+ и macOS 26 SDK (минимум приложения — macOS 26).
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: XcodeGen
+        run: brew install xcodegen
+      - name: Сборка и тесты (ad-hoc подпись)
+        run: |
+          xcodegen generate
+          xcodebuild -scheme Inkling -destination 'platform=macOS' build test

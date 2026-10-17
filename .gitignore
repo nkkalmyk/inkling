@@ -1,11 +1,23 @@
 # Пользовательские данные
 TestData/real/
 
+# Личная подпись и секреты (шаблон — Config/Signing.example.xcconfig)
+Config/Signing.xcconfig
+*.local.xcconfig
+.env
+.env.*
+*.p12
+*.mobileprovision
+*.provisionprofile
+
 # Xcode / XcodeGen
 *.xcodeproj/
 DerivedData/
 build/
 *.xcuserstate
+*.xcscmblueprint
+.build/
+*.dSYM/
 xcuserdata/
 
 # macOS

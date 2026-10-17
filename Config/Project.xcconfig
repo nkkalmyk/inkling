@@ -1,0 +1,9 @@
+// Общие настройки подписи. Значения по умолчанию дают сборку без личной подписи (ad-hoc):
+// она запускается на любом Mac, но разрешения macOS (например, «Документы») спрашиваются заново после обновления.
+// Свою стабильную подпись положите в Config/Signing.xcconfig (файл в .gitignore, шаблон — Signing.example.xcconfig).
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+ENABLE_HARDENED_RUNTIME = NO
+
+#include? "Signing.xcconfig"

@@ -1,0 +1,22 @@
+name: Отзыв о Codex
+description: Вы проверили движок Codex на живой подписке ChatGPT
+labels: [codex]
+body:
+  - type: markdown
+    attributes:
+      value: Движок Codex написан по документации и не проверялся на живой подписке. Любой отзыв полезен.
+  - type: dropdown
+    id: result
+    attributes:
+      label: «Проверить подключение» в настройках
+      options: [Работает, Не работает]
+    validations: {required: true}
+  - type: textarea
+    id: what
+    attributes:
+      label: Распознавание, сборка, «Дополнить»: что получилось, что нет
+  - type: textarea
+    id: details
+    attributes:
+      label: Текст из «Подробности» (без личных данных)
+      render: text

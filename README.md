@@ -22,6 +22,13 @@
 
 ---
 
+[English summary](README.en.md)
+
+<p align="center">
+  <img src="docs/assets/screenshot-1.svg" width="46%" alt="Источники и конспект (заглушка)">
+  <img src="docs/assets/screenshot-2.svg" width="46%" alt="Самопроверка (заглушка)">
+</p>
+
 ## Что умеет
 
 | | |
@@ -65,7 +72,7 @@ flowchart LR
 
 ## Установка
 
-Готовая сборка лежит в [Releases](https://github.com/nkkalmyk/inkling/releases) (подписана Personal Team, без нотаризации: при первом запуске см. «Если ругается Gatekeeper» в [`docs/INSTALL.md`](docs/INSTALL.md)). Либо соберите из исходников:
+Готовая сборка лежит в [Releases](https://github.com/nkkalmyk/inkling/releases) (подписана ad-hoc, без нотаризации: при первом запуске см. «Если ругается Gatekeeper» в [`docs/INSTALL.md`](docs/INSTALL.md)). Либо соберите из исходников:
 
 Нужны Mac на Apple Silicon с macOS 26 или новее, Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen) и выполненный вход в Claude Code (или в Codex через ChatGPT).
 
@@ -138,6 +145,11 @@ xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' bu
 ## Сторонний код
 
 В бандл встроены [KaTeX](https://katex.org) 0.18.10 с расширением mhchem и [markdown-it](https://github.com/markdown-it/markdown-it) 15.0.2, оба под лицензией MIT. Версии зафиксированы в [`Inkling/Resources/Web/vendor/VERSIONS.md`](Inkling/Resources/Web/vendor/VERSIONS.md). Всё работает офлайн.
+
+## Участие и лицензия
+
+Правила работы с репозиторием — [`CONTRIBUTING.md`](CONTRIBUTING.md), для ИИ-агентов — [`AGENTS.md`](AGENTS.md). Код распространяется по лицензии [MIT](LICENSE).
+Инструкция по установке для человека — [`docs/INSTALL.md`](docs/INSTALL.md).
 
 <div align="center">
 <sub><i>ink</i> — чернила, <i>inkling</i> — догадка.</sub>
