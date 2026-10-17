@@ -105,6 +105,34 @@ claude -p "<промпт>" \
 - Флага, отключающего пользовательские плагины и MCP, в `--help` нет.
 - Условия Google по использованию входа Antigravity из сторонних приложений не прояснены; это нужно проверить до того, как делать движок.
 
+## Codex CLI (`codex`, вход через ChatGPT), версия 0.163.0
+
+Дата разведки: 2026-10-17. Установлен `brew install codex` (cask, `/opt/homebrew/bin/codex`). **Подписки ChatGPT у автора нет, поэтому живых ответов модели нет**: проверены `--help`, разбор аргументов и поведение без входа (`codex-noauth` в `raw/`). Движок помечен в интерфейсе «не проверен вживую», формат успешного ответа взят из документации OpenAI ([non-interactive mode](https://developers.openai.com/codex/noninteractive)).
+
+### Команда (по `codex exec --help` и проверке разбора аргументов)
+```
+codex exec --json --skip-git-repo-check --ephemeral \
+  --ignore-user-config --ignore-rules -s read-only \
+  -C <временная папка> [-m <модель>] [-i <картинка>]... \
+  [--output-schema <файл схемы>] -o <файл с последним сообщением>
+```
+Промпт идёт через **stdin без аргумента `-`** (в `--help`: «if not provided as an argument … instructions are read from stdin»; без входа выводит «Reading prompt from stdin...»). Если передавать `-` после `-i`, он мог бы съесться как имя файла: `-i, --image <FILE>...` принимает несколько значений.
+- `--json` — JSONL-события в stdout; `-o/--output-last-message <FILE>` — только последнее сообщение агента в файл; `--output-schema <FILE>` — JSON Schema финального ответа (файл, не строка).
+- `-s read-only` — песочница по умолчанию, команды модели ничего не пишут. `--ephemeral` — без файлов сессий. `--skip-git-repo-check` — запуск вне git-репозитория (наша временная папка не репозиторий).
+- `--ignore-user-config` не читает `$CODEX_HOME/config.toml` (MCP, профили, модель пользователя), «auth still uses CODEX_HOME» — вход при этом сохраняется. `--ignore-rules` не читает `.rules`.
+- Флага для системного промпта нет: системный промпт приложения вставляется в начало промпта.
+- Выбор модели `-m`; неизвестное имя не отказывает, а печатает «Model metadata for `<имя>` not found. Defaulting to fallback metadata…». Поэтому модель по умолчанию **не задаём**: набор моделей зависит от тарифа, берётся выбор Codex.
+- `codex login status` без входа печатает «Not logged in» и завершается с кодом 1.
+
+### События `--json`
+- Без входа (`codex-noauth`): `thread.started` → `turn.started` → серия `{"type":"error","message":"Reconnecting... N/5 (unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: …)"}` (повторы **не фатальны сами по себе**) → `item.completed` с `item.type == "error"` («Falling back from WebSockets to HTTPS transport…») → итоговое `error` и `{"type":"turn.failed","error":{"message":"unexpected status 401 Unauthorized: …"}}`. Код выхода 1, до отказа проходит около 30 с.
+- Успех (из документации, не проверено): `item.completed` с `item.type == "agent_message"` и полем `text`, затем `turn.completed`. Текст берём из файла `-o`, а если его нет — из последнего `agent_message`.
+- Лимит тарифа (не проверено): ожидается текст вида «You've hit your usage limit…», он совпадает с `RateLimitDetector`.
+
+### Вход и безопасность
+- Вход делает сам пользователь: `codex login` (ChatGPT) в терминале; ключи в приложение не вводятся. Токены лежат в `~/.codex/auth.json` (`CODEX_HOME`).
+- Из окружения процесса убираются `OPENAI_*`, `CODEX_API_KEY` и прочие секреты (иначе Codex мог бы перейти с подписки на ключ API).
+
 ## Anki: `\ce{}` в MathJax
 
 Anki (2.1+, AnkiMobile, AnkiDroid 2.9+) рендерит формулы встроенным MathJax, и [расширение mhchem в него встроено](https://docs.ankiweb.net/manual/math): `\ce{…}` работает без настройки. Разделители только `\(…\)` и `\[…\]`, `$` не поддерживается — значит, конвертация из раздела 8 ТЗ нужна. Отдельная оговорка в инструкции не требуется.
