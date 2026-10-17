@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-label="Заглушка скриншота 1">
+  <rect width="960" height="540" rx="16" fill="#1c1c1e"/>
+  <rect x="0" y="0" width="960" height="44" rx="16" fill="#2c2c2e"/>
+  <circle cx="26" cy="22" r="6" fill="#ff5f57"/><circle cx="48" cy="22" r="6" fill="#febc2e"/><circle cx="70" cy="22" r="6" fill="#28c840"/>
+  <text x="480" y="285" text-anchor="middle" font-family="-apple-system, Helvetica, Arial" font-size="28" fill="#f5b83d">Скриншот 1: скоро</text>
+  <text x="480" y="320" text-anchor="middle" font-family="-apple-system, Helvetica, Arial" font-size="16" fill="#8e8e93">заглушка, заменить на снимок с синтетическими данными</text>
+</svg>
