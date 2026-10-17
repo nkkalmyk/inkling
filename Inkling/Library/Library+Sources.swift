@@ -226,6 +226,7 @@ extension Library {
             errorMessage = "Не удалось сохранить текст: \(error.localizedDescription)"
             return
         }
+        textRevision[lectureID, default: 0] += 1
         var info = current ?? PageText(origin: .manual, updatedAt: Date())
         info.manuallyEdited = true
         info.updatedAt = JSONCoding.rounded(Date())
@@ -245,6 +246,7 @@ extension Library {
             info.updatedAt = JSONCoding.rounded(Date())
             mutate(lectureID) { $0.setPageText(info, for: pageID) }
             pageRevisions[pageID, default: 0] += 1
+            textRevision[lectureID, default: 0] += 1
         } catch {
             errorMessage = "Не удалось восстановить версию: \(error.localizedDescription)"
         }

@@ -73,7 +73,7 @@ struct PageTextEditor: NSViewRepresentable {
                 let found = string.range(of: PageTextEditor.illegible, options: [], range: search)
                 guard found.location != NSNotFound else { break }
                 storage.addAttributes([
-                    .backgroundColor: NSColor.systemYellow.withAlphaComponent(0.45),
+                    .backgroundColor: NSColor.appAccent.withAlphaComponent(0.3),
                     .link: URL(string: "\(PageTextEditor.linkScheme)://\(found.location)")!,
                     .toolTip: "Щёлкните, чтобы приблизить это место на фото",
                 ], range: found)
@@ -85,7 +85,7 @@ struct PageTextEditor: NSViewRepresentable {
                 for match in guesses.matches(in: storage.string, range: full) {
                     storage.addAttributes([
                         .underlineStyle: NSUnderlineStyle.patternDot.rawValue | NSUnderlineStyle.single.rawValue,
-                        .underlineColor: NSColor.systemOrange,
+                        .underlineColor: NSColor.appAccent,
                         .toolTip: "Догадка модели по смыслу: проверьте по фото",
                     ], range: match.range)
                 }

@@ -410,6 +410,36 @@ struct AssemblyCenterTests {
         #expect(env.konspekt.read() == "Первая версия\n")
     }
 
+    /// Сводка для экранов не читает диск на главном потоке: сначала её нет, потом она приходит из фона
+    /// и пересчитывается после повторной ручной правки (которая не меняет meta.json).
+    @Test func knownReadinessIsComputedInBackground() async throws {
+        let env = try Env(pages: ["Страница"])
+        let center = env.center(FakeEngine([.success("Версия 1")]))
+        center.assemble(env.lectureID)
+        try await waitIdle(center, env.lectureID)
+
+        #expect(center.knownReadiness(env.lecture) == nil)
+        let fresh = try await known(center, env) { $0 != nil }
+        #expect(fresh?.isStale == false)
+
+        env.library.saveEditedText("Правка 1", pageID: "p0", lectureID: env.lectureID)
+        #expect(try await known(center, env) { $0?.isStale == true }?.isStale == true)
+        env.library.saveEditedText("Правка 2", pageID: "p0", lectureID: env.lectureID)
+        let edited = try await known(center, env) { $0?.input.notes.first?.text == "Правка 2" }
+        #expect(edited?.input.notes.first?.text == "Правка 2")
+    }
+
+    private func known(_ center: AssemblyCenter, _ env: Env,
+                       until done: (AssemblyCenter.Readiness?) -> Bool) async throws -> AssemblyCenter.Readiness? {
+        for _ in 0..<250 {
+            let value = center.knownReadiness(env.lecture)
+            if done(value) { return value }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        Issue.record("Сводка не пришла за 5 с")
+        return nil
+    }
+
     @Test func rebuildKeepsHistoryAndDetectsStaleness() async throws {
         let env = try Env(pages: ["Страница"])
         let center = env.center(FakeEngine([.success("Версия 1"), .success("Версия 2")]))

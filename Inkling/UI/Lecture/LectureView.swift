@@ -7,6 +7,7 @@ struct LectureView: View {
     @Environment(RecognitionCenter.self) private var recognition
     @Environment(AssemblyCenter.self) private var assembly
     @Environment(StudyCenter.self) private var study
+    @Environment(EnrichmentCenter.self) private var enrichment
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let lecture: LectureRecord
 
@@ -23,19 +24,23 @@ struct LectureView: View {
         _visited = State(initialValue: [tab])
     }
 
-    /// Следующий шаг. Считается не в body (он читает тексты всех страниц), а при изменении лекции
-    /// или её работ: иначе каждое переключение вкладки читало бы диск.
+    /// Следующий шаг. Считается при изменении лекции, её работ или фоновых сводок по текстам
+    /// (`knownReadiness`, `knownStale`), а не в каждом body.
     @State private var primary: LecturePrimaryAction?
 
     /// От чего зависит следующий шаг.
     private struct PrimaryKey: Equatable {
         var meta: LectureMeta
         var busy: [Bool]
+        /// Есть план сборки, конспект устарел, материалы устарели — когда фоновый пересчёт готов.
+        var summary: [Bool]?
     }
 
     private var primaryKey: PrimaryKey {
         PrimaryKey(meta: lecture.meta, busy: [recognition.isBusy(lecture.id), assembly.isRunning(lecture.id),
-                                              study.isRunning(lecture.id), study.errors[lecture.id] != nil])
+                                              enrichment.isRunning(lecture.id), study.isRunning(lecture.id),
+                                              study.errors[lecture.id] != nil],
+                   summary: assembly.knownReadiness(lecture).map { [$0.plan != nil, $0.isStale, study.knownStale(lecture)] })
     }
 
     var body: some View {
@@ -43,9 +48,13 @@ struct LectureView: View {
             notices
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .top) {
+                    if tab.isStudy { studyModePicker }
+                }
         }
         .onChange(of: primaryKey, initial: true) {
-            primary = LecturePrimaryAction.next(for: lecture, recognition: recognition, assembly: assembly, study: study)
+            primary = LecturePrimaryAction.next(for: lecture, recognition: recognition, assembly: assembly,
+                                                enrichment: enrichment, study: study)
         }
         .motion(.standard, value: lecture.hasConflict)
         .motion(.standard, value: lecture.meta.dateAdjustment)
@@ -90,17 +99,21 @@ struct LectureView: View {
         }
     }
 
-    /// Режимы самопроверки: вторая ступень навигации внутри тёплой зоны.
+    /// Режимы самопроверки: вторая ступень навигации внутри тёплой зоны. Один на все три вкладки и лежит
+    /// поверх них: будь он в каждой вкладке, при щелчке нажатый переключатель пропадал бы вместе со своей
+    /// вкладкой, а на его месте появлялся другой — нажатие обрывалось, выбор перескакивал без анимации.
     private var studyModePicker: some View {
-        Picker("Режим", selection: $tab) {
+        studyModeSwitcher(selection: $tab)
+            .background(Color.surfaceStudy)
+    }
+
+    private func studyModeSwitcher(selection: Binding<LectureTab>) -> some View {
+        Picker("Режим", selection: selection) {
             ForEach(LectureTab.studyTabs) { Text($0.title).tag($0) }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
+        .sectionSwitcher()
         .padding(.vertical, Spacing.s)
         .frame(maxWidth: .infinity)
-        .background(Color.surfaceStudy)
     }
 
     /// Открытые вкладки живут каждая в своём хост-виде, видна одна (`KeptAliveTabs`). Повторное
@@ -120,15 +133,18 @@ struct LectureView: View {
         if lecture.meta.study != nil { visited.insert(lastStudyTab) }
     }
 
-    /// Вкладки самопроверки несут свой переключатель режима: высота общей области при переходе
-    /// между зонами не меняется, и скрытые вкладки не раскладываются заново.
+    /// Вкладки самопроверки оставляют сверху место под общий переключатель режима (невидимая копия той же
+    /// высоты): высота общей области при переходе между зонами не меняется, скрытые вкладки не раскладываются заново.
     @ViewBuilder
     private func tabContent(_ item: LectureTab) -> some View {
         if item.isStudy {
             VStack(spacing: 0) {
-                studyModePicker
+                studyModeSwitcher(selection: .constant(item))
+                    .hidden()
+                    .accessibilityHidden(true)
                 screen(item)
             }
+            .background(Color.surfaceStudy)
         } else {
             screen(item)
         }
@@ -213,9 +229,17 @@ struct LectureView: View {
         }
     }
 
+    /// «Дополнить» доступно, когда конспект есть и по лекции ничего не идёт.
+    private var canEnrich: Bool {
+        let id = lecture.id
+        return lecture.meta.konspekt != nil && !recognition.isBusy(id) && !assembly.isRunning(id)
+            && !enrichment.isRunning(id)
+    }
+
     private var commands: LectureCommands {
         LectureCommands(
             tab: $tab, primary: primary, perform: perform,
+            enrich: canEnrich ? { tab = .notes; requests.enrich = true } : nil,
             exportMarkdown: export?.hasKonspekt == true ? { export?.exportMarkdown() } : nil,
             exportPDF: export?.hasKonspekt == true && export?.exportingPDFSince == nil ? { export?.exportPDF() } : nil,
             exportAnki: export?.hasStudy == true ? { export?.askAnki = true } : nil,

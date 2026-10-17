@@ -32,6 +32,7 @@ struct EmptyState<Actions: View>: View {
         } actions: {
             actions()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
