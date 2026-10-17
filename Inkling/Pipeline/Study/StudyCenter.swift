@@ -20,6 +20,9 @@ final class StudyCenter {
     @ObservationIgnored private let library: Library
     @ObservationIgnored private let router: @MainActor () -> EngineRouter
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
+    private var konspektHashes: [UUID: String?] = [:]
+    @ObservationIgnored private var hashKeys: [UUID: HashKey] = [:]
+    @ObservationIgnored private var hashTasks: [UUID: Task<Void, Never>] = [:]
 
     init(library: Library, router: @escaping @MainActor () -> EngineRouter) {
         self.library = library
@@ -37,10 +40,41 @@ final class StudyCenter {
         KonspektStore(folder: lecture.folder).read().map { FileHash.sha256(Enrichment.removing(from: $0)) }
     }
 
-    /// Конспект изменился после подготовки материалов.
+    /// Конспект изменился после подготовки материалов. Читает конспект: для действий и тестов, не для `body`.
     func isStale(_ lecture: LectureRecord) -> Bool {
         guard let info = lecture.meta.study, let hash = Self.inputHash(lecture) else { return false }
         return info.inputHash != hash
+    }
+
+    /// То же для экранов: хеш конспекта из кэша, пересчёт в фоне при его изменении. Конспект лежит в iCloud Drive
+    /// и может быть выгружен из Mac — чтение на главном потоке ждало бы загрузки. Пока хеш не готов — `false`.
+    func knownStale(_ lecture: LectureRecord) -> Bool {
+        guard let info = lecture.meta.study else { return false }
+        let key = HashKey(konspekt: lecture.meta.konspekt, revision: library.konspektRevision[lecture.id] ?? 0)
+        if hashKeys[lecture.id] != key { refreshHash(lecture, key: key) }
+        guard let hash = konspektHashes[lecture.id] ?? nil else { return false }
+        return info.inputHash != hash
+    }
+
+    private struct HashKey: Equatable {
+        var konspekt: ArtifactInfo?
+        var revision: Int
+    }
+
+    private func refreshHash(_ lecture: LectureRecord, key: HashKey) {
+        let id = lecture.id, folder = lecture.folder
+        hashKeys[id] = key
+        hashTasks[id]?.cancel()
+        hashTasks[id] = Task {
+            let hash = await Self.konspektHash(folder: folder)
+            guard !Task.isCancelled else { return }
+            konspektHashes[id] = .some(hash)
+        }
+    }
+
+    @concurrent
+    private static func konspektHash(folder: URL) async -> String? {
+        KonspektStore(folder: folder).read().map { FileHash.sha256(Enrichment.removing(from: $0)) }
     }
 
     func cancel(_ lectureID: UUID) { tasks[lectureID]?.cancel() }

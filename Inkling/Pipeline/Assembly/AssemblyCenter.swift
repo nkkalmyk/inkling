@@ -32,6 +32,9 @@ final class AssemblyCenter {
     @ObservationIgnored private let router: @MainActor () -> EngineRouter
     @ObservationIgnored private let threshold: @MainActor () -> Int
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
+    private var cachedReadiness: [UUID: Readiness] = [:]
+    @ObservationIgnored private var readinessKeys: [UUID: ReadinessKey] = [:]
+    @ObservationIgnored private var readinessTasks: [UUID: Task<Void, Never>] = [:]
 
     init(library: Library, router: @escaping @MainActor () -> EngineRouter, threshold: @escaping @MainActor () -> Int) {
         self.library = library
@@ -41,10 +44,51 @@ final class AssemblyCenter {
 
     func isRunning(_ lectureID: UUID) -> Bool { runs[lectureID] != nil }
 
+    /// Готовность к сборке для экранов: из кэша, без чтения диска на главном потоке. Тексты страниц лежат
+    /// в iCloud Drive и могут быть выгружены из Mac — чтение тогда ждёт загрузки, и окно зависало на десятки секунд.
+    /// Если лекция или тексты изменились, пересчёт идёт в фоне, а до его конца возвращается прежний результат
+    /// (`nil`, пока его ещё не было).
+    func knownReadiness(_ lecture: LectureRecord) -> Readiness? {
+        let key = ReadinessKey(meta: lecture.meta, texts: library.textRevision[lecture.id] ?? 0, threshold: threshold())
+        if readinessKeys[lecture.id] != key { refreshReadiness(lecture, key: key) }
+        return cachedReadiness[lecture.id]
+    }
+
+    /// Готовность сейчас, с чтением текстов. Для действий пользователя (собрать, подтвердить) и тестов, не для `body`.
     func readiness(_ lecture: LectureRecord) -> Readiness {
-        let input = AssemblyInput.collect(meta: lecture.meta, texts: PageTextStore(paths: LecturePaths(folder: lecture.folder)))
-        let stale = lecture.meta.konspekt.map { $0.inputHash != input.hash } ?? false
-        return Readiness(input: input, plan: AssemblyPlanner.plan(input, threshold: threshold()), isStale: stale)
+        Self.readiness(meta: lecture.meta, input: Self.collect(meta: lecture.meta, paths: LecturePaths(folder: lecture.folder)),
+                       threshold: threshold())
+    }
+
+    private struct ReadinessKey: Equatable {
+        var meta: LectureMeta
+        var texts: Int
+        var threshold: Int
+    }
+
+    private func refreshReadiness(_ lecture: LectureRecord, key: ReadinessKey) {
+        let id = lecture.id, meta = lecture.meta, paths = LecturePaths(folder: lecture.folder)
+        readinessKeys[id] = key
+        readinessTasks[id]?.cancel()
+        readinessTasks[id] = Task {
+            let input = await Self.collectInBackground(meta: meta, paths: paths)
+            guard !Task.isCancelled else { return }
+            cachedReadiness[id] = Self.readiness(meta: meta, input: input, threshold: key.threshold)
+        }
+    }
+
+    @concurrent
+    private static func collectInBackground(meta: LectureMeta, paths: LecturePaths) async -> AssemblyInput {
+        collect(meta: meta, paths: paths)
+    }
+
+    nonisolated private static func collect(meta: LectureMeta, paths: LecturePaths) -> AssemblyInput {
+        AssemblyInput.collect(meta: meta, texts: PageTextStore(paths: paths))
+    }
+
+    nonisolated private static func readiness(meta: LectureMeta, input: AssemblyInput, threshold: Int) -> Readiness {
+        let stale = meta.konspekt.map { $0.inputHash != input.hash } ?? false
+        return Readiness(input: input, plan: AssemblyPlanner.plan(input, threshold: threshold), isStale: stale)
     }
 
     func cancel(_ lectureID: UUID) {
