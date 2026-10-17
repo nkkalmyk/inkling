@@ -12,7 +12,7 @@
 ## Install
 
 1. Download `Inkling-<version>.zip` from [Releases](https://github.com/nkkalmyk/inkling/releases) and move `Inkling.app` to Applications.
-2. The build is ad-hoc signed and **not notarized**. On first launch: right-click → Open → Open, or run `xattr -dr com.apple.quarantine /Applications/Inkling.app`.
+2. The build is ad-hoc signed and **not notarized** (notarization needs a paid Apple Developer account), so macOS blocks the first launch. This is expected. Double-click `Inkling.app`, dismiss the warning, then open System Settings → Privacy & Security → scroll down → "Open Anyway" and confirm. Or run once in Terminal: `xattr -dr com.apple.quarantine /Applications/Inkling.app`. The old "right-click → Open" trick no longer works on macOS 15+.
 3. Settings (⌘,) → Engine → "Check connection".
 
 Build from source: `brew install xcodegen && xcodegen generate && xcodebuild -scheme Inkling -configuration Release -destination 'platform=macOS' -derivedDataPath build/DerivedData build`. Details (Russian): [`docs/INSTALL.md`](docs/INSTALL.md).
