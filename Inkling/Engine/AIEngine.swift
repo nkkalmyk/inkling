@@ -1,16 +1,24 @@
 import Foundation
 
-/// Идентификатор движка: Claude Code и локальная Ollama (SPEC, раздел 13).
+/// Идентификатор движка: Claude Code, Codex (ChatGPT) и локальная Ollama (SPEC, раздел 13).
 enum EngineID: String, Codable, Sendable, CaseIterable {
     case claude
     case ollama
+    case codex
 
     var title: String {
         switch self {
         case .claude: "Claude Code"
         case .ollama: "Ollama (локально)"
+        case .codex: "Codex (ChatGPT)"
         }
     }
+
+    /// Облачная модель по подписке: годится для действий, которые нельзя отдавать слабой локальной модели.
+    var isCloud: Bool { self != .ollama }
+
+    /// Движок написан по документации, но не проверен вживую (нет подписки у автора).
+    var isUnverified: Bool { self == .codex }
 
     /// Результат локальной модели нужно проверить: на плотной рукописи она ошибается заметно чаще Claude.
     var needsReview: Bool { self == .ollama }
@@ -33,8 +41,8 @@ struct AIRequest: Sendable {
     var timeout: TimeInterval = 120
     /// `nil` — модель из настроек движка.
     var model: String?
-    /// Запрос выполняет только этот движок: без перехода на запасной и без запуска на другом.
-    var requiredEngine: EngineID?
+    /// Только облачный движок (Claude Code или Codex): без локальной модели, в том числе как запасной.
+    var cloudOnly = false
 }
 
 struct AIResponse: Sendable, Equatable {
@@ -60,6 +68,10 @@ enum AIError: Error, Equatable, Sendable {
     case ollamaUnavailable(String)
     /// Ollama: выбранной модели нет среди установленных.
     case modelNotInstalled(model: String)
+    /// Codex: нет бинарника.
+    case codexUnavailable(String)
+    /// Codex: нет входа через ChatGPT.
+    case codexNotAuthenticated(String)
 
     /// Повтор на том же движке имеет смысл (SPEC, раздел 2.6).
     var isRetryable: Bool {
@@ -101,13 +113,18 @@ enum AIError: Error, Equatable, Sendable {
             return "Ollama недоступна. Установите её (brew install ollama) или укажите путь к ollama в настройках (вкладка «Движок»)."
         case .modelNotInstalled(let model):
             return "Модель «\(model)» не установлена в Ollama. Выберите другую в настройках или создайте её (см. docs/ollama)."
+        case .codexUnavailable:
+            return "Не найден Codex. Установите его (brew install codex) или укажите путь к codex в настройках (вкладка «Движок»)."
+        case .codexNotAuthenticated:
+            return "Codex не выполнил вход. Откройте Терминал, запустите «codex login», войдите через ChatGPT и повторите."
         }
     }
 
     /// Сырые подробности для раскрывающегося блока.
     var details: String {
         switch self {
-        case .binaryNotFound(let s), .notAuthenticated(let s), .invalidOutput(let s), .ollamaUnavailable(let s): s
+        case .binaryNotFound(let s), .notAuthenticated(let s), .invalidOutput(let s), .ollamaUnavailable(let s),
+             .codexUnavailable(let s), .codexNotAuthenticated(let s): s
         case .modelNotInstalled(let model): model
         case .rateLimited(_, let s): s
         case .processFailed(_, let stderr): stderr

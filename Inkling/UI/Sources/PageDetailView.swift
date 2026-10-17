@@ -121,7 +121,7 @@ private struct PageEditor: View {
                 Button("Подробно") { rerecognize(detailed: true) }
                     .disabled(isRunning)
                     .help("Страница читается шестью увеличенными фрагментами (сетка 3×2) одним запросом: лучше мелкие индексы, штрихи и "
-                          + "значки, но дольше и расходует больше лимита. Только через Claude.")
+                          + "значки, но дольше и расходует больше лимита. Через Claude или Codex.")
             }
             Button {
                 flushSave()
