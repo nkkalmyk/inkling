@@ -1,0 +1,5 @@
+// Шаблон личной подписи. Скопируйте в Config/Signing.xcconfig (он в .gitignore) и подставьте свои значения:
+//   cp Config/Signing.example.xcconfig Config/Signing.xcconfig
+// Team ID: Xcode → Settings → Accounts → ваш Apple ID → Team ID, или `security find-identity -v -p codesigning`.
+CODE_SIGN_IDENTITY = Apple Development
+DEVELOPMENT_TEAM = XXXXXXXXXX

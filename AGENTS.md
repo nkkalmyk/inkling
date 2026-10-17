@@ -49,7 +49,7 @@ xcodebuild -scheme Inkling -configuration Release -destination 'platform=macOS' 
 ditto build/DerivedData/Build/Products/Release/Inkling.app /Applications/Inkling.app
 ```
 
-Если `xcodebuild` просит пароль связки ключей для `codesign`, это делает пользователь (кнопка «Разрешить всегда»). Подпись настроена в `project.yml` на Personal Team владельца; у другого человека сборка не подпишется: нужно поменять `DEVELOPMENT_TEAM` на свой (проверено только с командой владельца; вариант с локальной подписью `CODE_SIGN_IDENTITY: "-"` не проверялся).
+Если `xcodebuild` просит пароль связки ключей для `codesign`, это делает пользователь (кнопка «Разрешить всегда»). Без `Config/Signing.xcconfig` сборка подписывается ad-hoc и запускается на любом Mac (проверено). Свою стабильную подпись пользователь добавляет сам: `cp Config/Signing.example.xcconfig Config/Signing.xcconfig` и вписывает свой `DEVELOPMENT_TEAM`.
 
 ### A3. Первый запуск и проверка
 
