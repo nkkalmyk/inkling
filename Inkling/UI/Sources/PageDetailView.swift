@@ -72,8 +72,7 @@ private struct PageEditor: View {
             guard let imageSource else { return }
             image = await PageImageLoader.shared.image(imageSource, maxPixel: 2400, revision: revision)
         }
-        .onAppear(perform: loadText)
-        .onChange(of: revision) { loadText() }
+        .task(id: revision) { await loadText() }
         .onDisappear(perform: flushSave)
         .confirmationDialog("Текст правился вручную", isPresented: $confirmRerecognize) {
             Button("Распознать заново") {
@@ -114,15 +113,7 @@ private struct PageEditor: View {
             if let note { noteControls(note) }
             if let slide { slideControls(slide) }
             Divider().frame(height: 18)
-            Button("Распознать заново") { rerecognize(detailed: false) }
-            .disabled(isRunning || (slide.map { !$0.usesImage } ?? false))
-            .help(slide.map { !$0.usesImage } ?? false ? "Слайд берётся из текстового слоя; переключите режим на «Картинка»" : "")
-            if section == .notes {
-                Button("Подробно") { rerecognize(detailed: true) }
-                    .disabled(isRunning)
-                    .help("Страница читается шестью увеличенными фрагментами (сетка 3×2) одним запросом: лучше мелкие индексы, штрихи и "
-                          + "значки, но дольше и расходует больше лимита. Только через Claude.")
-            }
+            rerecognizeButton
             Button {
                 flushSave()
                 showHistory = true
@@ -137,6 +128,30 @@ private struct PageEditor: View {
             }
         }
         .disabled(busy)
+    }
+
+    /// «Распознать заново»; у страницы тетради в меню кнопки — подробное чтение фрагментами.
+    @ViewBuilder
+    private var rerecognizeButton: some View {
+        if section == .notes {
+            Menu {
+                Button("Распознать подробно") { rerecognize(detailed: true) }
+                    .help("Страница читается шестью увеличенными фрагментами (сетка 3×2) одним запросом: лучше мелкие "
+                          + "индексы, штрихи и значки, но дольше и расходует больше лимита. Только через Claude.")
+            } label: {
+                Text("Распознать заново")
+            } primaryAction: {
+                rerecognize(detailed: false)
+            }
+            .fixedSize()
+            .disabled(isRunning)
+            .help("Щелчок — обычное распознавание, стрелка — «Распознать подробно» (только через Claude)")
+        } else {
+            let textLayer = slide.map { !$0.usesImage } ?? false
+            Button("Распознать заново") { rerecognize(detailed: false) }
+                .disabled(isRunning || textLayer)
+                .help(textLayer ? "Слайд берётся из текстового слоя; переключите режим на «Картинка»" : "")
+        }
     }
 
     @ViewBuilder
@@ -280,10 +295,19 @@ private struct PageEditor: View {
 
     // MARK: Загрузка и сохранение
 
-    private func loadText() {
+    /// Читает текст в фоне: файл может быть выгружен в iCloud, и чтение на главном потоке ждало бы загрузки.
+    private func loadText() async {
         guard loadedRevision != revision || text.isEmpty else { return }
-        loadedRevision = revision
-        text = PageTextStore(paths: paths).read(pageID, in: section) ?? ""
+        let target = revision
+        let loaded = await Self.readText(PageTextStore(paths: paths), pageID: pageID, section: section)
+        guard !Task.isCancelled else { return }
+        loadedRevision = target
+        text = loaded
+    }
+
+    @concurrent
+    private static func readText(_ store: PageTextStore, pageID: String, section: SourceSection) async -> String {
+        store.read(pageID, in: section) ?? ""
     }
 
     private func scheduleSave() {

@@ -56,6 +56,7 @@ enum LectureZoneItem: String, CaseIterable, Identifiable {
 /// и когда флаг поднят при уже открытом экране, и когда экран только появился после переключения вкладки.
 struct LectureRequests: Equatable {
     var assemble = false
+    var enrich = false
     var prepareStudy = false
 }
 
@@ -93,16 +94,18 @@ enum LecturePrimaryAction: Equatable {
     /// Пока по лекции что-то идёт, следующий шаг не предлагается.
     @MainActor
     static func next(for lecture: LectureRecord, recognition: RecognitionCenter, assembly: AssemblyCenter,
-                     study: StudyCenter) -> LecturePrimaryAction? {
+                     enrichment: EnrichmentCenter, study: StudyCenter) -> LecturePrimaryAction? {
         let id = lecture.id
-        guard !recognition.isBusy(id), !assembly.isRunning(id), !study.isRunning(id) else { return nil }
+        guard !recognition.isBusy(id), !assembly.isRunning(id), !enrichment.isRunning(id), !study.isRunning(id)
+        else { return nil }
         let pending = recognition.pendingPages(in: lecture)
         if !pending.isEmpty { return .recognize(pages: pending) }
-        let readiness = assembly.readiness(lecture)
+        // Сводки из кэша: тексты читаются в фоне, пока их нет — следующий шаг не предлагается.
+        guard let readiness = assembly.knownReadiness(lecture) else { return nil }
         if readiness.plan != nil, lecture.meta.konspekt == nil || readiness.isStale {
             return .assemble(rebuild: lecture.meta.konspekt != nil)
         }
-        if lecture.meta.konspekt != nil, lecture.meta.study == nil || study.isStale(lecture) {
+        if lecture.meta.konspekt != nil, lecture.meta.study == nil || study.knownStale(lecture) {
             return .prepareStudy(rebuild: lecture.meta.study != nil)
         }
         return nil
@@ -111,12 +114,13 @@ enum LecturePrimaryAction: Equatable {
 
 // MARK: Активность
 
-/// Что сейчас идёт по лекции: импорт, распознавание, сборка, подготовка материалов, экспорт PDF.
+/// Что сейчас идёт по лекции: импорт, распознавание, сборка, дополнение, подготовка материалов, экспорт PDF.
 struct LectureActivityIndicator: View {
     @Environment(Library.self) private var library
     @Environment(RecognitionCenter.self) private var recognition
     @Environment(AssemblyCenter.self) private var assembly
     @Environment(StudyCenter.self) private var study
+    @Environment(EnrichmentCenter.self) private var enrichment
     let lecture: LectureRecord
     var exportingPDFSince: Date?
 
@@ -151,6 +155,12 @@ struct LectureActivityIndicator: View {
                                    fraction: run.totalCalls > 1 ? Double(run.finishedCalls) / Double(run.totalCalls) : nil,
                                    startedAt: run.startedAt, note: run.note, cancel: { assembly.cancel(id) }))
         }
+        if let run = enrichment.runs[id] {
+            result.append(Activity(id: "enrichment",
+                                   title: run.stage == .verifying ? "Проверка дополнения" : "Дополнение конспекта",
+                                   detail: run.engine?.title, startedAt: run.startedAt, note: run.note,
+                                   cancel: { enrichment.cancel(id) }))
+        }
         if let run = study.runs[id] {
             result.append(Activity(id: "study", title: "Подготовка материалов", detail: run.engine?.title,
                                    startedAt: run.startedAt, note: run.note, cancel: { study.cancel(id) }))
@@ -169,6 +179,7 @@ struct LectureCommands {
     var tab: Binding<LectureTab>
     var primary: LecturePrimaryAction?
     var perform: (LecturePrimaryAction) -> Void
+    var enrich: (() -> Void)?
     var exportMarkdown: (() -> Void)?
     var exportPDF: (() -> Void)?
     var exportAnki: (() -> Void)?
@@ -192,6 +203,8 @@ struct LectureMenuCommands: View {
         }
         .keyboardShortcut(.return, modifiers: .command)
         .disabled(commands?.primary == nil)
+        Button("Дополнить конспект") { commands?.enrich?() }
+            .disabled(commands?.enrich == nil)
         Divider()
         Menu("Экспорт") {
             Button("Конспект в Markdown…") { commands?.exportMarkdown?() }
@@ -336,7 +349,10 @@ struct ActivityRoot: View {
     let content: AnyView
 
     var body: some View {
+        // Хост-вид центрирует корень по его собственному размеру: вкладка должна занимать всю область,
+        // иначе фон зоны и пустые состояния собираются комком посередине.
         content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environment(\.isActiveTab, activity.isActive)
             .accessibilityHidden(!activity.isActive)
     }
