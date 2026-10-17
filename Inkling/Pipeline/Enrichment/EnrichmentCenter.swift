@@ -99,7 +99,7 @@ final class EnrichmentCenter {
         var response: AIResponse?
         for attempt in 0..<2 {
             var request = AIRequest(prompt: prompt, systemPrompt: Self.systemPrompt, format: .text, timeout: timeout)
-            request.requiredEngine = .claude
+            request.cloudOnly = true
             let answer = try await router.run(request, onEvent: onEvent)
             let text = MarkdownCleanup.unwrap(answer.text)
             if Enrichment.preservesAuthorText(original: base, enriched: text) {
@@ -125,7 +125,7 @@ final class EnrichmentCenter {
             ])
             var request = AIRequest(prompt: verifyPrompt, systemPrompt: Self.verifySystemPrompt,
                                     format: .json(schema: Enrichment.verificationSchema), timeout: timeout)
-            request.requiredEngine = .claude
+            request.cloudOnly = true
             let verdict = try await router.run(request, onEvent: onEvent)
             guard let problems = Enrichment.parseProblems(verdict.json ?? Data(verdict.text.utf8), count: additions.count) else {
                 throw AIError.invalidOutput("Не удалось разобрать ответ проверки, дополнение не сохранено.")

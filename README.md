@@ -14,8 +14,9 @@
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF)
 ![Claude Code](https://img.shields.io/badge/движок-Claude_Code-D97757)
+![Codex](https://img.shields.io/badge/движок-Codex_(не_проверен)-10A37F)
 ![Ollama](https://img.shields.io/badge/запасной-Ollama-555555)
-![Version](https://img.shields.io/badge/версия-0.4.1-F5B83D)
+![Version](https://img.shields.io/badge/версия-0.5.0-F5B83D)
 
 </div>
 
@@ -57,6 +58,7 @@ flowchart LR
 Своих API-ключей у Inkling нет. Приложение вызывает уже установленные инструменты:
 
 - **Claude Code** (`claude -p`) — основной движок, работает по подписке Claude Pro. Каждый вызов изолирован: отдельная временная папка, без MCP, хуков и ваших настроек, из инструментов доступно только чтение.
+- **Codex** (`codex exec`) — для подписки ChatGPT, если Claude нет. Вход один раз командой `codex login`. Написан по документации OpenAI и пока **не проверен вживую**: нужны отзывы тех, у кого есть подписка.
 - **Ollama** с моделью `inkling-ocr` (Qwen3.5-9B) — необязательный локальный запасной движок. Включается, когда кончился лимит, или вручную через меню «Модель». Всё, что сделала локальная модель, помечено «проверьте».
 
 Почему не Gemini, описано в [`docs/cli-notes.md`](docs/cli-notes.md).
@@ -65,7 +67,7 @@ flowchart LR
 
 Готовая сборка лежит в [Releases](https://github.com/nkkalmyk/inkling/releases) (подписана Personal Team, без нотаризации: при первом запуске см. «Если ругается Gatekeeper» в [`docs/INSTALL.md`](docs/INSTALL.md)). Либо соберите из исходников:
 
-Нужны Mac на Apple Silicon с macOS 26 или новее, Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen) и выполненный вход в Claude Code.
+Нужны Mac на Apple Silicon с macOS 26 или новее, Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen) и выполненный вход в Claude Code (или в Codex через ChatGPT).
 
 ```bash
 brew install xcodegen
@@ -110,7 +112,7 @@ xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' bu
 | `Inkling/App` | точка входа, `AppDelegate`, настройки, центр движков |
 | `Inkling/Library` | состояние библиотеки для интерфейса, импорт и правка источников |
 | `Inkling/Pipeline` | конвейер: `Recognition` (страницы), `Assembly` (конспект), `Study` (учебные материалы), `Prompts` (шаблоны запросов) |
-| `Inkling/Engine` | `AIEngine`, Claude Code, Ollama, поиск бинарников, запуск процессов, распознавание лимитов |
+| `Inkling/Engine` | `AIEngine`, Claude Code, Codex, Ollama, поиск бинарников, запуск процессов, распознавание лимитов |
 | `Inkling/Import` | импорт файлов, буфер обмена, Камера непрерывности |
 | `Inkling/Processing` | обработка фото и PDF, загрузка картинок страниц |
 | `Inkling/Storage` | файловое хранилище, атомарная запись, iCloud, история, `konspekt.md` |

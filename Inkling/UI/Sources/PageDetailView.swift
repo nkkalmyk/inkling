@@ -137,7 +137,7 @@ private struct PageEditor: View {
             Menu {
                 Button("Распознать подробно") { rerecognize(detailed: true) }
                     .help("Страница читается шестью увеличенными фрагментами (сетка 3×2) одним запросом: лучше мелкие "
-                          + "индексы, штрихи и значки, но дольше и расходует больше лимита. Только через Claude.")
+                          + "индексы, штрихи и значки, но дольше и расходует больше лимита. Через Claude или Codex.")
             } label: {
                 Text("Распознать заново")
             } primaryAction: {
@@ -145,7 +145,7 @@ private struct PageEditor: View {
             }
             .fixedSize()
             .disabled(isRunning)
-            .help("Щелчок — обычное распознавание, стрелка — «Распознать подробно» (только через Claude)")
+            .help("Щелчок — обычное распознавание, стрелка — «Распознать подробно» (через Claude или Codex)")
         } else {
             let textLayer = slide.map { !$0.usesImage } ?? false
             Button("Распознать заново") { rerecognize(detailed: false) }
