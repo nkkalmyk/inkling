@@ -27,6 +27,9 @@ final class EngineCenter {
             ClaudeCodeEngine(config: .init(manualPath: settings.claudePathOverride,
                                            model: settings.claudeModel.isEmpty ? "sonnet" : settings.claudeModel,
                                            keepTempOnError: settings.keepTempFoldersOnError))
+        case .codex:
+            CodexEngine(config: .init(manualPath: settings.codexPathOverride, model: settings.codexModel,
+                                      keepTempOnError: settings.keepTempFoldersOnError))
         case .ollama:
             OllamaEngine(config: .init(manualPath: settings.ollamaPathOverride,
                                        model: settings.ollamaModel.isEmpty ? OllamaEngine.Config.defaultModel
@@ -39,6 +42,7 @@ final class EngineCenter {
                         fallback: AppSettings.Engine) -> (primary: EngineID, fallback: EngineID?) {
         switch mode {
         case .claudeOnly: return (.claude, nil)
+        case .codexOnly: return (.codex, nil)
         case .localOnly: return (.ollama, nil)
         case .auto:
             let main = primary.engineID ?? .claude
@@ -61,7 +65,7 @@ final class EngineCenter {
         let routing = routing
         let key = [routing.primary.rawValue, routing.fallback?.rawValue ?? "-", "\(settings.autoFallback)",
                    "\(settings.maxParallelCalls)", settings.claudePathOverride, settings.claudeModel,
-                   settings.ollamaPathOverride, settings.ollamaModel,
+                   settings.codexPathOverride, settings.codexModel, settings.ollamaPathOverride, settings.ollamaModel,
                    "\(settings.keepTempFoldersOnError)"].joined(separator: "|")
         if let cachedRouter, cachedRouter.key == key { return cachedRouter.router }
         let router = EngineRouter(primary: engine(routing.primary),
