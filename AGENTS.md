@@ -136,7 +136,7 @@ defaults read /Applications/Inkling.app/Contents/Info CFBundleShortVersionString
 open /Applications/Inkling.app
 ```
 
-Если macOS блокирует запуск, объясни пользователю: правый щелчок → «Открыть» → «Открыть» (один раз). Дальше пользователь сам:
+Если macOS блокирует запуск, объясни пользователю: двойной щелчок → закрыть окно → «Системные настройки» → «Конфиденциальность и безопасность» → «Всё равно открыть». (Правый щелчок → «Открыть» в macOS 15+ не обходит блокировку.) Терминальный вариант `xattr -dr com.apple.quarantine /Applications/Inkling.app` — только с согласия пользователя.
 ⌘, → «Движок» → «Проверить подключение» (должно быть «Работает»). Результат проверки сообщи в отчёте.
 
 ### 4. Запасной движок Ollama (только по просьбе)
@@ -192,7 +192,7 @@ xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' bu
 2. Слей PR в `main`, переключись на свежий `main`.
 3. Проверка: `xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' build test`.
 4. Сборка и упаковка: `scripts/release.sh` — ad-hoc подпись (без личного сертификата и почты), убираются отладочные пути, проверяется, что в zip нет домашней папки; результат `build/release/Inkling-X.Y.Z.zip` и `.sha256`.
-5. Релиз: `gh release create vX.Y.Z build/release/Inkling-X.Y.Z.zip --target main --title "Inkling X.Y.Z" --notes-file <файл>`. В заметках: что нового, установка, предупреждение про Gatekeeper (сборка не нотаризована), SHA-256, что не проверено.
+5. Релиз: `gh release create vX.Y.Z build/release/Inkling-X.Y.Z.zip --target main --title "Inkling X.Y.Z" --notes-file <файл>`. В заметках: что нового, установка, шаги «Всё равно открыть» (сборка не нотаризована), SHA-256, что не проверено.
 6. Уже опубликованные теги не двигай.
 
 ### Безопасность репозитория
