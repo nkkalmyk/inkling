@@ -15,7 +15,7 @@
 ![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF)
 ![Claude Code](https://img.shields.io/badge/движок-Claude_Code-D97757)
 ![Ollama](https://img.shields.io/badge/запасной-Ollama-555555)
-![Version](https://img.shields.io/badge/версия-0.4.0-F5B83D)
+![Version](https://img.shields.io/badge/версия-0.4.1-F5B83D)
 
 </div>
 
@@ -62,6 +62,8 @@ flowchart LR
 Почему не Gemini, описано в [`docs/cli-notes.md`](docs/cli-notes.md).
 
 ## Установка
+
+Готовая сборка лежит в [Releases](https://github.com/nkkalmyk/inkling/releases) (подписана Personal Team, без нотаризации: при первом запуске см. «Если ругается Gatekeeper» в [`docs/INSTALL.md`](docs/INSTALL.md)). Либо соберите из исходников:
 
 Нужны Mac на Apple Silicon с macOS 26 или новее, Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen) и выполненный вход в Claude Code.
 
@@ -119,6 +121,9 @@ xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' bu
 
 ### Документация
 
+- [`CHANGELOG.md`](CHANGELOG.md) — что менялось в каждой версии
+- [`docs/HISTORY.md`](docs/HISTORY.md) — история создания: этапы, решения, хронология
+- [`docs/PROBLEMS.md`](docs/PROBLEMS.md) — проблемы, ограничения и что дальше
 - [`SPEC.md`](SPEC.md) — техническое задание и принятые решения (раздел 13)
 - [`docs/design-system.md`](docs/design-system.md) — дизайн-система: цвета, шрифты, компоненты
 - [`docs/AUDIT.md`](docs/AUDIT.md) — аудит безопасности и надёжности, статус исправлений
