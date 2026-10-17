@@ -100,11 +100,12 @@ enum LecturePrimaryAction: Equatable {
         else { return nil }
         let pending = recognition.pendingPages(in: lecture)
         if !pending.isEmpty { return .recognize(pages: pending) }
-        let readiness = assembly.readiness(lecture)
+        // Сводки из кэша: тексты читаются в фоне, пока их нет — следующий шаг не предлагается.
+        guard let readiness = assembly.knownReadiness(lecture) else { return nil }
         if readiness.plan != nil, lecture.meta.konspekt == nil || readiness.isStale {
             return .assemble(rebuild: lecture.meta.konspekt != nil)
         }
-        if lecture.meta.konspekt != nil, lecture.meta.study == nil || study.isStale(lecture) {
+        if lecture.meta.konspekt != nil, lecture.meta.study == nil || study.knownStale(lecture) {
             return .prepareStudy(rebuild: lecture.meta.study != nil)
         }
         return nil

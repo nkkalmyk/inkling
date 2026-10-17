@@ -13,10 +13,22 @@ struct StudyContainer<Content: View>: View {
     @Environment(\.isActiveTab) private var isActive
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Материалы и прогресс, прочитанные в фоне (`load`). `nil` — ещё читаются.
+    @State private var loaded: Loaded?
+
+    private struct Loaded {
+        var materials: StudyMaterials?
+        var progress: StudyProgress
+    }
+
+    /// Когда перечитывать файлы: перезапись материалов или прогресса и новые сведения о материалах.
+    private struct LoadKey: Equatable {
+        var revision: Int
+        var study: ArtifactInfo?
+    }
+
     var body: some View {
-        let store = study.store(lecture)
-        let _ = study.revision(lecture.id)
-        let materials = store.readStudy()
+        let materials = loaded?.materials
         VStack(spacing: 0) {
             if !study.isRunning(lecture.id) {
                 if let error = study.errors[lecture.id] {
@@ -27,7 +39,7 @@ struct StudyContainer<Content: View>: View {
                     }
                     .transition(.notice(reduceMotion: reduceMotion))
                     Divider()
-                } else if materials != nil, study.isStale(lecture) {
+                } else if materials != nil, study.knownStale(lecture) {
                     InlineNotice(.info, "Устарело: конспект изменился после подготовки материалов.",
                                  systemImage: "clock.arrow.circlepath") {
                         Button("Подготовить заново", action: regenerate)
@@ -36,14 +48,20 @@ struct StudyContainer<Content: View>: View {
                     Divider()
                 }
             }
-            if let materials {
-                content(materials, store.readProgress())
-            } else {
-                emptyState
+            if let loaded {
+                if let materials = loaded.materials {
+                    content(materials, loaded.progress)
+                } else {
+                    emptyState
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.surfaceStudy)
+        .task(id: LoadKey(revision: study.revision(lecture.id), study: lecture.meta.study)) {
+            let read = await Self.load(study.store(lecture))
+            if !Task.isCancelled { loaded = read }
+        }
         .motion(.standard, value: study.errors[lecture.id] == nil)
         .task(id: requests.wrappedValue.prepareStudy && isActive) {
             guard requests.wrappedValue.prepareStudy, isActive else { return }
@@ -59,10 +77,17 @@ struct StudyContainer<Content: View>: View {
         }
     }
 
-    private var hasKonspekt: Bool { KonspektStore(folder: lecture.folder).read()?.isEmpty == false }
+    /// Файлы самопроверки читаются в фоне: в iCloud Drive они могут быть выгружены из Mac, и чтение
+    /// на главном потоке ждало бы загрузки — окно замирало.
+    @concurrent
+    private static func load(_ store: StudyStore) async -> Loaded {
+        Loaded(materials: store.readStudy(), progress: store.readProgress())
+    }
+
+    private var hasKonspekt: Bool { lecture.meta.konspekt != nil }
 
     func regenerate() {
-        let progress = study.store(lecture).readProgress()
+        let progress = loaded?.progress ?? study.store(lecture).readProgress()
         if lecture.meta.study?.manuallyEdited == true || !progress.isEmpty { confirmRegenerate = true }
         else { study.generate(lecture.id) }
     }
@@ -104,7 +129,7 @@ private struct StudyToolbar<Trailing: View>: View {
             Spacer()
             trailing()
             // Когда материалы устарели, «Подготовить заново» уже есть в уведомлении над строкой.
-            if !study.isStale(lecture) {
+            if !study.knownStale(lecture) {
                 Button("Подготовить заново") {
                     let progress = study.store(lecture).readProgress()
                     if lecture.meta.study?.manuallyEdited == true || !progress.isEmpty { confirm = true }

@@ -72,8 +72,7 @@ private struct PageEditor: View {
             guard let imageSource else { return }
             image = await PageImageLoader.shared.image(imageSource, maxPixel: 2400, revision: revision)
         }
-        .onAppear(perform: loadText)
-        .onChange(of: revision) { loadText() }
+        .task(id: revision) { await loadText() }
         .onDisappear(perform: flushSave)
         .confirmationDialog("Текст правился вручную", isPresented: $confirmRerecognize) {
             Button("Распознать заново") {
@@ -296,10 +295,19 @@ private struct PageEditor: View {
 
     // MARK: Загрузка и сохранение
 
-    private func loadText() {
+    /// Читает текст в фоне: файл может быть выгружен в iCloud, и чтение на главном потоке ждало бы загрузки.
+    private func loadText() async {
         guard loadedRevision != revision || text.isEmpty else { return }
-        loadedRevision = revision
-        text = PageTextStore(paths: paths).read(pageID, in: section) ?? ""
+        let target = revision
+        let loaded = await Self.readText(PageTextStore(paths: paths), pageID: pageID, section: section)
+        guard !Task.isCancelled else { return }
+        loadedRevision = target
+        text = loaded
+    }
+
+    @concurrent
+    private static func readText(_ store: PageTextStore, pageID: String, section: SourceSection) async -> String {
+        store.read(pageID, in: section) ?? ""
     }
 
     private func scheduleSave() {

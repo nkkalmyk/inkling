@@ -24,20 +24,23 @@ struct LectureView: View {
         _visited = State(initialValue: [tab])
     }
 
-    /// Следующий шаг. Считается не в body (он читает тексты всех страниц), а при изменении лекции
-    /// или её работ: иначе каждое переключение вкладки читало бы диск.
+    /// Следующий шаг. Считается при изменении лекции, её работ или фоновых сводок по текстам
+    /// (`knownReadiness`, `knownStale`), а не в каждом body.
     @State private var primary: LecturePrimaryAction?
 
     /// От чего зависит следующий шаг.
     private struct PrimaryKey: Equatable {
         var meta: LectureMeta
         var busy: [Bool]
+        /// Есть план сборки, конспект устарел, материалы устарели — когда фоновый пересчёт готов.
+        var summary: [Bool]?
     }
 
     private var primaryKey: PrimaryKey {
         PrimaryKey(meta: lecture.meta, busy: [recognition.isBusy(lecture.id), assembly.isRunning(lecture.id),
                                               enrichment.isRunning(lecture.id), study.isRunning(lecture.id),
-                                              study.errors[lecture.id] != nil])
+                                              study.errors[lecture.id] != nil],
+                   summary: assembly.knownReadiness(lecture).map { [$0.plan != nil, $0.isStale, study.knownStale(lecture)] })
     }
 
     var body: some View {

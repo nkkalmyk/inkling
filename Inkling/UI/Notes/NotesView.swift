@@ -29,7 +29,8 @@ struct NotesView: View {
     private var info: ArtifactInfo? { lecture.meta.konspekt }
 
     var body: some View {
-        let readiness = assembly.readiness(lecture)
+        // Из кэша: тексты страниц читаются в фоне, `nil` — ещё читаются.
+        let readiness = assembly.knownReadiness(lecture)
         VStack(spacing: 0) {
             if let error = enrichment.errors[lecture.id], !enrichment.isRunning(lecture.id) {
                 InlineNotice(.error, "Конспект не дополнен. \(error.userMessage)", systemImage: "exclamationmark.octagon.fill",
@@ -47,7 +48,7 @@ struct NotesView: View {
                     }
                     .transition(.notice(reduceMotion: reduceMotion))
                     Divider()
-                } else if readiness.isStale {
+                } else if readiness?.isStale == true {
                     InlineNotice(.info, "Устарело: тексты или порядок страниц изменились после сборки.",
                                  systemImage: "clock.arrow.circlepath") {
                         Button("Пересобрать") { start(force: false) }
@@ -71,7 +72,7 @@ struct NotesView: View {
         }
         .motion(.standard, value: assembly.errors[lecture.id] == nil)
         .motion(.standard, value: enrichment.errors[lecture.id] == nil)
-        .motion(.standard, value: readiness.isStale)
+        .motion(.standard, value: readiness?.isStale == true)
         .focusedSceneValue(\.notesEditing, !isActive || info == nil && text.isEmpty ? nil : $editing)
         .onChange(of: isActive) { if !isActive { flushSave() } }
         .task(id: requests.wrappedValue.assemble && isActive) {
@@ -84,9 +85,7 @@ struct NotesView: View {
             requests.wrappedValue.enrich = false
             enrich()
         }
-        .onAppear(perform: load)
-        .onChange(of: revision) { load() }
-        .onChange(of: lecture.meta.konspekt) { if !editing { load() } }
+        .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { await load() }
         .onDisappear(perform: flushSave)
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
                             presenting: confirm) { _ in
@@ -102,11 +101,13 @@ struct NotesView: View {
 
     // MARK: Состояния
 
-    private func emptyState(_ readiness: AssemblyCenter.Readiness) -> some View {
+    private func emptyState(_ readiness: AssemblyCenter.Readiness?) -> some View {
         EmptyState("Конспекта пока нет", systemImage: "doc.richtext",
-                   description: readiness.plan.map { planDescription($0, readiness.input) }
-                       ?? "Сначала добавьте и распознайте страницы на вкладке «Источники».") {
-            if readiness.plan != nil, !assembly.isRunning(lecture.id) {
+                   description: readiness.map { readiness in
+                       readiness.plan.map { planDescription($0, readiness.input) }
+                           ?? "Сначала добавьте и распознайте страницы на вкладке «Источники»."
+                   }) {
+            if readiness?.plan != nil, !assembly.isRunning(lecture.id) {
                 Button("Собрать конспект") { start(force: false) }
                     .prominentAction()
                     .disabled(recognition.isBusy(lecture.id))
@@ -117,7 +118,7 @@ struct NotesView: View {
         }
     }
 
-    private func header(_ readiness: AssemblyCenter.Readiness) -> some View {
+    private func header(_ readiness: AssemblyCenter.Readiness?) -> some View {
         HStack(spacing: Spacing.m) {
             Picker("Режим", selection: $editing) {
                 Text("Просмотр").tag(false)
@@ -134,9 +135,9 @@ struct NotesView: View {
             }
             Spacer()
             // При «Устарело» кнопка «Пересобрать» есть в уведомлении над шапкой — здесь не повторяем.
-            if !readiness.isStale || assembly.errors[lecture.id] != nil {
+            if readiness?.isStale != true || assembly.errors[lecture.id] != nil {
                 Button(info == nil ? "Собрать" : "Пересобрать") { start(force: false) }
-                    .disabled(assembly.isRunning(lecture.id) || readiness.plan == nil || recognition.isBusy(lecture.id))
+                    .disabled(assembly.isRunning(lecture.id) || readiness?.plan == nil || recognition.isBusy(lecture.id))
             }
             if info != nil {
                 Button("Дополнить") { enrich() }
@@ -231,10 +232,26 @@ struct NotesView: View {
         enrichment.enrich(lecture.id)
     }
 
-    private func load() {
+    /// Когда перечитывать конспект: новая ревизия (сборка, восстановление) или новые сведения о нём.
+    private struct LoadKey: Equatable {
+        var revision: Int
+        var konspekt: ArtifactInfo?
+    }
+
+    /// Читает конспект в фоне: файл может быть выгружен в iCloud, и чтение на главном потоке ждало бы загрузки.
+    /// Во время правки не перезаписывает набранный текст, кроме случая новой ревизии.
+    private func load() async {
         guard loadedRevision != revision || text.isEmpty || !editing else { return }
-        loadedRevision = revision
-        text = store.read()?.trimmingCharacters(in: .newlines) ?? ""
+        let target = revision
+        let loaded = await Self.read(store)
+        guard !Task.isCancelled, loadedRevision != target || text.isEmpty || !editing else { return }
+        loadedRevision = target
+        text = loaded
+    }
+
+    @concurrent
+    private static func read(_ store: KonspektStore) async -> String {
+        store.read()?.trimmingCharacters(in: .newlines) ?? ""
     }
 
     private func scheduleSave() {
