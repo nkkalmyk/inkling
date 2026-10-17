@@ -152,7 +152,7 @@ final class RecognitionCenter {
                 var detailedRequest = AIRequest(prompt: prompt, systemPrompt: PromptLibrary.recognitionSystemPrompt,
                                                 images: names.map { folder.appendingPathComponent($0) }, format: .text,
                                                 timeout: timeout() * 2)
-                detailedRequest.requiredEngine = .claude
+                detailedRequest.cloudOnly = true
                 request = detailedRequest
             } else {
                 let prompt = try library.prompts.recognitionPrompt(section: location.section, subject: lecture.meta.subject,
@@ -247,7 +247,8 @@ final class RecognitionCenter {
         finish(job, failed: true)
         // Нет входа, нет бинарника, лимит без запасного: остальные страницы упадут так же — останавливаем очередь.
         switch error {
-        case .notAuthenticated, .binaryNotFound, .rateLimited, .ollamaUnavailable, .modelNotInstalled:
+        case .notAuthenticated, .binaryNotFound, .rateLimited, .ollamaUnavailable, .modelNotInstalled,
+             .codexUnavailable, .codexNotAuthenticated:
             blockingError = error
             let stopped = queue
             queue.removeAll()

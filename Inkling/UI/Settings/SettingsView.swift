@@ -97,11 +97,12 @@ private struct EngineSettings: View {
         @Bindable var settings = settings
         Form {
             Picker("Основной движок", selection: $settings.primaryEngine) {
-                Text(AppSettings.Engine.claude.title).tag(AppSettings.Engine.claude)
-                Text(AppSettings.Engine.ollama.title).tag(AppSettings.Engine.ollama)
+                Text(AppSettings.Engine.claude.pickerTitle).tag(AppSettings.Engine.claude)
+                Text(AppSettings.Engine.codex.pickerTitle).tag(AppSettings.Engine.codex)
+                Text(AppSettings.Engine.ollama.pickerTitle).tag(AppSettings.Engine.ollama)
             }
             Picker("Запасной движок", selection: $settings.fallbackEngine) {
-                ForEach(AppSettings.Engine.allCases) { Text($0.title).tag($0) }
+                ForEach(AppSettings.Engine.allCases) { Text($0.pickerTitle).tag($0) }
             }
             Toggle("Переключаться на запасной при лимите", isOn: $settings.autoFallback)
                 .disabled(settings.fallbackEngine == .none || settings.fallbackEngine == settings.primaryEngine)
@@ -113,6 +114,23 @@ private struct EngineSettings: View {
                 TextField("Путь к claude", text: $settings.claudePathOverride, prompt: Text("Автопоиск"))
                 ClaudeModelPicker()
                 ConnectionCheckRow(engine: .claude)
+            }
+            Section {
+                TextField("Путь к codex", text: $settings.codexPathOverride, prompt: Text("Автопоиск"))
+                TextField("Модель", text: $settings.codexModel, prompt: Text("По умолчанию Codex"))
+                ConnectionCheckRow(engine: .codex)
+            } header: {
+                HStack(spacing: Spacing.s) {
+                    Text("Codex (ChatGPT)")
+                    Label("Не проверен вживую", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } footer: {
+                Text("Работает по подписке ChatGPT через Codex CLI: установите его (brew install codex) и один раз выполните в Терминале "
+                     + "«codex login». Движок написан по документации OpenAI и пробным запускам без входа, но ни разу не проверялся "
+                     + "с живой подпиской: если что-то не работает, откройте «Подробности» в проверке подключения и сообщите об ошибке.")
+                    .foregroundStyle(.secondary)
             }
             Section {
                 TextField("Путь к ollama", text: $settings.ollamaPathOverride, prompt: Text("Автопоиск"))

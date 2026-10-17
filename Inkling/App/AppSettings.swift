@@ -8,6 +8,7 @@ import Observation
 final class AppSettings {
     enum Engine: String, CaseIterable, Identifiable {
         case claude
+        case codex
         case ollama
         case none
 
@@ -16,14 +17,21 @@ final class AppSettings {
         var title: String {
             switch self {
             case .claude: EngineID.claude.title
+            case .codex: EngineID.codex.title
             case .ollama: EngineID.ollama.title
             case .none: "Нет"
             }
         }
 
+        /// Название в списках выбора; непроверенный движок помечен.
+        var pickerTitle: String {
+            engineID?.isUnverified == true ? "\(title) — не проверен вживую" : title
+        }
+
         var engineID: EngineID? {
             switch self {
             case .claude: .claude
+            case .codex: .codex
             case .ollama: .ollama
             case .none: nil
             }
@@ -35,6 +43,7 @@ final class AppSettings {
         /// Основной движок, при лимите или сбое — запасной.
         case auto
         case claudeOnly
+        case codexOnly
         case localOnly
 
         var id: String { rawValue }
@@ -43,6 +52,7 @@ final class AppSettings {
             switch self {
             case .auto: "Авто"
             case .claudeOnly: "Только Claude"
+            case .codexOnly: "Только Codex"
             case .localOnly: "Только локальная"
             }
         }
@@ -65,6 +75,9 @@ final class AppSettings {
     var claudePathOverride: String { didSet { defaults.set(claudePathOverride, forKey: Keys.claudePathOverride) } }
     var claudeModel: String { didSet { defaults.set(claudeModel, forKey: Keys.claudeModel) } }
     var engineMode: EngineMode { didSet { defaults.set(engineMode.rawValue, forKey: Keys.engineMode) } }
+    var codexPathOverride: String { didSet { defaults.set(codexPathOverride, forKey: Keys.codexPathOverride) } }
+    /// Пусто — модель выбирает сам Codex.
+    var codexModel: String { didSet { defaults.set(codexModel, forKey: Keys.codexModel) } }
     var ollamaPathOverride: String { didSet { defaults.set(ollamaPathOverride, forKey: Keys.ollamaPathOverride) } }
     var ollamaModel: String { didSet { defaults.set(ollamaModel, forKey: Keys.ollamaModel) } }
     var pageTimeoutSeconds: Int { didSet { defaults.set(pageTimeoutSeconds, forKey: Keys.pageTimeoutSeconds) } }
@@ -84,6 +97,8 @@ final class AppSettings {
         claudePathOverride = defaults.string(forKey: Keys.claudePathOverride) ?? ""
         claudeModel = defaults.string(forKey: Keys.claudeModel) ?? "sonnet"
         engineMode = defaults.string(forKey: Keys.engineMode).flatMap(EngineMode.init(rawValue:)) ?? .auto
+        codexPathOverride = defaults.string(forKey: Keys.codexPathOverride) ?? ""
+        codexModel = defaults.string(forKey: Keys.codexModel) ?? ""
         ollamaPathOverride = defaults.string(forKey: Keys.ollamaPathOverride) ?? ""
         ollamaModel = defaults.string(forKey: Keys.ollamaModel) ?? OllamaEngine.Config.defaultModel
         pageTimeoutSeconds = defaults.object(forKey: Keys.pageTimeoutSeconds) as? Int ?? 120
@@ -101,6 +116,8 @@ final class AppSettings {
         static let claudePathOverride = "claudePathOverride"
         static let claudeModel = "claudeModel"
         static let engineMode = "engineMode"
+        static let codexPathOverride = "codexPathOverride"
+        static let codexModel = "codexModel"
         static let ollamaPathOverride = "ollamaPathOverride"
         static let ollamaModel = "ollamaModel"
         static let pageTimeoutSeconds = "pageTimeoutSeconds"

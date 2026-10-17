@@ -22,17 +22,27 @@ struct EngineModeMenu: View {
     }
 
     private var claude: String { "Claude (\(settings.claudeModel.isEmpty ? "sonnet" : settings.claudeModel))" }
+    private var codex: String { "Codex (не проверен вживую)" }
     private var local: String { "локальная (\(settings.ollamaModel))" }
 
     private func description(_ mode: AppSettings.EngineMode) -> String {
         switch mode {
         case .auto:
             let routing = EngineCenter.routing(mode: .auto, primary: settings.primaryEngine, fallback: settings.fallbackEngine)
-            let main = routing.primary == .claude ? claude : local.capitalizedFirst
+            let main = name(routing.primary, capitalized: true)
             guard let spare = routing.fallback else { return "Авто: \(main)" }
-            return "Авто: \(main), при лимите — \(spare == .claude ? claude : local)"
+            return "Авто: \(main), при лимите — \(name(spare, capitalized: false))"
         case .claudeOnly: return "Только \(claude)"
+        case .codexOnly: return "Только \(codex)"
         case .localOnly: return "Только \(local)"
+        }
+    }
+
+    private func name(_ engine: EngineID, capitalized: Bool) -> String {
+        switch engine {
+        case .claude: claude
+        case .codex: codex
+        case .ollama: capitalized ? local.capitalizedFirst : local
         }
     }
 
@@ -40,6 +50,7 @@ struct EngineModeMenu: View {
         switch settings.engineMode {
         case .auto: "Авто"
         case .claudeOnly: "Claude"
+        case .codexOnly: "Codex"
         case .localOnly: "Локально"
         }
     }
@@ -47,7 +58,7 @@ struct EngineModeMenu: View {
     private var icon: String {
         switch settings.engineMode {
         case .auto: "arrow.triangle.branch"
-        case .claudeOnly: "cloud"
+        case .claudeOnly, .codexOnly: "cloud"
         case .localOnly: "desktopcomputer"
         }
     }

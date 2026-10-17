@@ -100,25 +100,35 @@ struct EnrichmentTests {
     }
 }
 
-@Suite("EngineRouter: требуемый движок")
+@Suite("EngineRouter: облачные запросы")
 struct RequiredEngineTests {
-    @Test func localPrimaryIsRefusedForClaudeOnlyRequest() async {
+    @Test func localPrimaryIsRefusedForCloudOnlyRequest() async {
         let local = EngineRouterTests.FakeEngine([.success("не должен")], id: .ollama)
         let router = EngineRouter(primary: local, fallback: nil, settings: .init())
         var request = AIRequest(prompt: "p", systemPrompt: "s")
-        request.requiredEngine = .claude
+        request.cloudOnly = true
         await #expect(throws: AIError.self) { try await router.run(request) }
         #expect(await local.calls == 0)
     }
 
-    @Test func claudeOnlyRequestDoesNotFallBackOnLimit() async {
+    @Test func cloudOnlyRequestDoesNotFallBackToLocalOnLimit() async {
         let limit = AIError.rateLimited(resetAt: nil, details: "limit")
         let claude = EngineRouterTests.FakeEngine([.failure(limit)])
         let local = EngineRouterTests.FakeEngine([.success("не должен")], id: .ollama)
         let router = EngineRouter(primary: claude, fallback: local, settings: .init())
         var request = AIRequest(prompt: "p", systemPrompt: "s")
-        request.requiredEngine = .claude
+        request.cloudOnly = true
         await #expect(throws: limit) { try await router.run(request) }
         #expect(await local.calls == 0)
+    }
+
+    @Test func cloudOnlyRequestMayFallBackToCodex() async throws {
+        let limit = AIError.rateLimited(resetAt: nil, details: "limit")
+        let claude = EngineRouterTests.FakeEngine([.failure(limit)])
+        let codex = EngineRouterTests.FakeEngine([.success("от Codex")], id: .codex)
+        let router = EngineRouter(primary: claude, fallback: codex, settings: .init())
+        var request = AIRequest(prompt: "p", systemPrompt: "s")
+        request.cloudOnly = true
+        #expect(try await router.run(request).text == "от Codex")
     }
 }
