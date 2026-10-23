@@ -29,10 +29,12 @@ struct StudyAssemblyPlanTests {
         #expect(plan.parts[0].notes[0].draft == "a")
     }
 
-    @Test func longLectureSplitsByPhotosWithOnePageOverlap() throws {
+    @Test func typicalLectureIsOneCallAndLongOnesSplitWithOnePageOverlap() throws {
+        let typical = try #require(StudyAssemblyPlanner.plan(meta: meta(pages: 10), input: input(), paths: paths, fileExists: { _ in true }))
+        #expect(typical.parts.count == 1 && !typical.needsMerge)
         let plan = try #require(StudyAssemblyPlanner.plan(meta: meta(pages: 14), input: input(), paths: paths, fileExists: { _ in true }))
-        #expect(plan.parts.map { $0.notes.map(\.number) } == [Array(1...6), Array(6...11), Array(11...14)])
-        #expect(plan.needsMerge && plan.calls == 4 && plan.imageCount == 16)
+        #expect(plan.parts.map { $0.notes.map(\.number) } == [Array(1...10), Array(10...14)])
+        #expect(plan.needsMerge && plan.calls == 3 && plan.imageCount == 15)
     }
 
     @Test func pagesWithoutPhotoAreSkippedAndSlidesOnlyFallsBackToText() throws {
@@ -120,8 +122,8 @@ struct StudyAssemblyCenterTests {
     }
 
     @Test func longStudyLectureIsMergedWithClaudeModel() async throws {
-        let env = try Env(pages: (1...8).map { "Страница \($0)" })
-        try prepare(env, photos: 8)
+        let env = try Env(pages: (1...14).map { "Страница \($0)" })
+        try prepare(env, photos: 14)
         let engine = FakeEngine([.success("часть 1"), .success("часть 2"), .success("итог")])
         let center = center(env, engine)
         center.assemble(env.lectureID)
@@ -129,6 +131,8 @@ struct StudyAssemblyCenterTests {
         let requests = await engine.requests
         #expect(requests.count == 3)
         #expect(requests.last?.images.isEmpty == true && requests.last?.model == "opus")
+        // Склейка учебного конспекта использует свой промпт: он велит ничего не сокращать.
+        #expect(requests.last?.prompt.contains("ВЕСЬ материал") == true)
         #expect(env.lecture.meta.konspekt?.parts == 2)
     }
 
@@ -198,5 +202,38 @@ struct StudyKonspektEnrichmentTests {
         #expect(center.errors[env.lectureID] != nil)
         #expect(await engine.calls == 0)
         #expect(KonspektStore(folder: env.lecture.folder).read() == text)
+    }
+}
+
+/// Живая учебная сборка настоящей лекции через Claude Code (по флагу, тратит лимит). Работает на копии папки лекции
+/// `INKLING_LIVE_LECTURE`; результат пишется в `INKLING_LIVE_OUT`, модель — `INKLING_LIVE_MODEL` (по умолчанию opus).
+@Suite("Учебная сборка: живой вызов", .enabled(if: ProcessInfo.processInfo.environment["INKLING_LIVE_CLAUDE"] == "1"))
+@MainActor
+struct StudyAssemblyLiveTests {
+    @Test func assemblesRealLectureAsStudyKonspekt() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        let source = URL(fileURLWithPath: try #require(environment["INKLING_LIVE_LECTURE"], "задайте INKLING_LIVE_LECTURE"))
+        let dir = try TempDir()
+        let root = dir.url.appendingPathComponent("Inkling")
+        let copy = root.appendingPathComponent("Копия").appendingPathComponent("Лекция")
+        try FileManager.default.createDirectory(at: copy.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: source, to: copy)
+        let library = Library(root: root, trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: root)
+        let lecture = try #require(library.subjects.flatMap(\.lectures).first)
+
+        let router = EngineRouter(primary: ClaudeCodeEngine(config: .init()), fallback: nil, settings: .init())
+        let model = environment["INKLING_LIVE_MODEL"] ?? "opus"
+        let center = AssemblyCenter(library: library, router: { router }, threshold: { 40_000 }, style: { .study }, model: { model })
+        let started = Date()
+        center.assemble(lecture.id)
+        for _ in 0..<3000 where center.isRunning(lecture.id) { try await Task.sleep(for: .milliseconds(200)) }
+        #expect(center.errors[lecture.id] == nil, "\(String(describing: center.errors[lecture.id]))")
+        // Библиотека могла переименовать папку лекции по теме и дате: берём актуальный путь.
+        let folder = try #require(library.lecture(id: lecture.id)).folder
+        let result = try #require(KonspektStore(folder: folder).read())
+        let info = library.lecture(id: lecture.id)?.meta.konspekt
+        print("Время: \(Int(Date().timeIntervalSince(started))) с, модель \(info?.model ?? "?"), стиль \(String(describing: info?.style)), символов \(result.count)")
+        if let out = environment["INKLING_LIVE_OUT"] { try result.write(toFile: out, atomically: true, encoding: .utf8) }
     }
 }

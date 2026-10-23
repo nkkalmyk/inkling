@@ -90,6 +90,48 @@ struct RenderJSTests {
         }
     }
 
+    // MARK: Структура учебного конспекта
+
+    @Test func headingsGetAnchorsAndTableOfContentsLinks() {
+        let md = """
+        # Конспект
+
+        ## Оглавление
+
+        1. Закон Гесса
+        2. Примеры решения типовых задач
+           - Пример 1
+
+        ## 1. Закон Гесса
+
+        ## 2. Примеры решения типовых задач
+
+        ### Пример 1. Алюмотермия
+        """
+        let out = html(md)
+        #expect(out.contains("<nav class=\"toc\">"))
+        #expect(out.contains("<a href=\"#sec-3\">Закон Гесса</a>"))
+        #expect(out.contains("<a href=\"#sec-4\">Примеры решения типовых задач</a>"))
+        #expect(out.contains("<h2 id=\"sec-3\">1. Закон Гесса</h2>"))
+        // «Пример 1» из оглавления не совпал по названию с «Пример 1. Алюмотермия»: остаётся обычным текстом, без битой ссылки.
+        #expect(!out.contains("href=\"#sec-6\">Пример 1<"))
+    }
+
+    @Test func tasksAndDefinitionsGetClasses() {
+        let out = html("**Условие:** найти ΔH.\n\n**Решение:** считаем.\n\n**Ответ:** −853,6 кДж.\n\n**Закон Гесса (1840 г.):** эффект не зависит от пути.\n\n**Просто жирный** текст.")
+        #expect(out.contains("<p class=\"task task-condition\">"))
+        #expect(out.contains("<p class=\"task task-solution\">"))
+        #expect(out.contains("<p class=\"task task-answer\">"))
+        #expect(out.contains("<p class=\"definition\"><strong>Закон Гесса (1840 г.):</strong>"))
+        #expect(out.contains("<p><strong>Просто жирный</strong> текст.</p>"))
+    }
+
+    @Test func documentWithoutTableOfContentsStillRenders() {
+        let out = html("# Тема\n\nТекст со ссылкой [сайт](https://example.com).")
+        #expect(!out.contains("<nav"))
+        #expect(out.contains("<h1 id=\"sec-1\">Тема</h1>"))
+    }
+
     @Test func modelGuessIsMarked() {
         let out = html("Равны [?определители] матриц и [?$A^T$] тоже.")
         #expect(out.contains("<mark class=\"guess\""))
@@ -101,7 +143,7 @@ struct RenderJSTests {
 
     @Test func markdownAndInlineMath() {
         let out = html("# Тема\n\nФормула $a_1 * b_2$ в тексте.")
-        #expect(out.contains("<h1>Тема</h1>"))
+        #expect(out.contains("<h1 id=\"sec-1\">Тема</h1>"))
         #expect(out.contains("class=\"katex\""))
         #expect(!out.contains("<em>"), "Подчёркивания и звёздочки внутри формулы не должны стать курсивом")
     }

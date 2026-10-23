@@ -46,7 +46,8 @@ struct StudyPlan: Equatable, Sendable {
 
 enum StudyAssemblyPlanner {
     /// Сколько фотографий уходит в один вызов: больше — модель хуже держит детали и чаще упирается в таймаут.
-    static let pagesPerPart = 6
+    /// Типовая лекция (3–8 страниц) собирается одним вызовом: законченный конспект не склеивается из кусков.
+    static let pagesPerPart = 10
 
     /// Страницы тетрады с фото на диске, в порядке лекции; слайды — только распознанный текст.
     static func plan(meta: LectureMeta, input: AssemblyInput, paths: LecturePaths,

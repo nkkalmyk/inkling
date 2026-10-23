@@ -158,6 +158,67 @@
     html = html.replace(/<blockquote>\s*<p>(📝)/g, '<blockquote class="callout example"><p>$1');
     html = html.replace(/<blockquote>\s*<p>(🔗)/g, '<blockquote class="callout link"><p>$1');
     html = html.replace(/<h2>(\s*🧭)/g, '<h2 class="summary-heading">$1');
+    return structure(html);
+  }
+
+  // ---- Структура учебного конспекта: якоря заголовков, ссылки в оглавлении, оформление определений и задач ----
+
+  function plain(html) {
+    return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+  }
+
+  // Название без номера и знаков в конце: «1.2. Закон Гесса:» и «Закон Гесса» сравниваются как равные.
+  function headingKey(html) {
+    return plain(html).replace(/^\d+(?:\.\d+)*\.?\s*/, '').replace(/[\s.:;,]+$/, '').toLowerCase();
+  }
+
+  // Конец списка `<ol>`/`<ul>`, начинающегося в позиции start, с учётом вложенных списков.
+  function listEnd(html, start) {
+    var re = /<(\/?)(ul|ol)\b[^>]*>/g;
+    re.lastIndex = start;
+    var depth = 0, m;
+    while ((m = re.exec(html)) !== null) {
+      depth += m[1] ? -1 : 1;
+      if (depth === 0) return re.lastIndex;
+    }
+    return -1;
+  }
+
+  var DEFINITION = /^(?:Закон|Теорема|Определение|Правило|Принцип|Следствие|Лемма|Аксиома|Постулат|Уравнение|Формула|Свойство)/i;
+
+  function structure(html) {
+    // 1. Якоря у заголовков h1–h3 (по порядку) и таблица заголовков для оглавления.
+    var headings = [];
+    html = html.replace(/<h([1-3])((?: [^>]*)?)>([\s\S]*?)<\/h\1>/g, function (whole, level, attrs, inner) {
+      var id = 'sec-' + (headings.length + 1);
+      headings.push({ id: id, key: headingKey(inner) });
+      return '<h' + level + attrs + ' id="' + id + '">' + inner + '</h' + level + '>';
+    });
+
+    // 2. Оглавление: пункты, совпавшие по названию с заголовком, становятся ссылками.
+    var toc = /<h2[^>]*>\s*Оглавление\s*<\/h2>\s*/.exec(html);
+    if (toc) {
+      var start = toc.index + toc[0].length;
+      if (/^<(?:ol|ul)\b/.test(html.slice(start))) {
+        var end = listEnd(html, start);
+        if (end !== -1) {
+          var list = html.slice(start, end).replace(/<li>([\s\S]*?)(?=<(?:ul|ol)\b|<\/li>)/g, function (whole, inner) {
+            var key = headingKey(inner);
+            var target = key && headings.filter(function (h) { return h.key === key; })[0];
+            return target ? '<li><a href="#' + target.id + '">' + inner.trim() + '</a>' : whole;
+          });
+          html = html.slice(0, start) + '<nav class="toc">' + list + '</nav>' + html.slice(end);
+        }
+      }
+    }
+
+    // 3. Условие, решение и ответ задач; определения и законы в начале абзаца.
+    html = html.replace(/<p><strong>\s*Условие:?\s*<\/strong>/g, '<p class="task task-condition"><strong>Условие:</strong>');
+    html = html.replace(/<p><strong>\s*Решение:?\s*<\/strong>/g, '<p class="task task-solution"><strong>Решение:</strong>');
+    html = html.replace(/<p><strong>\s*Ответ:?\s*<\/strong>/g, '<p class="task task-answer"><strong>Ответ:</strong>');
+    html = html.replace(/<p><strong>([^<]{3,120}?)<\/strong>/g, function (whole, title) {
+      return DEFINITION.test(title) && /[:.]\s*$|\)\s*:?\s*$/.test(title) ? '<p class="definition"><strong>' + title + '</strong>' : whole;
+    });
     return html;
   }
 

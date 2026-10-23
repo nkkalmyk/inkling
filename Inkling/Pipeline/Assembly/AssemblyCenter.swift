@@ -214,7 +214,7 @@ final class AssemblyCenter {
         let onEvent: @Sendable (EngineRouter.Event) -> Void = { event in
             Task { @MainActor in self.note(event, lectureID: lectureID) }
         }
-        let mergeText = try prompts.mergePrompt(parts: parts, subject: subject, topic: topic)
+        let mergeText = try prompts.mergePrompt(parts: parts, subject: subject, topic: topic, study: cloud)
         var request = AIRequest(prompt: mergeText, systemPrompt: PromptLibrary.assemblySystemPrompt, format: .text,
                                 timeout: AssemblyPlanner.timeout(chars: mergeText.count))
         request.cloudOnly = cloud
