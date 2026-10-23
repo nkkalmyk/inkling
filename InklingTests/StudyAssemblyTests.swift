@@ -237,3 +237,43 @@ struct StudyAssemblyLiveTests {
         if let out = environment["INKLING_LIVE_OUT"] { try result.write(toFile: out, atomically: true, encoding: .utf8) }
     }
 }
+
+@Suite("Учебная сборка с учебниками")
+@MainActor
+struct StudyAssemblyLiteratureTests {
+    @Test func passagesGoIntoPromptAndReferencesIntoMeta() async throws {
+        let env = try AssemblyCenterTests.Env(pages: ["Закон Гесса"])
+        let paths = LecturePaths(folder: env.lecture.folder)
+        try FileManager.default.createDirectory(at: paths.notePhoto("p0").deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data([0xFF, 0xD8]).write(to: paths.notePhoto("p0"))
+        let engine = EngineRouterTests.FakeEngine([.success("# Конспект")])
+        let router = EngineRouter(primary: engine, fallback: nil, settings: .init())
+        let center = AssemblyCenter(library: env.library, router: { router }, threshold: { 40_000 }, style: { .study }, model: { "" },
+                                    literature: { subject, topic, texts in
+                                        #expect(subject == "Высшая алгебра" && topic == "Матрицы" && texts == ["Закон Гесса"])
+                                        return [LiteraturePassage(book: "Ахметов", page: 42, text: "Определение закона", score: -2)]
+                                    })
+        center.assemble(env.lectureID)
+        for _ in 0..<250 where center.isRunning(env.lectureID) { try await Task.sleep(for: .milliseconds(20)) }
+        let prompt = try #require(await engine.requests.first?.prompt)
+        #expect(prompt.contains("[Ахметов, с. 42]\nОпределение закона"))
+        #expect(prompt.contains("## Источники"))
+        #expect(!prompt.contains("{учебники}"))
+        #expect(env.lecture.meta.konspekt?.literature == ["Ахметов, с. 42"])
+    }
+
+    @Test func withoutTextbooksPromptHasNoPlaceholderAndNoMeta() async throws {
+        let env = try AssemblyCenterTests.Env(pages: ["Один"])
+        let paths = LecturePaths(folder: env.lecture.folder)
+        try FileManager.default.createDirectory(at: paths.notePhoto("p0").deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data([0xFF, 0xD8]).write(to: paths.notePhoto("p0"))
+        let engine = EngineRouterTests.FakeEngine([.success("# Конспект")])
+        let router = EngineRouter(primary: engine, fallback: nil, settings: .init())
+        let center = AssemblyCenter(library: env.library, router: { router }, threshold: { 40_000 }, style: { .study })
+        center.assemble(env.lectureID)
+        for _ in 0..<250 where center.isRunning(env.lectureID) { try await Task.sleep(for: .milliseconds(20)) }
+        let prompt = try #require(await engine.requests.first?.prompt)
+        #expect(!prompt.contains("{учебники}") && !prompt.contains("Выдержки из учебников"))
+        #expect(env.lecture.meta.konspekt?.literature == nil)
+    }
+}

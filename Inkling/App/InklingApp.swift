@@ -13,6 +13,7 @@ struct InklingApp: App {
     @State private var assembly: AssemblyCenter
     @State private var study: StudyCenter
     @State private var enrichment: EnrichmentCenter
+    @State private var literature: LiteratureCenter
 
     init() {
         let settings = AppSettings()
@@ -26,9 +27,14 @@ struct InklingApp: App {
         _library = State(initialValue: library)
         _engines = State(initialValue: engines)
         _recognition = State(initialValue: recognition)
+        let literature = LiteratureCenter(settings: settings)
+        _literature = State(initialValue: literature)
         let assembly = AssemblyCenter(library: library, router: { engines.router },
                                       threshold: { engines.chunkThreshold },
-                                      style: { settings.assemblyStyle }, model: { settings.assemblyModel })
+                                      style: { settings.assemblyStyle }, model: { settings.assemblyModel },
+                                      literature: { subject, topic, texts in
+                                          await literature.passages(subject: subject, topic: topic, texts: texts)
+                                      })
         let study = StudyCenter(library: library, router: { engines.router })
         // «Запускать учебные материалы автоматически после сборки» (SPEC, раздел 4, пункт 5).
         assembly.onAssembled = { lectureID in
@@ -49,10 +55,14 @@ struct InklingApp: App {
                 .environment(assembly)
                 .environment(study)
                 .environment(enrichment)
+                .environment(literature)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
                 .task {
                     appDelegate.library = library
-                    if !Self.isRunningTests { library.open(root: settings.storageRoot) }
+                    if !Self.isRunningTests {
+                        library.open(root: settings.storageRoot)
+                        literature.refresh()
+                    }
                 }
                 .onChange(of: settings.storageRootPath) { library.open(root: settings.storageRoot) }
         }
@@ -75,6 +85,7 @@ struct InklingApp: App {
                 .environment(settings)
                 .environment(engines)
                 .environment(library)
+                .environment(literature)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
         }
     }

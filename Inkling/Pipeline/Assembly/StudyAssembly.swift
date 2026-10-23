@@ -103,7 +103,8 @@ extension PromptLibrary {
     """
 
     /// Промпт учебной сборки одной части. Для длинной лекции добавляется пояснение, какая это часть.
-    func studyAssemblyPrompt(part: StudyPart, index: Int, of count: Int, subject: String, topic: String) throws -> String {
+    func studyAssemblyPrompt(part: StudyPart, index: Int, of count: Int, subject: String, topic: String,
+                             textbooks: String = "") throws -> String {
         let pages = part.notes.map { page -> String in
             var block = "--- Страница \(page.number): ./\(page.image.lastPathComponent) ---"
             if !page.draft.isEmpty { block += "\nЧерновая расшифровка (может содержать ошибки, сверяйся с фото):\n\(page.draft)" }
@@ -115,6 +116,7 @@ extension PromptLibrary {
             "вставка_предмета": subjectInsert(subject),
             "страницы": pages.isEmpty ? "(фотографий нет, материал только в слайдах)" : pages,
             "слайды": part.slides.isEmpty ? "(слайдов нет)" : Self.pagesBlock(part.slides, label: "Слайд"),
+            "учебники": textbooks,
         ])
         if count > 1 {
             let span = part.notes.isEmpty ? part.slides.map(\.number) : part.notes.map(\.number)

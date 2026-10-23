@@ -109,6 +109,8 @@ struct ArtifactInfo: Codable, Equatable, Sendable {
     var enrichment: EnrichmentInfo?
     /// Как собран конспект; `nil` у собранных до появления «Учебного конспекта» (это была точная сборка).
     var style: AssemblyStyle?
+    /// Книги и страницы учебников, выдержки из которых получила модель при учебной сборке.
+    var literature: [String]?
 }
 
 /// Как был дополнен конспект (`Enrichment`): сколько блоков осталось и сколько убрал проверяющий проход.

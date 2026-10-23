@@ -34,6 +34,8 @@ final class AssemblyCenter {
     /// Стиль по умолчанию и модель Claude для сборки (из настроек). В тестах — точная сборка без выбора модели.
     @ObservationIgnored private let defaultStyle: @MainActor () -> AssemblyStyle
     @ObservationIgnored private let assemblyModel: @MainActor () -> String
+    /// Выдержки из учебников для предмета и темы (по словам лекции); в тестах — пусто.
+    @ObservationIgnored private let literature: @MainActor (_ subject: String, _ topic: String, _ texts: [String]) async -> [LiteraturePassage]
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
     private var cachedReadiness: [UUID: Readiness] = [:]
     @ObservationIgnored private var readinessKeys: [UUID: ReadinessKey] = [:]
@@ -41,12 +43,14 @@ final class AssemblyCenter {
 
     init(library: Library, router: @escaping @MainActor () -> EngineRouter, threshold: @escaping @MainActor () -> Int,
          style: @escaping @MainActor () -> AssemblyStyle = { .faithful },
-         model: @escaping @MainActor () -> String = { "" }) {
+         model: @escaping @MainActor () -> String = { "" },
+         literature: @escaping @MainActor (String, String, [String]) async -> [LiteraturePassage] = { _, _, _ in [] }) {
         self.library = library
         self.router = router
         self.threshold = threshold
         defaultStyle = style
         assemblyModel = model
+        self.literature = literature
     }
 
     func isRunning(_ lectureID: UUID) -> Bool { runs[lectureID] != nil }
@@ -131,16 +135,18 @@ final class AssemblyCenter {
             }
             do {
                 let result: (text: String, response: AIResponse)
+                var passages: [LiteraturePassage] = []
                 if let studyPlan {
+                    passages = await literature(subject, topic, input.notes.map(\.text) + input.slides.map(\.text))
                     result = try await runStudy(studyPlan, subject: subject, topic: topic, prompts: prompts, router: router,
-                                                model: model, lectureID: lectureID)
+                                                model: model, textbooks: LiteratureRetrieval.promptBlock(passages), lectureID: lectureID)
                 } else {
                     result = try await run(plan, input: input, subject: subject, topic: topic, prompts: prompts,
                                            router: router, lectureID: lectureID)
                 }
                 try save(result.text, response: result.response, plan: plan, input: input,
                          style: studyPlan == nil ? .faithful : .study, parts: studyPlan?.parts.count ?? plan.parts.count,
-                         lectureID: lectureID)
+                         literature: passages.isEmpty ? nil : LiteratureRetrieval.references(passages), lectureID: lectureID)
             } catch let error as AIError {
                 if error != .cancelled { errors[lectureID] = error }
             } catch {
@@ -151,10 +157,11 @@ final class AssemblyCenter {
 
     /// Учебная сборка: фото страниц уходят модели целиком (только облачный движок), части идут параллельно, затем склейка.
     private func runStudy(_ plan: StudyPlan, subject: String, topic: String, prompts: PromptLibrary, router: EngineRouter,
-                          model: String, lectureID: UUID) async throws -> (text: String, response: AIResponse) {
+                          model: String, textbooks: String, lectureID: UUID) async throws -> (text: String, response: AIResponse) {
         let requests = try plan.parts.enumerated().map { index, part -> AIRequest in
             var request = AIRequest(
-                prompt: try prompts.studyAssemblyPrompt(part: part, index: index, of: plan.parts.count, subject: subject, topic: topic),
+                prompt: try prompts.studyAssemblyPrompt(part: part, index: index, of: plan.parts.count, subject: subject, topic: topic,
+                                                   textbooks: textbooks),
                 systemPrompt: PromptLibrary.studyAssemblySystemPrompt, images: part.notes.map(\.image), format: .text,
                 timeout: StudyAssemblyPlanner.timeout(images: part.notes.count,
                                                       chars: (part.notes.map(\.draft.count) + part.slides.map(\.text.count)).reduce(0, +)))
@@ -229,7 +236,7 @@ final class AssemblyCenter {
 
     /// Пишет `konspekt.md` (прежний — в историю) и описание в `meta.json`. Папка ищется заново.
     private func save(_ text: String, response: AIResponse, plan: AssemblyPlan, input: AssemblyInput, style: AssemblyStyle,
-                      parts: Int, lectureID: UUID) throws {
+                      parts: Int, literature: [String]?, lectureID: UUID) throws {
         guard !text.isEmpty else { throw AIError.invalidOutput("Модель вернула пустой конспект.") }
         guard let lecture = try library.store.findLecture(id: lectureID, hint: library.lecture(id: lectureID)?.folder) else { throw LibraryError.lectureNotFound }
         let now = JSONCoding.rounded(Date())
@@ -239,6 +246,7 @@ final class AssemblyCenter {
                                 skippedPages: input.unrecognizedNotes + input.unrecognizedSlides)
         var stamped = info
         stamped.style = style
+        stamped.literature = literature
         library.mutate(lectureID) { $0.konspekt = stamped }
         library.konspektRevision[lectureID, default: 0] += 1
         onAssembled?(lectureID)
