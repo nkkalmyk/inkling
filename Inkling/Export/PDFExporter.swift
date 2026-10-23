@@ -130,7 +130,7 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
         let json = (try? JSONEncoder().encode(markdown)).map { String(decoding: $0, as: UTF8.self) } ?? "\"\""
         let headingJSON = heading.flatMap { try? JSONEncoder().encode($0) }.map { String(decoding: $0, as: UTF8.self) }
         let setHeading = headingJSON.map { "window.inklingSetHeading(\($0));" } ?? ""
-        webView.evaluateJavaScript(setHeading + "window.inklingShow(\(json))")
+        webView.evaluateJavaScript(setHeading + "InklingRender.options.collapseSolutions = false; window.inklingShow(\(json))")
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {

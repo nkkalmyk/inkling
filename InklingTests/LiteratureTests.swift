@@ -226,3 +226,26 @@ struct LiteratureRetrievalTests {
         #expect(map["Общая и неорганическая химия"] == "Химия")
     }
 }
+
+@Suite("Учебники: очистка и порядок выдержек")
+struct LiteratureCleaningTests {
+    @Test func hyphenationPageNumbersAndBrokenLinesAreFixed() {
+        let raw = "Электродный потенциал определяется активностью полуэле-\nментов в растворе, если температура\nпостоянна.\n42\nСледующий абзац начинается с новой мысли.\n7"
+        let cleaned = LiteratureRetrieval.clean(raw)
+        #expect(cleaned.contains("полуэлементов в растворе, если температура постоянна."))
+        #expect(!cleaned.contains("полуэле-") && !cleaned.contains("\n42") && !cleaned.hasSuffix("7"))
+        #expect(cleaned.contains("Следующий абзац"))
+        // Разрыв абзаца сохраняется по пустой строке.
+        #expect(LiteratureRetrieval.clean("Первый.\n\nВторой.") == "Первый.\nВторой.")
+    }
+
+    @Test func definitionsAndPhraseMatchesRankHigher() {
+        let plain = LiteraturePassage(book: "А", page: 1, text: "Энтальпия образования вещества упоминается в таблице значений.", score: -10)
+        let definition = LiteraturePassage(book: "Б", page: 2, text: "Закон Гесса: тепловой эффект реакции не зависит от пути. Энтальпия образования вещества называется стандартной.", score: -9)
+        let ranked = LiteratureRetrieval.rank([plain, definition], topic: "Энтальпия образования, закон Гесса")
+        #expect(ranked.first?.book == "Б")
+        // Без совпадений порядок поиска сохраняется.
+        let unrelated = LiteratureRetrieval.rank([plain, LiteraturePassage(book: "В", page: 3, text: "Другое.", score: -5)], topic: "Тема")
+        #expect(unrelated.first?.book == "А")
+    }
+}

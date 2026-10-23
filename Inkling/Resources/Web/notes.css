@@ -145,6 +145,12 @@ th { text-align: left; }
 tbody tr:nth-child(even) td { background: var(--surface); }
 hr { border: none; border-top: 1px solid var(--rule); margin: 2em 0; }
 
+details.task-reveal { margin: 0.5em 0 1em; }
+details.task-reveal > summary { cursor: pointer; display: inline-block; font: 0.9em var(--interface); font-weight: 600; color: var(--accent);
+                                background: var(--accent-soft); border-radius: 8px; padding: 0.3em 0.9em; list-style: none; }
+details.task-reveal > summary::-webkit-details-marker { display: none; }
+details.task-reveal[open] > summary { margin-bottom: 0.6em; }
+
 /* Титул PDF (заполняется только при экспорте). */
 #print-heading { max-width: 720px; margin: 0 auto; padding: 32px 32px 0; }
 #print-heading p { margin: 0; font-family: var(--interface); font-size: 0.8em; color: var(--muted); }

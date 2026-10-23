@@ -126,6 +126,25 @@ struct RenderJSTests {
         #expect(out.contains("<p><strong>Просто жирный</strong> текст.</p>"))
     }
 
+    @Test func solutionAndAnswerGoUnderSpoilerUntilNextTask() {
+        let md = "### Пример 1\n\n**Условие:** найти x.\n\n**Решение:** шаг 1.\n\n1. Первый\n2. Второй\n\n**Ответ:** 5.\n\n### Пример 2\n\n**Условие:** найти y.\n\n**Решение:** шаг.\n\n**Ответ:** 7."
+        let out = html(md)
+        #expect(out.components(separatedBy: "<details class=\"task-reveal\">").count == 3)
+        #expect(out.contains("<summary>Показать решение</summary><p class=\"task task-solution\">"))
+        // Условие остаётся снаружи, список и ответ попали внутрь первого спойлера.
+        let first = out.range(of: "<details")!, close = out.range(of: "</details>")!
+        let inside = String(out[first.lowerBound..<close.upperBound])
+        #expect(inside.contains("<ol>") && inside.contains("task-answer") && !inside.contains("Условие"))
+        #expect(!inside.contains("Пример 2"))
+    }
+
+    @Test func spoilerCanBeSwitchedOffForExport() {
+        context.evaluateScript("InklingRender.options.collapseSolutions = false;")
+        defer { context.evaluateScript("InklingRender.options.collapseSolutions = true;") }
+        let out = html("**Условие:** а.\n\n**Решение:** б.\n\n**Ответ:** в.")
+        #expect(!out.contains("<details") && out.contains("task-solution"))
+    }
+
     @Test func documentWithoutTableOfContentsStillRenders() {
         let out = html("# Тема\n\nТекст со ссылкой [сайт](https://example.com).")
         #expect(!out.contains("<nav"))

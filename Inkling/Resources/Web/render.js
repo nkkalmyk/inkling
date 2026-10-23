@@ -158,7 +158,8 @@
     html = html.replace(/<blockquote>\s*<p>(📝)/g, '<blockquote class="callout example"><p>$1');
     html = html.replace(/<blockquote>\s*<p>(🔗)/g, '<blockquote class="callout link"><p>$1');
     html = html.replace(/<h2>(\s*🧭)/g, '<h2 class="summary-heading">$1');
-    return structure(html);
+    html = structure(html);
+    return options.collapseSolutions ? collapseSolutions(html) : html;
   }
 
   // ---- Структура учебного конспекта: якоря заголовков, ссылки в оглавлении, оформление определений и задач ----
@@ -222,5 +223,22 @@
     return html;
   }
 
-  global.InklingRender = { toHTML: toHTML, extractMath: extractMath };
+  // Решение и ответ задачи прячутся под спойлер: сначала можно решить самому. Спойлер идёт от абзаца «Решение» до следующего
+  // заголовка или следующего «Условия». При экспорте в PDF опция выключается, и всё остаётся раскрытым.
+  function collapseSolutions(html) {
+    var open = '<p class="task task-solution">';
+    var out = '', pos = 0, start;
+    while ((start = html.indexOf(open, pos)) !== -1) {
+      var rest = html.slice(start + open.length);
+      var stop = rest.search(/<h[1-6][ >]|<p class="task task-condition">/);
+      var end = stop === -1 ? html.length : start + open.length + stop;
+      out += html.slice(pos, start) + '<details class="task-reveal"><summary>Показать решение</summary>' + html.slice(start, end) + '</details>';
+      pos = end;
+    }
+    return out + html.slice(pos);
+  }
+
+  var options = { collapseSolutions: true };
+
+  global.InklingRender = { toHTML: toHTML, extractMath: extractMath, options: options };
 })(this);
