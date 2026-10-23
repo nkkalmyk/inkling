@@ -240,5 +240,24 @@
 
   var options = { collapseSolutions: true };
 
-  global.InklingRender = { toHTML: toHTML, extractMath: extractMath, options: options };
+  // Проверка конспекта без DOM: формулы, которые KaTeX не разбирает (с текстом ошибки), и число сломанных рисунков.
+  function check(markdown) {
+    var extracted = extractMath(markdown || '');
+    var broken = [];
+    extracted.formulas.forEach(function (f) {
+      try {
+        global.katex.renderToString(f.tex, { displayMode: f.display, throwOnError: true, strict: 'ignore', trust: false, output: 'html' });
+      } catch (e) {
+        broken.push({ tex: f.tex, display: f.display, message: String(e && e.message || e).slice(0, 200) });
+      }
+    });
+    var saved = options.collapseSolutions;
+    options.collapseSolutions = false;
+    var html = toHTML(markdown || '');
+    options.collapseSolutions = saved;
+    var diagramErrors = (html.match(/class="diagram-error"/g) || []).length;
+    return JSON.stringify({ broken: broken, diagramErrors: diagramErrors });
+  }
+
+  global.InklingRender = { toHTML: toHTML, extractMath: extractMath, options: options, check: check };
 })(this);

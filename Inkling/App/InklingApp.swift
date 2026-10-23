@@ -14,6 +14,7 @@ struct InklingApp: App {
     @State private var study: StudyCenter
     @State private var enrichment: EnrichmentCenter
     @State private var literature: LiteratureCenter
+    @State private var konspektCheck: KonspektCheckCenter
 
     init() {
         let settings = AppSettings()
@@ -43,6 +44,7 @@ struct InklingApp: App {
         _assembly = State(initialValue: assembly)
         _study = State(initialValue: study)
         _enrichment = State(initialValue: EnrichmentCenter(library: library, router: { engines.router }))
+        _konspektCheck = State(initialValue: KonspektCheckCenter(library: library, router: { engines.router }))
     }
 
     var body: some Scene {
@@ -56,6 +58,7 @@ struct InklingApp: App {
                 .environment(study)
                 .environment(enrichment)
                 .environment(literature)
+                .environment(konspektCheck)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
                 .task {
                     appDelegate.library = library

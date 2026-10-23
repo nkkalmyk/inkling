@@ -306,3 +306,55 @@ struct StudySubjectInsertTests {
         }
     }
 }
+
+@Suite("Локальная проверка конспекта")
+@MainActor
+struct KonspektCheckTests {
+    private let good = "# Конспект\n\n## Оглавление\n\n1. Раздел\n\n## 1. Раздел\n\nФормула $x^2 + 1$ и $$\\frac{a}{b}$$.\n\n## Примеры решения типовых задач\n\n## Источники\n"
+
+    @Test func cleanKonspektHasNoProblems() {
+        let check = KonspektChecker.check(good, study: true, expectSources: true)
+        #expect(check.isClean, "\(check.summary)")
+    }
+
+    @Test func brokenFormulaAndMissingSectionsAreReported() {
+        let text = "# Конспект\n\n## 1. Раздел\n\nЛомаем: $\\frac{a}{$ и нормальная $y$.\n\n```plot\nне json\n```\n"
+        let check = KonspektChecker.check(text, study: true, expectSources: true)
+        #expect(check.brokenFormulas.count == 1 && check.brokenFormulas[0].tex == "\\frac{a}{")
+        #expect(!check.brokenFormulas[0].message.isEmpty)
+        #expect(check.diagramErrors == 1)
+        #expect(check.missingStructure == ["«Оглавление»", "раздела примеров", "«Источники»"])
+        #expect(check.summary.contains("формул с ошибкой: 1") && check.summary.contains("не отрисовано рисунков: 1"))
+        // Точная сборка структуру не проверяет, формулы проверяет.
+        #expect(KonspektChecker.check(text, study: false, expectSources: false).missingStructure.isEmpty)
+    }
+
+    @Test func formulasInsideCodeBlocksAreNotChecked() {
+        let check = KonspektChecker.check("```\n$\\frac{a}{$\n```\n", study: false, expectSources: false)
+        #expect(check.brokenFormulas.isEmpty)
+    }
+
+    @Test func fixAppliesOnlyFormulasThatNowRender() async throws {
+        let env = try AssemblyCenterTests.Env(pages: ["x"])
+        let store = KonspektStore(folder: env.lecture.folder)
+        let original = "Текст $\\frac{a}{$ и ещё $\\sqrt{$ конец.\n"
+        try store.write(original, previous: nil)
+        env.library.mutate(env.lectureID) {
+            $0.konspekt = ArtifactInfo(createdAt: Date(), updatedAt: Date(), inputHash: "x")
+        }
+        let engine = EngineRouterTests.FakeEngine([.success(#"{"fixes":[{"id":1,"tex":"\\frac{a}{b}"},{"id":2,"tex":"\\sqrt{"}]}"#)])
+        let router = EngineRouter(primary: engine, fallback: nil, settings: .init())
+        let center = KonspektCheckCenter(library: env.library, router: { router })
+        center.refresh(env.lecture)
+        for _ in 0..<250 where center.checks[env.lectureID] == nil { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(center.checks[env.lectureID]?.brokenFormulas.count == 2)
+        center.fixFormulas(env.lectureID)
+        for _ in 0..<250 where center.isFixing(env.lectureID) || center.lastFixed[env.lectureID] == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        // Первая формула исправлена, вторая осталась сломанной: исправление не прошло проверку и не применено.
+        #expect(store.read() == "Текст $\\frac{a}{b}$ и ещё $\\sqrt{$ конец.\n")
+        #expect(center.lastFixed[env.lectureID] == 1)
+        #expect(store.history.entries().count == 1)
+    }
+}

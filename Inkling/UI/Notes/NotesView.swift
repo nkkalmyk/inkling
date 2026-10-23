@@ -6,6 +6,7 @@ struct NotesView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(AssemblyCenter.self) private var assembly
     @Environment(EnrichmentCenter.self) private var enrichment
+    @Environment(KonspektCheckCenter.self) private var checker
     @Environment(RecognitionCenter.self) private var recognition
     let lecture: LectureRecord
 
@@ -87,6 +88,7 @@ struct NotesView: View {
             enrich()
         }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { await load() }
+        .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { checker.refresh(lecture) }
         .onDisappear(perform: flushSave)
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
                             presenting: confirm) { _ in
@@ -133,6 +135,20 @@ struct NotesView: View {
                 Label("ошибок в формулах: \(katexErrors)", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(Color.statusError)
                     .help("Формулы с ошибкой показаны исходным LaTeX красным")
+                if checker.checks[lecture.id]?.brokenFormulas.isEmpty == false {
+                    if checker.isFixing(lecture.id) {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("Исправить формулы") { flushSave(); checker.fixFormulas(lecture.id) }
+                            .help("Один короткий вызов модели: исправляется только синтаксис формул, смысл не меняется. Прежняя версия уйдёт в историю.")
+                    }
+                }
+            }
+            if let check = checker.checks[lecture.id], !check.missingStructure.isEmpty || check.diagramErrors > 0, !editing {
+                Label("проверка: " + KonspektCheck(diagramErrors: check.diagramErrors, missingStructure: check.missingStructure).summary,
+                      systemImage: "checklist")
+                    .foregroundStyle(.secondary)
+                    .help("Локальная проверка конспекта. Недостающие разделы появятся после «Пересобрать».")
             }
             Spacer()
             // При «Устарело» кнопка «Пересобрать» есть в уведомлении над шапкой — здесь не повторяем.
