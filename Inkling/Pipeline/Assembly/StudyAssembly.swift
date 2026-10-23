@@ -113,7 +113,7 @@ extension PromptLibrary {
         var prompt = Self.render(try template("assemble-study.md"), values: [
             "предмет": subject,
             "тема": topic,
-            "вставка_предмета": subjectInsert(subject),
+            "вставка_предмета": subjectStudyInsert(subject),
             "страницы": pages.isEmpty ? "(фотографий нет, материал только в слайдах)" : pages,
             "слайды": part.slides.isEmpty ? "(слайдов нет)" : Self.pagesBlock(part.slides, label: "Слайд"),
             "учебники": textbooks,

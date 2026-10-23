@@ -277,3 +277,32 @@ struct StudyAssemblyLiteratureTests {
         #expect(env.lecture.meta.konspekt?.literature == nil)
     }
 }
+
+@Suite("Вставки предметов для учебной сборки")
+struct StudySubjectInsertTests {
+    @Test func studyPromptUsesStudyInsertNotRecognitionInsert() throws {
+        let dir = try TempDir()
+        let prompts = PromptLibrary(root: dir.url)
+        let subjects = prompts.folder.appendingPathComponent("subjects")
+        try FileManager.default.createDirectory(at: subjects, withIntermediateDirectories: true)
+        try "Переписывай как есть.".write(to: subjects.appendingPathComponent("Алгебра.md"), atomically: true, encoding: .utf8)
+        try "Учебная вставка: определители.".write(to: subjects.appendingPathComponent("Алгебра — учебный.md"), atomically: true, encoding: .utf8)
+        // В тестовой папке нет шаблона: берём его из бандла.
+        let part = StudyPart(notes: [], slides: [AssemblyPage(id: "s", number: 1, text: "Слайд")])
+        let prompt = try prompts.studyAssemblyPrompt(part: part, index: 0, of: 1, subject: "Алгебра", topic: "Т")
+        #expect(prompt.contains("Учебная вставка: определители."))
+        #expect(!prompt.contains("Переписывай как есть."))
+        #expect(prompts.subjectStudyInsert("Нет такого").isEmpty)
+    }
+
+    @Test func bundledStudyInsertsExistForStarterSubjects() throws {
+        let bundled = try #require(Bundle.main.url(forResource: "Prompts", withExtension: nil))
+        for subject in LibraryStore.defaultSubjects + ["Дискретная математика"] {
+            let url = bundled.appendingPathComponent("subjects").appendingPathComponent("\(subject) — учебный.md")
+            let text = try String(contentsOf: url, encoding: .utf8)
+            #expect(text.hasPrefix("Предмет:"), "\(subject)")
+            #expect(text.contains("Оформление примеров решения типовых задач"), "\(subject)")
+            #expect(!text.contains("переписывай как есть"), "\(subject)")
+        }
+    }
+}

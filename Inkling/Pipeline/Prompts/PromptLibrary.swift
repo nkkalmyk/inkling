@@ -82,6 +82,14 @@ struct PromptLibrary: Sendable {
         throw PromptError.missingTemplate(name)
     }
 
+    /// Вставка для учебной сборки `subjects/<Предмет> — учебный.md`: что должно быть в конспекте по предмету и какие примеры
+    /// решать. Вставка распознавания («переписывай как есть») здесь не подходит и не используется. Нет файла — пусто.
+    func subjectStudyInsert(_ subject: String) -> String {
+        let url = folder.appendingPathComponent("subjects").appendingPathComponent("\(subject) — учебный.md")
+        let own = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        return own.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// Вставка `subjects/<Предмет>.md`; если файла нет — пусто.
     func subjectInsert(_ subject: String) -> String {
         let url = folder.appendingPathComponent("subjects").appendingPathComponent("\(subject).md")
