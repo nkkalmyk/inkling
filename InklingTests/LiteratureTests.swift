@@ -55,6 +55,45 @@ struct LiteratureSearchTests {
     }
 }
 
+@Suite("Учебники: порядок строк и версия разбора")
+struct LiteratureExtractionOrderTests {
+    @Test func formulaLinesAreReadInGeometricOrder() throws {
+        let dir = try TempDir()
+        let url = dir.url.appendingPathComponent("formula.pdf")
+        var box = CGRect(x: 0, y: 0, width: 595, height: 842)
+        let context = try #require(CGContext(url as CFURL, mediaBox: &box, nil))
+        let ns = NSGraphicsContext(cgContext: context, flipped: false)
+        context.beginPDFPage(nil)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ns
+        let font = NSFont.systemFont(ofSize: 14)
+        // Порядок в потоке «неправильный»: сначала знаменатель, потом левая часть, потом числитель.
+        for (text, point) in [("знаменатель", CGPoint(x: 200, y: 700)), ("Формула: x =", CGPoint(x: 60, y: 715)),
+                              ("числитель", CGPoint(x: 200, y: 730)), ("Конец строки текста для длины страницы тест, " +
+                              String(repeating: "слово ", count: 40), CGPoint(x: 60, y: 600))] {
+            (text as NSString).draw(at: point, withAttributes: [.font: font, .foregroundColor: NSColor.black])
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        context.endPDFPage()
+        context.closePDF()
+        let page = try #require(PDFDocument(url: url)?.page(at: 0))
+        let text = try #require(PageTextExtractor.orderedLayer(of: page))
+        let numerator = try #require(text.range(of: "числитель"))
+        let denominator = try #require(text.range(of: "знаменатель"))
+        #expect(numerator.lowerBound < denominator.lowerBound)
+        #expect(text.contains("Формула: x ="))
+    }
+
+    @Test func versionBumpRereadsLayerPagesAndKeepsOcr() async throws {
+        let store = try LiteratureStore.inMemory()
+        let id = try await store.upsertBook(path: "/b", title: "Б", subject: "С", size: 1, mtime: 1, pages: 2)
+        try await store.add(pages: [(1, "слой страница энтропия", "layer"), (2, "скан страница энтропия", "ocr")], book: id)
+        // Тот же файл и та же версия: ничего не сбрасывается.
+        _ = try await store.upsertBook(path: "/b", title: "Б", subject: "С", size: 1, mtime: 1, pages: 2)
+        #expect(try await store.indexedPages(book: id) == [1, 2])
+    }
+}
+
 @Suite("Учебники: извлечение текста и индексатор")
 struct LiteratureIndexerTests {
     private static let layerText = "Первый закон термодинамики: изменение внутренней энергии системы равно сумме теплоты и работы. "

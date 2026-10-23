@@ -55,24 +55,33 @@ actor LiteratureStore {
         CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(norm, book UNINDEXED, page UNINDEXED, tokenize = 'unicode61 remove_diacritics 2');
         CREATE VIRTUAL TABLE IF NOT EXISTS fts_vocab USING fts5vocab(fts, row);
         """)
+        // Версия разбора страниц (добавлена позже): у старых баз столбца нет.
+        try? database.execute("ALTER TABLE books ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
     }
 
     // MARK: Книги
 
     /// Находит или создаёт запись книги. Если файл изменился (размер или дата), прежние страницы удаляются.
     func upsertBook(path: String, title: String, subject: String, size: Int64, mtime: Double, pages: Int) throws -> Int64 {
-        var existing: (id: Int64, size: Int64, mtime: Double)?
-        try database.run("SELECT id, size, mtime FROM books WHERE path = ?", [.text(path)]) { row in
-            existing = (row.int(0), row.int(1), row.double(2))
+        var existing: (id: Int64, size: Int64, mtime: Double, version: Int64)?
+        try database.run("SELECT id, size, mtime, version FROM books WHERE path = ?", [.text(path)]) { row in
+            existing = (row.int(0), row.int(1), row.double(2), row.int(3))
         }
         if let existing {
-            if existing.size != size || abs(existing.mtime - mtime) > 1 { try removePages(book: existing.id) }
-            try database.run("UPDATE books SET title = ?, subject = ?, size = ?, mtime = ?, pages = ? WHERE id = ?",
-                             [.text(title), .text(subject), .int(size), .double(mtime), .int(Int64(pages)), .int(existing.id)])
+            if existing.size != size || abs(existing.mtime - mtime) > 1 {
+                try removePages(book: existing.id)
+            } else if existing.version < Int64(PageTextExtractor.version) {
+                // Разбор улучшен: страницы с текстовым слоем перечитываются, распознанные сканы остаются.
+                try removePages(book: existing.id, method: "layer")
+            }
+            try database.run("UPDATE books SET title = ?, subject = ?, size = ?, mtime = ?, pages = ?, version = ? WHERE id = ?",
+                             [.text(title), .text(subject), .int(size), .double(mtime), .int(Int64(pages)),
+                              .int(Int64(PageTextExtractor.version)), .int(existing.id)])
             return existing.id
         }
-        try database.run("INSERT INTO books(path, title, subject, size, mtime, pages) VALUES(?, ?, ?, ?, ?, ?)",
-                         [.text(path), .text(title), .text(subject), .int(size), .double(mtime), .int(Int64(pages))])
+        try database.run("INSERT INTO books(path, title, subject, size, mtime, pages, version) VALUES(?, ?, ?, ?, ?, ?, ?)",
+                         [.text(path), .text(title), .text(subject), .int(size), .double(mtime), .int(Int64(pages)),
+                          .int(Int64(PageTextExtractor.version))])
         var id: Int64 = 0
         try database.run("SELECT id FROM books WHERE path = ?", [.text(path)]) { id = $0.int(0) }
         return id
@@ -98,9 +107,15 @@ actor LiteratureStore {
         try database.execute("DELETE FROM pages; DELETE FROM fts; DELETE FROM books;")
     }
 
-    private func removePages(book: Int64) throws {
-        try database.run("DELETE FROM pages WHERE book = ?", [.int(book)])
-        try database.run("DELETE FROM fts WHERE book = ?", [.int(book)])
+    private func removePages(book: Int64, method: String? = nil) throws {
+        if let method {
+            try database.run("DELETE FROM fts WHERE book = ? AND page IN (SELECT page FROM pages WHERE book = ? AND method = ?)",
+                             [.int(book), .int(book), .text(method)])
+            try database.run("DELETE FROM pages WHERE book = ? AND method = ?", [.int(book), .text(method)])
+        } else {
+            try database.run("DELETE FROM pages WHERE book = ?", [.int(book)])
+            try database.run("DELETE FROM fts WHERE book = ?", [.int(book)])
+        }
     }
 
     func books() throws -> [LiteratureBookInfo] {
