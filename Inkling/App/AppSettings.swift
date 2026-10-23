@@ -75,6 +75,10 @@ final class AppSettings {
     var claudePathOverride: String { didSet { defaults.set(claudePathOverride, forKey: Keys.claudePathOverride) } }
     var claudeModel: String { didSet { defaults.set(claudeModel, forKey: Keys.claudeModel) } }
     var engineMode: EngineMode { didSet { defaults.set(engineMode.rawValue, forKey: Keys.engineMode) } }
+    /// Как собирать конспект по умолчанию: «Учебный» (фото целиком, как в чате) или «Точный» (только очистка текста).
+    var assemblyStyle: AssemblyStyle { didSet { defaults.set(assemblyStyle.rawValue, forKey: Keys.assemblyStyle) } }
+    /// Модель Claude для сборки конспекта; пусто — модель из настроек Claude Code. Остальные вызовы её не используют.
+    var assemblyModel: String { didSet { defaults.set(assemblyModel, forKey: Keys.assemblyModel) } }
     var codexPathOverride: String { didSet { defaults.set(codexPathOverride, forKey: Keys.codexPathOverride) } }
     /// Пусто — модель выбирает сам Codex.
     var codexModel: String { didSet { defaults.set(codexModel, forKey: Keys.codexModel) } }
@@ -97,6 +101,8 @@ final class AppSettings {
         claudePathOverride = defaults.string(forKey: Keys.claudePathOverride) ?? ""
         claudeModel = defaults.string(forKey: Keys.claudeModel) ?? "sonnet"
         engineMode = defaults.string(forKey: Keys.engineMode).flatMap(EngineMode.init(rawValue:)) ?? .auto
+        assemblyStyle = defaults.string(forKey: Keys.assemblyStyle).flatMap(AssemblyStyle.init(rawValue:)) ?? .study
+        assemblyModel = defaults.string(forKey: Keys.assemblyModel) ?? "opus"
         codexPathOverride = defaults.string(forKey: Keys.codexPathOverride) ?? ""
         codexModel = defaults.string(forKey: Keys.codexModel) ?? ""
         ollamaPathOverride = defaults.string(forKey: Keys.ollamaPathOverride) ?? ""
@@ -116,6 +122,8 @@ final class AppSettings {
         static let claudePathOverride = "claudePathOverride"
         static let claudeModel = "claudeModel"
         static let engineMode = "engineMode"
+        static let assemblyStyle = "assemblyStyle"
+        static let assemblyModel = "assemblyModel"
         static let codexPathOverride = "codexPathOverride"
         static let codexModel = "codexModel"
         static let ollamaPathOverride = "ollamaPathOverride"

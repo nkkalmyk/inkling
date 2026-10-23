@@ -110,6 +110,24 @@ private struct EngineSettings: View {
                 ForEach(AppSettings.EngineMode.allCases) { Text($0.title).tag($0) }
             }
             .help("То же, что меню «Модель» на панели лекции. Действует на новые запуски.")
+            Section {
+                Picker("Стиль по умолчанию", selection: $settings.assemblyStyle) {
+                    ForEach(AssemblyStyle.allCases) { Text($0.title).tag($0) }
+                }
+                Picker("Модель Claude для сборки", selection: $settings.assemblyModel) {
+                    Text("Как в настройках Claude Code").tag("")
+                    ForEach(AppSettings.claudeModels, id: \.id) { Text($0.title).tag($0.id) }
+                    if !settings.assemblyModel.isEmpty, !AppSettings.claudeModels.contains(where: { $0.id == settings.assemblyModel }) {
+                        Text(settings.assemblyModel).tag(settings.assemblyModel)
+                    }
+                }
+            } header: {
+                Text("Сборка конспекта")
+            } footer: {
+                Text(settings.assemblyStyle.hint + " Opus даёт лучший результат, но быстрее расходует лимит подписки. "
+                     + "Выбор модели действует только для Claude Code; Codex и локальная модель берут свои настройки.")
+                    .foregroundStyle(.secondary)
+            }
             Section("Claude Code") {
                 TextField("Путь к claude", text: $settings.claudePathOverride, prompt: Text("Автопоиск"))
                 ClaudeModelPicker()

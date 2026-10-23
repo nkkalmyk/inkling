@@ -31,15 +31,22 @@ final class AssemblyCenter {
     @ObservationIgnored private let library: Library
     @ObservationIgnored private let router: @MainActor () -> EngineRouter
     @ObservationIgnored private let threshold: @MainActor () -> Int
+    /// Стиль по умолчанию и модель Claude для сборки (из настроек). В тестах — точная сборка без выбора модели.
+    @ObservationIgnored private let defaultStyle: @MainActor () -> AssemblyStyle
+    @ObservationIgnored private let assemblyModel: @MainActor () -> String
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
     private var cachedReadiness: [UUID: Readiness] = [:]
     @ObservationIgnored private var readinessKeys: [UUID: ReadinessKey] = [:]
     @ObservationIgnored private var readinessTasks: [UUID: Task<Void, Never>] = [:]
 
-    init(library: Library, router: @escaping @MainActor () -> EngineRouter, threshold: @escaping @MainActor () -> Int) {
+    init(library: Library, router: @escaping @MainActor () -> EngineRouter, threshold: @escaping @MainActor () -> Int,
+         style: @escaping @MainActor () -> AssemblyStyle = { .faithful },
+         model: @escaping @MainActor () -> String = { "" }) {
         self.library = library
         self.router = router
         self.threshold = threshold
+        defaultStyle = style
+        assemblyModel = model
     }
 
     func isRunning(_ lectureID: UUID) -> Bool { runs[lectureID] != nil }
@@ -97,18 +104,25 @@ final class AssemblyCenter {
 
     // MARK: Сборка
 
-    func assemble(_ lectureID: UUID) {
+    /// `style` — `nil` берёт стиль из настроек.
+    func assemble(_ lectureID: UUID, style: AssemblyStyle? = nil) {
         guard runs[lectureID] == nil, let lecture = library.lecture(id: lectureID) else { return }
         errors[lectureID] = nil
-        let input = AssemblyInput.collect(meta: lecture.meta, texts: PageTextStore(paths: LecturePaths(folder: lecture.folder)))
+        let paths = LecturePaths(folder: lecture.folder)
+        let input = AssemblyInput.collect(meta: lecture.meta, texts: PageTextStore(paths: paths))
         guard let plan = AssemblyPlanner.plan(input, threshold: threshold()) else {
             errors[lectureID] = .invalidOutput("Нет распознанных страниц: собирать не из чего.")
             return
         }
+        let router = router()
+        // Локальная модель с десятком фотографий не справляется: при «Только локальная» остаётся точная сборка.
+        let style = router.primaryID.isCloud ? (style ?? defaultStyle()) : .faithful
+        let studyPlan = style == .study
+            ? StudyAssemblyPlanner.plan(meta: lecture.meta, input: input, paths: paths, textThreshold: threshold()) : nil
         let subject = lecture.meta.subject, topic = lecture.meta.topic
         let prompts = library.prompts
-        let router = router()
-        runs[lectureID] = Run(totalCalls: plan.calls)
+        let model = assemblyModel().trimmingCharacters(in: .whitespaces)
+        runs[lectureID] = Run(totalCalls: studyPlan?.calls ?? plan.calls)
 
         tasks[lectureID] = Task {
             defer {
@@ -116,15 +130,45 @@ final class AssemblyCenter {
                 tasks[lectureID] = nil
             }
             do {
-                let result = try await run(plan, input: input, subject: subject, topic: topic, prompts: prompts,
+                let result: (text: String, response: AIResponse)
+                if let studyPlan {
+                    result = try await runStudy(studyPlan, subject: subject, topic: topic, prompts: prompts, router: router,
+                                                model: model, lectureID: lectureID)
+                } else {
+                    result = try await run(plan, input: input, subject: subject, topic: topic, prompts: prompts,
                                            router: router, lectureID: lectureID)
-                try save(result.text, response: result.response, plan: plan, input: input, lectureID: lectureID)
+                }
+                try save(result.text, response: result.response, plan: plan, input: input,
+                         style: studyPlan == nil ? .faithful : .study, parts: studyPlan?.parts.count ?? plan.parts.count,
+                         lectureID: lectureID)
             } catch let error as AIError {
                 if error != .cancelled { errors[lectureID] = error }
             } catch {
                 errors[lectureID] = .invalidOutput(error.localizedDescription)
             }
         }
+    }
+
+    /// Учебная сборка: фото страниц уходят модели целиком (только облачный движок), части идут параллельно, затем склейка.
+    private func runStudy(_ plan: StudyPlan, subject: String, topic: String, prompts: PromptLibrary, router: EngineRouter,
+                          model: String, lectureID: UUID) async throws -> (text: String, response: AIResponse) {
+        let requests = try plan.parts.enumerated().map { index, part -> AIRequest in
+            var request = AIRequest(
+                prompt: try prompts.studyAssemblyPrompt(part: part, index: index, of: plan.parts.count, subject: subject, topic: topic),
+                systemPrompt: PromptLibrary.studyAssemblySystemPrompt, images: part.notes.map(\.image), format: .text,
+                timeout: StudyAssemblyPlanner.timeout(images: part.notes.count,
+                                                      chars: (part.notes.map(\.draft.count) + part.slides.map(\.text.count)).reduce(0, +)))
+            request.cloudOnly = true
+            if !model.isEmpty {
+                request.model = model
+                request.modelEngine = .claude
+            }
+            return request
+        }
+        let responses = try await runRequests(requests, lectureID: lectureID, router: router)
+        guard plan.needsMerge else { return (MarkdownCleanup.unwrap(responses[0].text), responses[0]) }
+        return try await merge(responses.map { MarkdownCleanup.unwrap($0.text) }, subject: subject, topic: topic, prompts: prompts,
+                               router: router, model: model, cloud: true, lectureID: lectureID)
     }
 
     private func run(_ plan: AssemblyPlan, input: AssemblyInput, subject: String, topic: String, prompts: PromptLibrary,
@@ -136,6 +180,16 @@ final class AssemblyCenter {
                       timeout: AssemblyPlanner.timeout(chars: (part.notes + part.slides).reduce(0) { $0 + $1.text.count }))
         }
 
+        let responses = try await runRequests(requests, lectureID: lectureID, router: router)
+        guard plan.needsMerge else {
+            return (MarkdownCleanup.unwrap(responses[0].text), responses[0])
+        }
+        return try await merge(responses.map { MarkdownCleanup.unwrap($0.text) }, subject: subject, topic: topic, prompts: prompts,
+                               router: router, model: "", cloud: false, lectureID: lectureID)
+    }
+
+    /// Запросы частей идут параллельно (маршрутизатор ограничивает число вызовов); ответы — в порядке запросов.
+    private func runRequests(_ requests: [AIRequest], lectureID: UUID, router: EngineRouter) async throws -> [AIResponse] {
         let onEvent: @Sendable (EngineRouter.Event) -> Void = { event in
             Task { @MainActor in self.note(event, lectureID: lectureID) }
         }
@@ -149,32 +203,43 @@ final class AssemblyCenter {
                 runs[lectureID]?.finishedCalls += 1
             }
         }
-        let responses = outputs.compactMap { $0 }
         if Task.isCancelled { throw AIError.cancelled }
-        guard plan.needsMerge else {
-            return (MarkdownCleanup.unwrap(responses[0].text), responses[0])
-        }
+        return outputs.compactMap { $0 }
+    }
 
+    /// Финальный проход: склейка частей длинной лекции.
+    private func merge(_ parts: [String], subject: String, topic: String, prompts: PromptLibrary, router: EngineRouter,
+                       model: String, cloud: Bool, lectureID: UUID) async throws -> (text: String, response: AIResponse) {
         runs[lectureID]?.merging = true
-        let parts = responses.map { MarkdownCleanup.unwrap($0.text) }
+        let onEvent: @Sendable (EngineRouter.Event) -> Void = { event in
+            Task { @MainActor in self.note(event, lectureID: lectureID) }
+        }
         let mergeText = try prompts.mergePrompt(parts: parts, subject: subject, topic: topic)
-        let merged = try await router.run(AIRequest(prompt: mergeText, systemPrompt: PromptLibrary.assemblySystemPrompt,
-                                                    format: .text, timeout: AssemblyPlanner.timeout(chars: mergeText.count)),
-                                          onEvent: onEvent)
+        var request = AIRequest(prompt: mergeText, systemPrompt: PromptLibrary.assemblySystemPrompt, format: .text,
+                                timeout: AssemblyPlanner.timeout(chars: mergeText.count))
+        request.cloudOnly = cloud
+        if !model.isEmpty {
+            request.model = model
+            request.modelEngine = .claude
+        }
+        let merged = try await router.run(request, onEvent: onEvent)
         runs[lectureID]?.finishedCalls += 1
         return (MarkdownCleanup.unwrap(merged.text), merged)
     }
 
     /// Пишет `konspekt.md` (прежний — в историю) и описание в `meta.json`. Папка ищется заново.
-    private func save(_ text: String, response: AIResponse, plan: AssemblyPlan, input: AssemblyInput, lectureID: UUID) throws {
+    private func save(_ text: String, response: AIResponse, plan: AssemblyPlan, input: AssemblyInput, style: AssemblyStyle,
+                      parts: Int, lectureID: UUID) throws {
         guard !text.isEmpty else { throw AIError.invalidOutput("Модель вернула пустой конспект.") }
         guard let lecture = try library.store.findLecture(id: lectureID, hint: library.lecture(id: lectureID)?.folder) else { throw LibraryError.lectureNotFound }
         let now = JSONCoding.rounded(Date())
         try KonspektStore(folder: lecture.folder).write(text + "\n", previous: lecture.meta.konspekt)
         let info = ArtifactInfo(engine: response.engine, model: response.model, createdAt: now, updatedAt: now,
-                                manuallyEdited: false, inputHash: input.hash, mode: plan.mode, parts: plan.parts.count,
+                                manuallyEdited: false, inputHash: input.hash, mode: plan.mode, parts: parts,
                                 skippedPages: input.unrecognizedNotes + input.unrecognizedSlides)
-        library.mutate(lectureID) { $0.konspekt = info }
+        var stamped = info
+        stamped.style = style
+        library.mutate(lectureID) { $0.konspekt = stamped }
         library.konspektRevision[lectureID, default: 0] += 1
         onAssembled?(lectureID)
     }

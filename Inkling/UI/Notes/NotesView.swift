@@ -3,6 +3,7 @@ import SwiftUI
 /// Вкладка «Конспект» (SPEC, разделы 4 и 7): сборка, просмотр с формулами, правка, история, «Устарело».
 struct NotesView: View {
     @Environment(Library.self) private var library
+    @Environment(AppSettings.self) private var settings
     @Environment(AssemblyCenter.self) private var assembly
     @Environment(EnrichmentCenter.self) private var enrichment
     @Environment(RecognitionCenter.self) private var recognition
@@ -136,8 +137,8 @@ struct NotesView: View {
             Spacer()
             // При «Устарело» кнопка «Пересобрать» есть в уведомлении над шапкой — здесь не повторяем.
             if readiness?.isStale != true || assembly.errors[lecture.id] != nil {
-                Button(info == nil ? "Собрать" : "Пересобрать") { start(force: false) }
-                    .disabled(assembly.isRunning(lecture.id) || readiness?.plan == nil || recognition.isBusy(lecture.id))
+                assembleMenu(title: info == nil ? "Собрать" : "Пересобрать", disabled: assembly.isRunning(lecture.id)
+                             || readiness?.plan == nil || recognition.isBusy(lecture.id))
             }
             if info != nil {
                 Button("Дополнить") { enrich() }
@@ -178,6 +179,7 @@ struct NotesView: View {
         guard let info else { return "без описания" }
         var parts: [String] = []
         if let model = info.model { parts.append(model) }
+        if info.style == .study { parts.append("учебный") }
         if let mode = info.mode { parts.append(mode.title) }
         if info.parts > 1 { parts.append("частей: \(info.parts)") }
         parts.append(info.updatedAt.stamp)
@@ -215,7 +217,28 @@ struct NotesView: View {
 
     // MARK: Действия
 
-    private func start(force: Bool) {
+    /// Кнопка сборки: по щелчку — стиль из настроек, в меню — другой стиль и модель Claude.
+    private func assembleMenu(title: String, disabled: Bool) -> some View {
+        @Bindable var settings = settings
+        return Menu(title) {
+            ForEach(AssemblyStyle.allCases) { style in
+                Button(style.title) { start(force: false, style: style) }
+                    .help(style.hint)
+            }
+            Divider()
+            Picker("Модель Claude", selection: $settings.assemblyModel) {
+                Text("Как в настройках").tag("")
+                ForEach(AppSettings.claudeModels, id: \.id) { Text($0.title).tag($0.id) }
+            }
+        } primaryAction: {
+            start(force: false)
+        }
+        .fixedSize()
+        .disabled(disabled)
+        .help("\(settings.assemblyStyle.title). Стрелка — выбрать стиль и модель.")
+    }
+
+    private func start(force: Bool, style: AssemblyStyle? = nil) {
         flushSave()
         if !force {
             let missing = assembly.readiness(lecture).input
@@ -224,7 +247,7 @@ struct NotesView: View {
             if skipped > 0 { confirm = .skipUnrecognized(skipped); return }
         }
         editing = false
-        assembly.assemble(lecture.id)
+        assembly.assemble(lecture.id, style: style)
     }
 
     private func enrich() {
