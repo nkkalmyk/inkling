@@ -48,6 +48,12 @@ final class EnrichmentCenter {
     func enrich(_ lectureID: UUID) {
         guard runs[lectureID] == nil, let lecture = library.lecture(id: lectureID) else { return }
         errors[lectureID] = nil
+        if lecture.meta.konspekt?.style == .study {
+            errors[lectureID] = .invalidOutput("Учебный конспект уже содержит резюме, пояснения и схемы, которые построила сборка. "
+                + "«Дополнить» вырезало бы их как свои добавления, поэтому для него кнопка отключена. "
+                + "Нужна именно эта функция: соберите «Точную сборку по тексту».")
+            return
+        }
         let current = KonspektStore(folder: lecture.folder).read() ?? ""
         let base = Enrichment.removing(from: current).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !base.isEmpty else {

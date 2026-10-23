@@ -140,7 +140,8 @@ struct NotesView: View {
                 assembleMenu(title: info == nil ? "Собрать" : "Пересобрать", disabled: assembly.isRunning(lecture.id)
                              || readiness?.plan == nil || recognition.isBusy(lecture.id))
             }
-            if info != nil {
+            // У учебного конспекта блоки пояснений и схем строит сама сборка: «Дополнить» вырезало бы их.
+            if info != nil, info?.style != .study {
                 Button("Дополнить") { enrich() }
                     .disabled(assembly.isRunning(lecture.id) || enrichment.isRunning(lecture.id)
                               || recognition.isBusy(lecture.id))

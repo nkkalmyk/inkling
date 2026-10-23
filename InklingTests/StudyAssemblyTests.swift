@@ -166,3 +166,37 @@ struct StudyAssemblyCenterTests {
         #expect(env.lecture.meta.konspekt?.style == .study)
     }
 }
+
+@Suite("Учебный конспект и «Дополнить»")
+@MainActor
+struct StudyKonspektEnrichmentTests {
+    private let text = "# Тема\n\nТекст.\n\n> 💡 Пояснение: своими словами.\n\n```plot\n{\"x\": [0, 1], \"functions\": [{\"expr\": \"x\"}]}\n```\n"
+
+    @Test func blocksAreKeptUnlessKonspektWasEnriched() {
+        let plain = ArtifactInfo(createdAt: Date(), updatedAt: Date(), inputHash: "x")
+        #expect(Enrichment.baseText(text, info: plain) == text)
+        #expect(Enrichment.baseText(text, info: nil) == text)
+        var enriched = plain
+        enriched.enrichment = EnrichmentInfo(createdAt: Date())
+        let base = Enrichment.baseText(text, info: enriched)
+        #expect(!base.contains("💡") && !base.contains("```plot") && base.contains("Текст."))
+    }
+
+    @Test func enrichmentRefusesStudyKonspektAndKeepsFile() async throws {
+        let env = try AssemblyCenterTests.Env(pages: ["Один"])
+        try KonspektStore(folder: env.lecture.folder).write(text, previous: nil)
+        env.library.mutate(env.lectureID) {
+            var info = ArtifactInfo(createdAt: Date(), updatedAt: Date(), inputHash: "x")
+            info.style = .study
+            $0.konspekt = info
+        }
+        let engine = EngineRouterTests.FakeEngine([.success("не должен")])
+        let router = EngineRouter(primary: engine, fallback: nil, settings: .init())
+        let center = EnrichmentCenter(library: env.library, router: { router })
+        center.enrich(env.lectureID)
+        #expect(!center.isRunning(env.lectureID))
+        #expect(center.errors[env.lectureID] != nil)
+        #expect(await engine.calls == 0)
+        #expect(KonspektStore(folder: env.lecture.folder).read() == text)
+    }
+}
