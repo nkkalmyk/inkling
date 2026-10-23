@@ -16,6 +16,11 @@ enum ExportLocation {
         return "\(title) — \(FolderNaming.sanitize(subject)) — \(date)"
     }
 
+    /// `Шпаргалка — Тема — Предмет — ГГГГ-ММ-ДД`.
+    static func cheatSheetBaseName(subject: String, topic: String, date: CalendarDate) -> String {
+        "Шпаргалка — " + pdfBaseName(subject: subject, topic: topic, date: date)
+    }
+
     /// Путь PDF лекции. Повторный экспорт той же лекции заменяет прежний файл.
     static func pdfURL(baseName: String, documents: URL = ExportLocation.documents) throws -> URL {
         let folder = documents.appendingPathComponent(pdfFolderName, isDirectory: true)

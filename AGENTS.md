@@ -14,11 +14,11 @@
 |---|---|
 | `Inkling/App` | `InklingApp`, `AppDelegate`, `AppSettings`, `EngineCenter` (выбор и состояние движков) |
 | `Inkling/Engine` | `AIEngine` (протокол), `ClaudeCodeEngine`, `CodexEngine`, `OllamaEngine`, `EngineRouter` (основной → запасной), `ProcessRunner` (`posix_spawn`), `BinaryLocator`, `RateLimitDetector` |
-| `Inkling/Pipeline` | `Recognition` (страница → Markdown, режим «Подробно»), `Assembly` (сборка `konspekt.md`: «Учебный конспект» по фото страниц — `StudyAssembly`, «Точная сборка» по тексту), `Study` (вопросы, тест, карточки), `Enrichment` («Дополнить»), `Prompts/PromptLibrary` |
+| `Inkling/Pipeline` | `Recognition` (страница → Markdown, режим «Подробно»), `Assembly` (сборка `konspekt.md`: «Учебный конспект» по фото страниц — `StudyAssembly`, «Точная сборка» по тексту), `Study` (вопросы, тест, карточки), `Enrichment` («Дополнить»), `Check` (локальная проверка конспекта и «Исправить формулы»), `Prompts/PromptLibrary` |
 | `Inkling/Literature` | индекс учебников: `LiteratureIndexer` (PDFKit-слой или Vision OCR сканов), `LiteratureStore` (SQLite FTS5 в Application Support), `RussianNormalizer`, `LiteratureRetrieval` (выдержки по словам лекции), `LiteratureCenter` (состояние для UI) |
 | `Inkling/Library`, `Inkling/Storage` | состояние библиотеки для UI; файловое хранилище (`AtomicFile`, `LectureMeta`, `KonspektStore`, `HistoryStore`, iCloud) |
 | `Inkling/Import`, `Inkling/Processing` | импорт файлов, буфера, Камеры непрерывности; обработка фото и PDF |
-| `Inkling/Export` | Markdown, PDF, Anki CSV |
+| `Inkling/Export` | Markdown, PDF, Anki CSV, шпаргалка (`CheatSheet`) |
 | `Inkling/UI` | экраны: `Sidebar`, `Lecture`, `Sources`, `Notes`, `Study`, `Settings` |
 | `Inkling/DesignSystem` | токены (`Tokens/`) и общие компоненты (`Components/`) |
 | `Inkling/Resources` | `Prompts/` (промпты), `Web/` (рендер конспекта: KaTeX, mhchem, markdown-it в `vendor/`), `Assets.xcassets`, `Inkling.icon`, `ru.lproj` |
