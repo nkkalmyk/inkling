@@ -16,7 +16,7 @@
 ![Claude Code](https://img.shields.io/badge/движок-Claude_Code-D97757)
 ![Codex](https://img.shields.io/badge/движок-Codex_(не_проверен)-10A37F)
 ![Ollama](https://img.shields.io/badge/запасной-Ollama-555555)
-![Version](https://img.shields.io/badge/версия-0.6.2-F5B83D)
+![Version](https://img.shields.io/badge/версия-0.7.0-F5B83D)
 
 </div>
 
