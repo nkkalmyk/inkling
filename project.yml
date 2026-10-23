@@ -14,8 +14,8 @@ configFiles:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "0.6.0"
-    CURRENT_PROJECT_VERSION: "18"
+    MARKETING_VERSION: "0.6.1"
+    CURRENT_PROJECT_VERSION: "19"
 
 targets:
   Inkling:
