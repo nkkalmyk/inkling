@@ -58,7 +58,7 @@ struct InklingApp: App {
         .defaultSize(width: 1100, height: 720)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Новая лекция…") { library.sheet = .newLecture(subject: library.selectedLecture?.meta.subject) }
+                Button("Новая лекция…") { library.sheet = .newLecture(subject: library.currentSubject) }
                     .keyboardShortcut("n")
                 Button("Новый предмет…") { library.sheet = .newSubject }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
@@ -67,6 +67,7 @@ struct InklingApp: App {
             ImportFromDevicesCommands()
             CommandGroup(before: .sidebar) { LectureViewCommands() }
             CommandGroup(after: .toolbar) { ReadingScaleCommands() }
+            CommandGroup(after: .textEditing) { FindLectureCommand() }
             CommandMenu("Лекция") { LectureMenuCommands() }
         }
 

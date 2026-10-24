@@ -225,6 +225,17 @@ struct LectureMenuCommands: View {
     }
 }
 
+/// «Правка → Найти лекцию» (⌘F): фокус в поиск списка лекций.
+struct FindLectureCommand: View {
+    @FocusedValue(\.focusLectureSearch) private var focusSearch
+
+    var body: some View {
+        Button("Найти лекцию") { focusSearch?() }
+            .keyboardShortcut("f", modifiers: .command)
+            .disabled(focusSearch == nil)
+    }
+}
+
 /// «Вид → Крупнее / Мельче / Обычный размер»: масштаб текста для чтения (конспект, вопросы, карточки).
 struct ReadingScaleCommands: View {
     @AppStorage(ReadingScale.key) private var scale = 1.0

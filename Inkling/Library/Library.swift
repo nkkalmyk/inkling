@@ -2,6 +2,12 @@ import AppKit
 import Foundation
 import Observation
 
+/// Выбор в сайдбаре: все лекции или один предмет.
+enum LibraryScope: Hashable {
+    case all
+    case subject(String)
+}
+
 /// Состояние библиотеки для интерфейса: предметы, выбранная лекция, открытые диалоги, ошибки.
 /// Все изменения файлов идут через `LibraryStore`; после них и после внешних изменений папка перечитывается.
 @MainActor
@@ -37,6 +43,8 @@ final class Library {
 
     private(set) var subjects: [SubjectRecord] = []
     private(set) var store: LibraryStore
+    /// Что показано в списке лекций: все или одного предмета (выбор в сайдбаре).
+    var scope: LibraryScope = .all
     var selection: UUID?
     var sheet: Sheet?
     var pendingDeletion: Deletion?
@@ -76,6 +84,13 @@ final class Library {
     var root: URL { store.root }
 
     var subjectNames: [String] { subjects.map(\.name) }
+
+    /// Предмет для «Новая лекция»: открытой лекции, иначе выбранный в сайдбаре.
+    var currentSubject: String? {
+        if let subject = selectedLecture?.meta.subject { return subject }
+        if case .subject(let name) = scope { return name }
+        return nil
+    }
 
     var selectedLecture: LectureRecord? {
         guard let selection else { return nil }

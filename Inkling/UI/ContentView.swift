@@ -8,7 +8,10 @@ struct ContentView: View {
         @Bindable var library = library
         NavigationSplitView {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 360)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 320)
+        } content: {
+            LectureListView()
+                .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 400)
         } detail: {
             if let lecture = library.selectedLecture {
                 LectureView(lecture: lecture)
@@ -19,7 +22,7 @@ struct ContentView: View {
                 } description: {
                     Text("Или создайте новую: фото конспекта и слайды добавляются внутри лекции.")
                 } actions: {
-                    Button("Новая лекция…") { library.sheet = .newLecture(subject: nil) }
+                    Button("Новая лекция…") { library.sheet = .newLecture(subject: library.currentSubject) }
                 }
             }
         }
