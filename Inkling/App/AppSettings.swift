@@ -75,6 +75,20 @@ final class AppSettings {
     var claudePathOverride: String { didSet { defaults.set(claudePathOverride, forKey: Keys.claudePathOverride) } }
     var claudeModel: String { didSet { defaults.set(claudeModel, forKey: Keys.claudeModel) } }
     var engineMode: EngineMode { didSet { defaults.set(engineMode.rawValue, forKey: Keys.engineMode) } }
+    /// Как собирать конспект по умолчанию: «Учебный» (фото целиком, как в чате) или «Точный» (только очистка текста).
+    var assemblyStyle: AssemblyStyle { didSet { defaults.set(assemblyStyle.rawValue, forKey: Keys.assemblyStyle) } }
+    /// Модель Claude для сборки конспекта; пусто — модель из настроек Claude Code. Остальные вызовы её не используют.
+    var assemblyModel: String { didSet { defaults.set(assemblyModel, forKey: Keys.assemblyModel) } }
+    /// Использовать выдержки из учебников при учебной сборке.
+    var literatureEnabled: Bool { didSet { defaults.set(literatureEnabled, forKey: Keys.literatureEnabled) } }
+    /// Коллекции учебников: название → пути к PDF.
+    var literatureCollections: [String: [String]] {
+        didSet { defaults.set(try? JSONEncoder().encode(literatureCollections), forKey: Keys.literatureCollections) }
+    }
+    /// Какая коллекция учебников у какого предмета.
+    var literatureSubjectCollections: [String: String] {
+        didSet { defaults.set(try? JSONEncoder().encode(literatureSubjectCollections), forKey: Keys.literatureSubjectCollections) }
+    }
     var codexPathOverride: String { didSet { defaults.set(codexPathOverride, forKey: Keys.codexPathOverride) } }
     /// Пусто — модель выбирает сам Codex.
     var codexModel: String { didSet { defaults.set(codexModel, forKey: Keys.codexModel) } }
@@ -97,6 +111,13 @@ final class AppSettings {
         claudePathOverride = defaults.string(forKey: Keys.claudePathOverride) ?? ""
         claudeModel = defaults.string(forKey: Keys.claudeModel) ?? "sonnet"
         engineMode = defaults.string(forKey: Keys.engineMode).flatMap(EngineMode.init(rawValue:)) ?? .auto
+        assemblyStyle = defaults.string(forKey: Keys.assemblyStyle).flatMap(AssemblyStyle.init(rawValue:)) ?? .study
+        assemblyModel = defaults.string(forKey: Keys.assemblyModel) ?? "opus"
+        literatureEnabled = defaults.object(forKey: Keys.literatureEnabled) as? Bool ?? true
+        literatureCollections = defaults.data(forKey: Keys.literatureCollections)
+            .flatMap { try? JSONDecoder().decode([String: [String]].self, from: $0) } ?? [:]
+        literatureSubjectCollections = defaults.data(forKey: Keys.literatureSubjectCollections)
+            .flatMap { try? JSONDecoder().decode([String: String].self, from: $0) } ?? [:]
         codexPathOverride = defaults.string(forKey: Keys.codexPathOverride) ?? ""
         codexModel = defaults.string(forKey: Keys.codexModel) ?? ""
         ollamaPathOverride = defaults.string(forKey: Keys.ollamaPathOverride) ?? ""
@@ -116,6 +137,11 @@ final class AppSettings {
         static let claudePathOverride = "claudePathOverride"
         static let claudeModel = "claudeModel"
         static let engineMode = "engineMode"
+        static let assemblyStyle = "assemblyStyle"
+        static let assemblyModel = "assemblyModel"
+        static let literatureEnabled = "literatureEnabled"
+        static let literatureCollections = "literatureCollections"
+        static let literatureSubjectCollections = "literatureSubjectCollections"
         static let codexPathOverride = "codexPathOverride"
         static let codexModel = "codexModel"
         static let ollamaPathOverride = "ollamaPathOverride"

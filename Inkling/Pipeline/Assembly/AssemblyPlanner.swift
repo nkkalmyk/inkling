@@ -186,9 +186,9 @@ extension PromptLibrary {
         return prompt
     }
 
-    func mergePrompt(parts: [String], subject: String, topic: String) throws -> String {
+    func mergePrompt(parts: [String], subject: String, topic: String, study: Bool = false) throws -> String {
         let joined = parts.enumerated().map { "=== Часть \($0.offset + 1) ===\n\($0.element)" }.joined(separator: "\n\n")
-        return Self.render(try template("assemble-merge-chunks.md"), values: [
+        return Self.render(try template(study ? "assemble-study-merge.md" : "assemble-merge-chunks.md"), values: [
             "предмет": subject, "тема": topic, "конспект": joined,
         ])
     }

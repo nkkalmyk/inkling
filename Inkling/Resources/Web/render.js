@@ -158,8 +158,106 @@
     html = html.replace(/<blockquote>\s*<p>(📝)/g, '<blockquote class="callout example"><p>$1');
     html = html.replace(/<blockquote>\s*<p>(🔗)/g, '<blockquote class="callout link"><p>$1');
     html = html.replace(/<h2>(\s*🧭)/g, '<h2 class="summary-heading">$1');
+    html = structure(html);
+    return options.collapseSolutions ? collapseSolutions(html) : html;
+  }
+
+  // ---- Структура учебного конспекта: якоря заголовков, ссылки в оглавлении, оформление определений и задач ----
+
+  function plain(html) {
+    return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+  }
+
+  // Название без номера и знаков в конце: «1.2. Закон Гесса:» и «Закон Гесса» сравниваются как равные.
+  function headingKey(html) {
+    return plain(html).replace(/^\d+(?:\.\d+)*\.?\s*/, '').replace(/[\s.:;,]+$/, '').toLowerCase();
+  }
+
+  // Конец списка `<ol>`/`<ul>`, начинающегося в позиции start, с учётом вложенных списков.
+  function listEnd(html, start) {
+    var re = /<(\/?)(ul|ol)\b[^>]*>/g;
+    re.lastIndex = start;
+    var depth = 0, m;
+    while ((m = re.exec(html)) !== null) {
+      depth += m[1] ? -1 : 1;
+      if (depth === 0) return re.lastIndex;
+    }
+    return -1;
+  }
+
+  var DEFINITION = /^(?:Закон|Теорема|Определение|Правило|Принцип|Следствие|Лемма|Аксиома|Постулат|Уравнение|Формула|Свойство)/i;
+
+  function structure(html) {
+    // 1. Якоря у заголовков h1–h3 (по порядку) и таблица заголовков для оглавления.
+    var headings = [];
+    html = html.replace(/<h([1-3])((?: [^>]*)?)>([\s\S]*?)<\/h\1>/g, function (whole, level, attrs, inner) {
+      var id = 'sec-' + (headings.length + 1);
+      headings.push({ id: id, key: headingKey(inner) });
+      return '<h' + level + attrs + ' id="' + id + '">' + inner + '</h' + level + '>';
+    });
+
+    // 2. Оглавление: пункты, совпавшие по названию с заголовком, становятся ссылками.
+    var toc = /<h2[^>]*>\s*Оглавление\s*<\/h2>\s*/.exec(html);
+    if (toc) {
+      var start = toc.index + toc[0].length;
+      if (/^<(?:ol|ul)\b/.test(html.slice(start))) {
+        var end = listEnd(html, start);
+        if (end !== -1) {
+          var list = html.slice(start, end).replace(/<li>([\s\S]*?)(?=<(?:ul|ol)\b|<\/li>)/g, function (whole, inner) {
+            var key = headingKey(inner);
+            var target = key && headings.filter(function (h) { return h.key === key; })[0];
+            return target ? '<li><a href="#' + target.id + '">' + inner.trim() + '</a>' : whole;
+          });
+          html = html.slice(0, start) + '<nav class="toc">' + list + '</nav>' + html.slice(end);
+        }
+      }
+    }
+
+    // 3. Условие, решение и ответ задач; определения и законы в начале абзаца.
+    html = html.replace(/<p><strong>\s*Условие:?\s*<\/strong>/g, '<p class="task task-condition"><strong>Условие:</strong>');
+    html = html.replace(/<p><strong>\s*Решение:?\s*<\/strong>/g, '<p class="task task-solution"><strong>Решение:</strong>');
+    html = html.replace(/<p><strong>\s*Ответ:?\s*<\/strong>/g, '<p class="task task-answer"><strong>Ответ:</strong>');
+    html = html.replace(/<p><strong>([^<]{3,120}?)<\/strong>/g, function (whole, title) {
+      return DEFINITION.test(title) && /[:.]\s*$|\)\s*:?\s*$/.test(title) ? '<p class="definition"><strong>' + title + '</strong>' : whole;
+    });
     return html;
   }
 
-  global.InklingRender = { toHTML: toHTML, extractMath: extractMath };
+  // Решение и ответ задачи прячутся под спойлер: сначала можно решить самому. Спойлер идёт от абзаца «Решение» до следующего
+  // заголовка или следующего «Условия». При экспорте в PDF опция выключается, и всё остаётся раскрытым.
+  function collapseSolutions(html) {
+    var open = '<p class="task task-solution">';
+    var out = '', pos = 0, start;
+    while ((start = html.indexOf(open, pos)) !== -1) {
+      var rest = html.slice(start + open.length);
+      var stop = rest.search(/<h[1-6][ >]|<p class="task task-condition">/);
+      var end = stop === -1 ? html.length : start + open.length + stop;
+      out += html.slice(pos, start) + '<details class="task-reveal"><summary>Показать решение</summary>' + html.slice(start, end) + '</details>';
+      pos = end;
+    }
+    return out + html.slice(pos);
+  }
+
+  var options = { collapseSolutions: true };
+
+  // Проверка конспекта без DOM: формулы, которые KaTeX не разбирает (с текстом ошибки), и число сломанных рисунков.
+  function check(markdown) {
+    var extracted = extractMath(markdown || '');
+    var broken = [];
+    extracted.formulas.forEach(function (f) {
+      try {
+        global.katex.renderToString(f.tex, { displayMode: f.display, throwOnError: true, strict: 'ignore', trust: false, output: 'html' });
+      } catch (e) {
+        broken.push({ tex: f.tex, display: f.display, message: String(e && e.message || e).slice(0, 200) });
+      }
+    });
+    var saved = options.collapseSolutions;
+    options.collapseSolutions = false;
+    var html = toHTML(markdown || '');
+    options.collapseSolutions = saved;
+    var diagramErrors = (html.match(/class="diagram-error"/g) || []).length;
+    return JSON.stringify({ broken: broken, diagramErrors: diagramErrors });
+  }
+
+  global.InklingRender = { toHTML: toHTML, extractMath: extractMath, options: options, check: check };
 })(this);

@@ -16,6 +16,11 @@ enum ExportLocation {
         return "\(title) — \(FolderNaming.sanitize(subject)) — \(date)"
     }
 
+    /// `Шпаргалка — Тема — Предмет — ГГГГ-ММ-ДД`.
+    static func cheatSheetBaseName(subject: String, topic: String, date: CalendarDate) -> String {
+        "Шпаргалка — " + pdfBaseName(subject: subject, topic: topic, date: date)
+    }
+
     /// Папка предмета внутри «Конспекты»: название предмета с маленькой буквы («математический анализ»).
     static func subjectFolderName(_ subject: String) -> String {
         FolderNaming.sanitize(subject).lowercased(with: Locale(identifier: "ru_RU"))

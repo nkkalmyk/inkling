@@ -67,6 +67,14 @@ actor EngineRouter {
         }
     }
 
+    /// Модель, выбранная для одного движка, на другом не используется (алиас Claude «opus» не годится для Codex).
+    static func prepared(_ request: AIRequest, for engine: any AIEngine) -> AIRequest {
+        guard let modelEngine = request.modelEngine, modelEngine != engine.id else { return request }
+        var copy = request
+        copy.model = nil
+        return copy
+    }
+
     /// Лимит — сразу; таймаут, пустой или невалидный ответ — после повтора. Нет бинарника или входа — без перехода.
     static func shouldFallBack(after error: AIError) -> Bool {
         switch error {
@@ -79,7 +87,7 @@ actor EngineRouter {
     private func runWithRetry(_ engine: any AIEngine, _ request: AIRequest,
                               onEvent: @Sendable (Event) -> Void) async throws(AIError) -> AIResponse {
         do {
-            return try await engine.run(request)
+            return try await engine.run(Self.prepared(request, for: engine))
         } catch {
             if case .rateLimited(let resetAt, _) = error {
                 limitedUntil[engine.id] = resetAt ?? now().addingTimeInterval(settings.unknownLimitCooldown)
@@ -88,7 +96,7 @@ actor EngineRouter {
             guard error.isRetryable, !Task.isCancelled else { throw error }
             onEvent(.retrying(engine.id, error))
             do {
-                return try await engine.run(request)
+                return try await engine.run(Self.prepared(request, for: engine))
             } catch {
                 if case .rateLimited(let resetAt, _) = error {
                     limitedUntil[engine.id] = resetAt ?? now().addingTimeInterval(settings.unknownLimitCooldown)

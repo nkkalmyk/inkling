@@ -3,7 +3,9 @@ import SwiftUI
 /// Вкладка «Конспект» (SPEC, разделы 4 и 7): сборка, просмотр с формулами, правка, история, «Устарело».
 struct NotesView: View {
     @Environment(Library.self) private var library
+    @Environment(AppSettings.self) private var settings
     @Environment(AssemblyCenter.self) private var assembly
+    @Environment(KonspektCheckCenter.self) private var checker
     @Environment(RecognitionCenter.self) private var recognition
     let lecture: LectureRecord
 
@@ -77,6 +79,7 @@ struct NotesView: View {
             start(force: false)
         }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { await load() }
+        .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { checker.refresh(lecture) }
         .onDisappear(perform: flushSave)
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
                             presenting: confirm) { _ in
@@ -123,12 +126,26 @@ struct NotesView: View {
                 Label("ошибок в формулах: \(katexErrors)", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(Color.statusError)
                     .help("Формулы с ошибкой показаны исходным LaTeX красным")
+                if checker.checks[lecture.id]?.brokenFormulas.isEmpty == false {
+                    if checker.isFixing(lecture.id) {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("Исправить формулы") { flushSave(); checker.fixFormulas(lecture.id) }
+                            .help("Один короткий вызов модели: исправляется только синтаксис формул, смысл не меняется. Прежняя версия уйдёт в историю.")
+                    }
+                }
+            }
+            if let check = checker.checks[lecture.id], !check.missingStructure.isEmpty || check.diagramErrors > 0, !editing {
+                Label("проверка: " + KonspektCheck(diagramErrors: check.diagramErrors, missingStructure: check.missingStructure).summary,
+                      systemImage: "checklist")
+                    .foregroundStyle(.secondary)
+                    .help("Локальная проверка конспекта. Недостающие разделы появятся после «Пересобрать».")
             }
             Spacer()
             // При «Устарело» кнопка «Пересобрать» есть в уведомлении над шапкой — здесь не повторяем.
             if readiness?.isStale != true || assembly.errors[lecture.id] != nil {
-                Button(info == nil ? "Собрать" : "Пересобрать") { start(force: false) }
-                    .disabled(assembly.isRunning(lecture.id) || readiness?.plan == nil || recognition.isBusy(lecture.id))
+                assembleMenu(title: info == nil ? "Собрать" : "Пересобрать", disabled: assembly.isRunning(lecture.id)
+                             || readiness?.plan == nil || recognition.isBusy(lecture.id))
             }
             Button {
                 flushSave()
@@ -163,6 +180,7 @@ struct NotesView: View {
         guard let info else { return "без описания" }
         var parts: [String] = []
         if let model = info.model { parts.append(model) }
+        if info.style == .study { parts.append("учебный") }
         if let mode = info.mode { parts.append(mode.title) }
         if info.parts > 1 { parts.append("частей: \(info.parts)") }
         parts.append(info.updatedAt.stamp)
@@ -200,7 +218,28 @@ struct NotesView: View {
 
     // MARK: Действия
 
-    private func start(force: Bool) {
+    /// Кнопка сборки: по щелчку — стиль из настроек, в меню — другой стиль и модель Claude.
+    private func assembleMenu(title: String, disabled: Bool) -> some View {
+        @Bindable var settings = settings
+        return Menu(title) {
+            ForEach(AssemblyStyle.allCases) { style in
+                Button(style.title) { start(force: false, style: style) }
+                    .help(style.hint)
+            }
+            Divider()
+            Picker("Модель Claude", selection: $settings.assemblyModel) {
+                Text("Как в настройках").tag("")
+                ForEach(AppSettings.claudeModels, id: \.id) { Text($0.title).tag($0.id) }
+            }
+        } primaryAction: {
+            start(force: false)
+        }
+        .fixedSize()
+        .disabled(disabled)
+        .help("\(settings.assemblyStyle.title). Стрелка — выбрать стиль и модель.")
+    }
+
+    private func start(force: Bool, style: AssemblyStyle? = nil) {
         flushSave()
         if !force {
             let missing = assembly.readiness(lecture).input
@@ -209,7 +248,7 @@ struct NotesView: View {
             if skipped > 0 { confirm = .skipUnrecognized(skipped); return }
         }
         editing = false
-        assembly.assemble(lecture.id)
+        assembly.assemble(lecture.id, style: style)
     }
 
     /// Когда перечитывать конспект: новая ревизия (сборка, восстановление) или новые сведения о нём.

@@ -41,6 +41,8 @@ struct AIRequest: Sendable {
     var timeout: TimeInterval = 120
     /// `nil` — модель из настроек движка.
     var model: String?
+    /// Движок, для которого написана `model`: на другом движке (запасном) модель берётся из его настроек.
+    var modelEngine: EngineID?
     /// Только облачный движок (Claude Code или Codex): без локальной модели, в том числе как запасной.
     var cloudOnly = false
 }

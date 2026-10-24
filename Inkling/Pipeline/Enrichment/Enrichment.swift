@@ -112,6 +112,12 @@ enum Enrichment {
 
     // MARK: Удаление и проверка
 
+    /// Авторский текст конспекта: блоки вырезаются только у конспекта, дополненного кнопкой «Дополнить». В учебной сборке
+    /// блоки `💡 📝 🔗`, `plot` и `svg` пишет сама сборка, это часть конспекта, и вырезать их нельзя.
+    static func baseText(_ markdown: String, info: ArtifactInfo?) -> String {
+        info?.enrichment == nil ? markdown : removing(from: markdown)
+    }
+
     /// Текст без указанных добавлений (по номерам в `additions(in:)`); `nil` — без всех.
     static func removing(_ indices: Set<Int>? = nil, from markdown: String) -> String {
         let found = additions(in: markdown)
