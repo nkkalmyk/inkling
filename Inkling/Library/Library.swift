@@ -64,6 +64,8 @@ final class Library {
     var textRevision: [UUID: Int] = [:]
     /// Куда класть снимки Камеры непрерывности и вставку: открытая лекция и выбранный раздел.
     var importTarget: (lectureID: UUID, section: SourceSection)?
+    /// Фото, брошенные в окно без открытой лекции (`importIntoWindow`): уйдут в следующую созданную лекцию.
+    var pendingImport: PendingImport?
     /// Очередь распознавания; задаётся приложением.
     @ObservationIgnored weak var recognition: RecognitionCenter?
 
@@ -167,6 +169,10 @@ final class Library {
             return false
         }
         selection = record.id
+        if let pending = pendingImport {
+            pendingImport = nil
+            importFiles(pending.urls, into: .notes, lectureID: record.id, staging: pending.staging)
+        }
         return true
     }
 

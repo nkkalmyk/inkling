@@ -3,6 +3,8 @@ import SwiftUI
 struct ContentView: View {
     @Environment(Library.self) private var library
     @AppStorage(ReadingScale.key) private var readingScale = 1.0
+    @State private var dropTargeted = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         @Bindable var library = library
@@ -27,6 +29,15 @@ struct ContentView: View {
             }
         }
         .environment(\.readingScale, readingScale)
+        // Фото и PDF можно бросить или вставить в любое место окна; «Источники» принимают их в свой раздел сами.
+        .onDrop(of: ImportStaging.acceptedTypes, isTargeted: $dropTargeted) { providers in
+            library.importIntoWindow(providers)
+            return true
+        }
+        .onPasteCommand(of: ImportStaging.acceptedTypes) { library.importIntoWindow($0) }
+        .overlay { if dropTargeted { dropHint.transition(.opacity) } }
+        .motion(.snappy, value: dropTargeted)
+        .onChange(of: library.sheet == nil) { if library.sheet == nil { library.discardPendingImport() } }
         // Пункт меню «Крупнее» ловит только ⌘⇧= (символ «+»); ⌘= без Shift, как в Safari, — этой кнопкой.
         .background {
             Button("Крупнее") { readingScale = ReadingScale.larger(readingScale) }
@@ -68,6 +79,24 @@ struct ContentView: View {
         } message: {
             Text(library.errorMessage ?? "")
         }
+    }
+
+    /// Куда попадут брошенные файлы: рамка по краю окна и подпись на стекле.
+    private var dropHint: some View {
+        ZStack(alignment: .bottom) {
+            RoundedRectangle.ds(Radius.card)
+                .strokeBorder(Color.accentColor, lineWidth: 3)
+                .padding(Spacing.s)
+            Label(library.selectedLecture.map { "Добавить в «\($0.meta.topic)»" } ?? "Добавить в новую лекцию",
+                  systemImage: "photo.badge.plus")
+                .font(.headline)
+                .padding(.horizontal, Spacing.l)
+                .padding(.vertical, Spacing.s)
+                .background(.regularMaterial, in: .capsule)
+                .padding(.bottom, Spacing.xxl)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private var deletionBinding: Binding<Bool> {

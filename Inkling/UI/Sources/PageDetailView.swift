@@ -225,6 +225,8 @@ private struct PageEditor: View {
                     .foregroundStyle(.primary)
                     .help(error.details)
                     .accessibilityLabel("Ошибка: \(error.userMessage)")
+                Button("Повторить") { rerecognize(detailed: false) }
+                    .controlSize(.small)
             case nil:
                 provenance
             }

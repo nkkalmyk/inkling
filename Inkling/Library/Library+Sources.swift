@@ -21,7 +21,46 @@ extension Library {
         var staging: URL?
     }
 
+    /// Файлы, которые ждут лекции из листа «Новая лекция».
+    struct PendingImport {
+        var urls: [URL]
+        var staging: URL
+    }
+
     // MARK: Импорт
+
+    /// Фото и PDF, брошенные или вставленные в окно вне «Источников». Открытая лекция получает их в раздел,
+    /// выбранный в «Источниках» (иначе «Мой конспект»); без открытой лекции файлы сразу копируются во временную
+    /// папку — перетаскивание из Finder может отозвать доступ после сброса — и ждут лекции из листа «Новая лекция».
+    func importIntoWindow(_ providers: [NSItemProvider]) {
+        guard !providers.isEmpty else { return }
+        if let lecture = selectedLecture {
+            let section = importTarget?.lectureID == lecture.id ? importTarget?.section ?? .notes : .notes
+            importProviders(providers, into: section, lectureID: lecture.id)
+            return
+        }
+        guard !subjects.isEmpty, let staging = try? ImportStaging.makeStagingFolder() else {
+            errorMessage = "Сначала создайте предмет: лекции и фото хранятся в его папке."
+            return
+        }
+        Task {
+            let urls = await ImportStaging.files(from: providers, staging: staging)
+            guard !urls.isEmpty else {
+                errorMessage = "Не удалось получить файлы. Поддерживаются фото (JPG, PNG, HEIC) и PDF."
+                try? FileManager.default.removeItem(at: staging)
+                return
+            }
+            discardPendingImport()
+            pendingImport = PendingImport(urls: urls, staging: staging)
+            sheet = .newLecture(subject: currentSubject)
+        }
+    }
+
+    /// Лист «Новая лекция» закрыли без создания: временные копии больше не нужны.
+    func discardPendingImport() {
+        if let staging = pendingImport?.staging { try? FileManager.default.removeItem(at: staging) }
+        pendingImport = nil
+    }
 
     func importProviders(_ providers: [NSItemProvider], into section: SourceSection, lectureID: UUID) {
         guard !providers.isEmpty, let staging = try? ImportStaging.makeStagingFolder() else { return }

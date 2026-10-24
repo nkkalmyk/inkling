@@ -363,3 +363,48 @@ struct ExternalLinkTests {
         #expect(!open("x-apple.systempreferences:com.apple.preference.security") && !open("/relative"))
     }
 }
+
+/// Фото, брошенные в окно без открытой лекции, ждут её и уходят в «Мой конспект» созданной лекции.
+@MainActor
+struct WindowImportTests {
+    @Test func droppedFilesGoToTheNextCreatedLecture() async throws {
+        let dir = try TempDir()
+        let library = Library(root: dir.url.appendingPathComponent("Inkling"),
+                              trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: library.root)
+        let photo = Fixtures.write(Fixtures.paperOnDesk(), to: dir.url.appendingPathComponent("page.jpg"))
+        let subject = try #require(library.subjectNames.first)
+        library.scope = .subject(subject)
+
+        library.importIntoWindow([try #require(NSItemProvider(contentsOf: photo))])
+        for _ in 0..<250 where library.pendingImport == nil { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(library.sheet == .newLecture(subject: subject))
+        let staging = try #require(library.pendingImport?.staging)
+
+        #expect(library.createLecture(subject: subject, topic: "Тема", date: .d("2026-10-14")))
+        #expect(library.pendingImport == nil)
+        let id = try #require(library.selection)
+        for _ in 0..<500 where (library.lecture(id: id)?.meta.notes.count ?? 0) == 0 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(library.lecture(id: id)?.meta.notes.count == 1)
+        for _ in 0..<250 where FileManager.default.fileExists(atPath: staging.path) {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(!FileManager.default.fileExists(atPath: staging.path))
+    }
+
+    @Test func cancellingTheSheetRemovesStagedCopies() async throws {
+        let dir = try TempDir()
+        let library = Library(root: dir.url.appendingPathComponent("Inkling"),
+                              trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: library.root)
+        let photo = Fixtures.write(Fixtures.halfRed(), to: dir.url.appendingPathComponent("page.png"), type: .png)
+        library.importIntoWindow([try #require(NSItemProvider(contentsOf: photo))])
+        for _ in 0..<250 where library.pendingImport == nil { try await Task.sleep(for: .milliseconds(20)) }
+        let staging = try #require(library.pendingImport?.staging)
+        library.discardPendingImport()
+        #expect(library.pendingImport == nil)
+        #expect(!FileManager.default.fileExists(atPath: staging.path))
+    }
+}
