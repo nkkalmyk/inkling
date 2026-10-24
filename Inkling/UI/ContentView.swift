@@ -54,6 +54,11 @@ struct ContentView: View {
                 .keyboardShortcut("=", modifiers: .command)
                 .hidden()
                 .accessibilityHidden(true)
+            // «Новая лекция» в меню — ⌘T; привычный ⌘N тоже работает.
+            Button("Новая лекция") { library.sheet = .newLecture(subject: library.currentSubject) }
+                .keyboardShortcut("n", modifiers: .command)
+                .hidden()
+                .accessibilityHidden(true)
         }
         .sheet(item: $library.sheet) { sheet in
             switch sheet {

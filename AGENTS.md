@@ -14,7 +14,7 @@
 |---|---|
 | `Inkling/App` | `InklingApp`, `AppDelegate`, `AppSettings`, `EngineCenter` (выбор и состояние движков) |
 | `Inkling/Engine` | `AIEngine` (протокол), `ClaudeCodeEngine`, `CodexEngine`, `OllamaEngine`, `EngineRouter` (основной → запасной), `ProcessRunner` (`posix_spawn`), `BinaryLocator`, `RateLimitDetector` |
-| `Inkling/Pipeline` | `Recognition` (страница → Markdown), `Assembly` (сборка `konspekt.md`), `Study` (вопросы, тест, карточки), `Enrichment` («Дополнить»), `Prompts/PromptLibrary` |
+| `Inkling/Pipeline` | `Recognition` (страница → Markdown), `Assembly` (сборка `konspekt.md`), `Study` (вопросы, тест, карточки), `Enrichment` (разбор блоков прежней функции «Дополнить» в старых конспектах), `Prompts/PromptLibrary` |
 | `Inkling/Library`, `Inkling/Storage` | состояние библиотеки для UI; файловое хранилище (`AtomicFile`, `LectureMeta`, `KonspektStore`, `HistoryStore`, iCloud) |
 | `Inkling/Import`, `Inkling/Processing` | импорт файлов, буфера, Камеры непрерывности; обработка фото и PDF |
 | `Inkling/Export` | Markdown, PDF, Anki CSV |
@@ -33,7 +33,7 @@
 ```bash
 brew install xcodegen                                        # один раз
 xcodegen generate                                            # после любого изменения project.yml, добавления/удаления файлов
-xcodebuild -scheme Inkling -destination 'platform=macOS' build test   # сборка и 338 тестов, ~1–2 мин
+xcodebuild -scheme Inkling -destination 'platform=macOS' build test   # сборка и 334 теста, ~1–2 мин
 xcodebuild -scheme Inkling -destination 'platform=macOS' analyze      # статический анализ (отдельного линтера нет)
 scripts/release.sh                                           # публичный zip в build/release/ (ad-hoc, без личных путей)
 ```
@@ -49,7 +49,6 @@ TEST_RUNNER_INKLING_LIVE_OLLAMA=1 xcodebuild -scheme Inkling -destination 'platf
   -only-testing:InklingTests/OllamaLiveTests -only-testing:InklingTests/EndToEndTests   # ~9 ГБ памяти; потом pkill -f "ollama serve"
 ```
 
-«Дополнить» на реальном конспекте: `TEST_RUNNER_INKLING_LIVE_CLAUDE=1 TEST_RUNNER_INKLING_LIVE_KONSPEKT=<konspekt.md> TEST_RUNNER_INKLING_LIVE_OUT=<файл> xcodebuild … -only-testing:InklingTests/EnrichmentLiveTests` (работает с копией).
 
 ## Конвенции кода
 
@@ -170,7 +169,7 @@ open /Applications/Inkling.app
 xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' build test
 ```
 
-Сборка без предупреждений, все тесты зелёные (сейчас 338). Меняешь поведение — добавь тест. Меняешь интерфейс — следуй
+Сборка без предупреждений, все тесты зелёные (сейчас 334). Меняешь поведение — добавь тест. Меняешь интерфейс — следуй
 [`docs/design-system.md`](docs/design-system.md) и проверь экран в запущенном приложении, а не только сборкой. Не нашёл способа проверить — напиши об этом в PR.
 
 ### Документация идёт вместе с кодом

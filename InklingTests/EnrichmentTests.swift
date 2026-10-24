@@ -57,21 +57,10 @@ struct EnrichmentTests {
         #expect(Enrichment.additions(in: merged)[0].lines == 0..<1)
     }
 
-    @Test func authorTextIsPreservedWhenOnlyAdditionsAndBold() {
-        #expect(Enrichment.preservesAuthorText(original: Self.base, enriched: Self.enriched))
-    }
-
-    @Test func changedWordIsDetected() {
-        let changed = Self.enriched.replacingOccurrences(of: "сумме пределов", with: "произведению пределов")
-        #expect(!Enrichment.preservesAuthorText(original: Self.base, enriched: changed))
-        let dropped = Self.enriched.replacingOccurrences(of: "Предел суммы равен сумме пределов.\n", with: "")
-        #expect(!Enrichment.preservesAuthorText(original: Self.base, enriched: dropped))
-    }
-
     @Test func removingAllRestoresBaseText() {
         let removed = Enrichment.removing(from: Self.enriched)
         #expect(Enrichment.additions(in: removed).isEmpty)
-        #expect(Enrichment.comparableText(removed) == Enrichment.comparableText(Self.base))
+        #expect(Self.words(removed) == Self.words(Self.base))
         #expect(!removed.contains("🧭"))
         #expect(removed.contains("⚠️ Возможно, ошибка"))
     }
@@ -83,7 +72,6 @@ struct EnrichmentTests {
         #expect(!result.contains("```plot"))
         #expect(result.contains("💡 Пояснение"))
         #expect(result.contains("🧭 Главное"))
-        #expect(Enrichment.preservesAuthorText(original: Self.base, enriched: result))
     }
 
     @Test func otherCodeBlocksAreAuthorText() {
@@ -92,11 +80,9 @@ struct EnrichmentTests {
         #expect(Enrichment.removing(from: text).contains("print(1)"))
     }
 
-    @Test func verificationAnswerIsParsedAndBounded() {
-        let json = Data(#"{"problems":[{"id":2,"issue":"неверный пример"},{"id":99,"issue":"?"},{"id":0,"issue":"?"}]}"#.utf8)
-        #expect(Enrichment.parseProblems(json, count: 4) == [Enrichment.Problem(id: 2, issue: "неверный пример")])
-        #expect(Enrichment.parseProblems(Data("не json".utf8), count: 4) == nil)
-        #expect(Enrichment.parseProblems(Data(#"{"problems":[]}"#.utf8), count: 4) == [])
+    /// Авторский текст для сравнения: без `**` и с одинаковыми пробелами (выделение терминов — не правка автора).
+    private static func words(_ markdown: String) -> String {
+        markdown.replacingOccurrences(of: "**", with: "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 }
 

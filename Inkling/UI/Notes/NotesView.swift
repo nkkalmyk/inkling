@@ -4,7 +4,6 @@ import SwiftUI
 struct NotesView: View {
     @Environment(Library.self) private var library
     @Environment(AssemblyCenter.self) private var assembly
-    @Environment(EnrichmentCenter.self) private var enrichment
     @Environment(RecognitionCenter.self) private var recognition
     let lecture: LectureRecord
 
@@ -32,14 +31,6 @@ struct NotesView: View {
         // Из кэша: тексты страниц читаются в фоне, `nil` — ещё читаются.
         let readiness = assembly.knownReadiness(lecture)
         VStack(spacing: 0) {
-            if let error = enrichment.errors[lecture.id], !enrichment.isRunning(lecture.id) {
-                InlineNotice(.error, "Конспект не дополнен. \(error.userMessage)", systemImage: "exclamationmark.octagon.fill",
-                             details: error.details, dismiss: { enrichment.errors[lecture.id] = nil }) {
-                    Button("Повторить") { enrich() }
-                }
-                .transition(.notice(reduceMotion: reduceMotion))
-                Divider()
-            }
             if !assembly.isRunning(lecture.id) {
                 if let error = assembly.errors[lecture.id] {
                     InlineNotice(.error, "Конспект не собран. \(error.userMessage)", systemImage: "exclamationmark.octagon.fill",
@@ -77,7 +68,6 @@ struct NotesView: View {
             }
         }
         .motion(.standard, value: assembly.errors[lecture.id] == nil)
-        .motion(.standard, value: enrichment.errors[lecture.id] == nil)
         .motion(.standard, value: readiness?.isStale == true)
         .focusedSceneValue(\.notesEditing, !isActive || info == nil && text.isEmpty ? nil : $editing)
         .onChange(of: isActive) { if !isActive { flushSave() } }
@@ -85,11 +75,6 @@ struct NotesView: View {
             guard requests.wrappedValue.assemble, isActive else { return }
             requests.wrappedValue.assemble = false
             start(force: false)
-        }
-        .task(id: requests.wrappedValue.enrich && isActive) {
-            guard requests.wrappedValue.enrich, isActive else { return }
-            requests.wrappedValue.enrich = false
-            enrich()
         }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { await load() }
         .onDisappear(perform: flushSave)
@@ -144,14 +129,6 @@ struct NotesView: View {
             if readiness?.isStale != true || assembly.errors[lecture.id] != nil {
                 Button(info == nil ? "Собрать" : "Пересобрать") { start(force: false) }
                     .disabled(assembly.isRunning(lecture.id) || readiness?.plan == nil || recognition.isBusy(lecture.id))
-            }
-            if info != nil {
-                Button("Дополнить", systemImage: "sparkles") { enrich() }
-                    .disabled(assembly.isRunning(lecture.id) || enrichment.isRunning(lecture.id)
-                              || recognition.isBusy(lecture.id))
-                    .help((info?.enrichment == nil ? "" : "Прежнее дополнение заменится. ")
-                          + "Добавить резюме, пояснения, примеры и схемы помеченными блоками. Текст автора не меняется, "
-                          + "добавленное проверяется вторым проходом. Только через Claude.")
             }
             Button {
                 flushSave()
@@ -233,11 +210,6 @@ struct NotesView: View {
         }
         editing = false
         assembly.assemble(lecture.id)
-    }
-
-    private func enrich() {
-        flushSave()
-        enrichment.enrich(lecture.id)
     }
 
     /// Когда перечитывать конспект: новая ревизия (сборка, восстановление) или новые сведения о нём.

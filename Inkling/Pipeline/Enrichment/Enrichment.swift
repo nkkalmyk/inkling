@@ -1,8 +1,8 @@
 import Foundation
 
-/// Дополнение конспекта («Дополнить»): помеченные блоки поверх авторского текста.
-/// Всё, что добавила модель, распознаётся по разметке, поэтому добавления можно найти, проверить, убрать
-/// и убедиться, что авторский текст остался прежним.
+/// Блоки, которые добавляла функция «Дополнить» (0.3–0.5, убрана): они остаются в старых конспектах.
+/// Распознаются по разметке, чтобы учебные материалы и признак «Устарело» считались по авторскому тексту,
+/// а рендер показывал их как вставки.
 ///
 /// Разметка в `konspekt.md`:
 /// - `## 🧭 Главное` и список под ним — краткое резюме в начале;
@@ -131,48 +131,5 @@ enum Enrichment {
         var text = kept.joined(separator: "\n")
         while text.hasPrefix("\n") { text.removeFirst() }
         return text
-    }
-
-    /// Авторский текст для сравнения: без добавлений, без `**` и с одинаковыми пробелами.
-    static func comparableText(_ markdown: String) -> String {
-        removing(from: markdown)
-            .replacingOccurrences(of: "**", with: "")
-            .split(whereSeparator: \.isWhitespace)
-            .joined(separator: " ")
-    }
-
-    /// Модель могла «заодно поправить» слова автора: тогда результат отвергается.
-    static func preservesAuthorText(original: String, enriched: String) -> Bool {
-        comparableText(original) == comparableText(enriched)
-    }
-
-    // MARK: Проверка добавлений моделью
-
-    /// Нумерованный список добавлений для проверяющего прохода.
-    static func numberedList(_ additions: [Addition]) -> String {
-        additions.enumerated().map { index, addition in
-            "[\(index + 1)] (\(addition.kind.title))\n\(addition.text)"
-        }.joined(separator: "\n\n")
-    }
-
-    static let verificationSchema = """
-    {"type":"object","additionalProperties":false,"required":["problems"],"properties":{"problems":{"type":"array","items":\
-    {"type":"object","additionalProperties":false,"required":["id","issue"],"properties":\
-    {"id":{"type":"integer","minimum":1},"issue":{"type":"string","minLength":1}}}}}}
-    """
-
-    struct Problem: Equatable, Sendable {
-        var id: Int
-        var issue: String
-    }
-
-    /// Номера (с единицы) и причины из ответа проверяющего прохода; мусор отбрасывается.
-    static func parseProblems(_ json: Data?, count: Int) -> [Problem]? {
-        guard let json, let object = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
-              let items = object["problems"] as? [[String: Any]] else { return nil }
-        return items.compactMap { item in
-            guard let id = item["id"] as? Int, (1...max(count, 1)).contains(id), count > 0 else { return nil }
-            return Problem(id: id, issue: (item["issue"] as? String) ?? "")
-        }
     }
 }

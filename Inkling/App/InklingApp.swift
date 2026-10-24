@@ -12,7 +12,6 @@ struct InklingApp: App {
     @State private var recognition: RecognitionCenter
     @State private var assembly: AssemblyCenter
     @State private var study: StudyCenter
-    @State private var enrichment: EnrichmentCenter
 
     init() {
         let settings = AppSettings()
@@ -35,7 +34,6 @@ struct InklingApp: App {
         }
         _assembly = State(initialValue: assembly)
         _study = State(initialValue: study)
-        _enrichment = State(initialValue: EnrichmentCenter(library: library, router: { engines.router }))
     }
 
     var body: some Scene {
@@ -47,7 +45,6 @@ struct InklingApp: App {
                 .environment(recognition)
                 .environment(assembly)
                 .environment(study)
-                .environment(enrichment)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
                 .task {
                     appDelegate.library = library
@@ -59,7 +56,7 @@ struct InklingApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Новая лекция…") { library.sheet = .newLecture(subject: library.currentSubject) }
-                    .keyboardShortcut("n")
+                    .keyboardShortcut("t")
                 Button("Новый предмет…") { library.sheet = .newSubject }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
             }

@@ -37,7 +37,7 @@ struct LectureListView: View {
                 Button("Новая лекция", systemImage: "square.and.pencil") {
                     library.sheet = .newLecture(subject: library.currentSubject)
                 }
-                .help("Новая лекция (⌘N)")
+                .help("Новая лекция (⌘T)")
                 .disabled(library.subjects.isEmpty)
             }
         }
@@ -132,7 +132,6 @@ extension FocusedValues {
 private struct LectureRow: View {
     @Environment(RecognitionCenter.self) private var recognition
     @Environment(AssemblyCenter.self) private var assembly
-    @Environment(EnrichmentCenter.self) private var enrichment
     @Environment(StudyCenter.self) private var study
     let lecture: LectureRecord
 
@@ -165,7 +164,7 @@ private struct LectureRow: View {
     @ViewBuilder
     private var status: some View {
         let id = lecture.id
-        if recognition.isBusy(id) || assembly.isRunning(id) || enrichment.isRunning(id) || study.isRunning(id) {
+        if recognition.isBusy(id) || assembly.isRunning(id) || study.isRunning(id) {
             ProgressView().controlSize(.small)
                 .accessibilityLabel("Идёт работа")
         } else if lecture.hasConflict {

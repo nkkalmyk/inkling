@@ -8,12 +8,12 @@ struct SidebarView: View {
         List(selection: Binding<LibraryScope?>(get: { library.scope }, set: { if let scope = $0 { library.scope = scope } })) {
             Label("Все лекции", systemImage: "tray.full")
                 .badge(library.subjects.reduce(0) { $0 + $1.lectures.count })
-                .tag(Optional(LibraryScope.all))
+                .tag(LibraryScope.all)
             Section("Предметы") {
                 ForEach(library.subjects) { subject in
                     Label(subject.name, systemImage: "book.closed")
                         .badge(subject.lectures.count)
-                        .tag(Optional(LibraryScope.subject(subject.name)))
+                        .tag(LibraryScope.subject(subject.name))
                         .contextMenu { subjectMenu(subject) }
                 }
             }
@@ -38,6 +38,12 @@ struct SidebarView: View {
                 .padding(.horizontal, Spacing.l)
                 .padding(.vertical, Spacing.s)
                 .help("Новый предмет (⇧⌘N)")
+        }
+        // Открытая лекция другого предмета закрывается: справа не остаётся лекции, которой нет в списке.
+        .onChange(of: library.scope) {
+            if case .subject(let name) = library.scope, let lecture = library.selectedLecture, lecture.meta.subject != name {
+                library.selection = nil
+            }
         }
         // Переименованный или удалённый предмет больше не выбран.
         .onChange(of: library.subjectNames) {
