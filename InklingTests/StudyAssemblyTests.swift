@@ -233,15 +233,15 @@ struct StudyAssemblyLiteratureTests {
         let center = AssemblyCenter(library: env.library, router: { router }, threshold: { 40_000 }, style: { .study }, model: { "" },
                                     literature: { subject, topic, texts in
                                         #expect(subject == "Высшая алгебра" && topic == "Матрицы" && texts == ["Закон Гесса"])
-                                        return [LiteraturePassage(book: "Ахметов", page: 42, text: "Определение закона", score: -2)]
+                                        return [LiteraturePassage(book: "Химия-1", page: 42, text: "Определение закона", score: -2)]
                                     })
         center.assemble(env.lectureID)
         for _ in 0..<250 where center.isRunning(env.lectureID) { try await Task.sleep(for: .milliseconds(20)) }
         let prompt = try #require(await engine.requests.first?.prompt)
-        #expect(prompt.contains("[Ахметов, с. 42]\nОпределение закона"))
+        #expect(prompt.contains("[Химия-1, с. 42]\nОпределение закона"))
         #expect(prompt.contains("## Источники"))
         #expect(!prompt.contains("{учебники}"))
-        #expect(env.lecture.meta.konspekt?.literature == ["Ахметов, с. 42"])
+        #expect(env.lecture.meta.konspekt?.literature == ["Химия-1, с. 42"])
     }
 
     @Test func withoutTextbooksPromptHasNoPlaceholderAndNoMeta() async throws {

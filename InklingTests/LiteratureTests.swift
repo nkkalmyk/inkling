@@ -182,11 +182,11 @@ struct LiteratureIndexerTests {
 struct LiteratureRetrievalTests {
     private func store() async throws -> LiteratureStore {
         let store = try LiteratureStore.inMemory()
-        let a = try await store.upsertBook(path: "/a", title: "Ахметов", subject: "Химия", size: 1, mtime: 1, pages: 6)
-        let e = try await store.upsertBook(path: "/e", title: "Еремин", subject: "Химия", size: 1, mtime: 1, pages: 2)
-        let z = try await store.upsertBook(path: "/z", title: "Зорич", subject: "Математика", size: 1, mtime: 1, pages: 1)
+        let a = try await store.upsertBook(path: "/a", title: "Химия-1", subject: "Химия", size: 1, mtime: 1, pages: 6)
+        let e = try await store.upsertBook(path: "/e", title: "Химия-2", subject: "Химия", size: 1, mtime: 1, pages: 2)
+        let z = try await store.upsertBook(path: "/z", title: "Матанализ", subject: "Математика", size: 1, mtime: 1, pages: 1)
         try await store.add(pages: (1...6).map { ($0, "Закон Гесса и энтальпия реакции, тепловой эффект, страница \($0) про термохимию", "ocr") }, book: a)
-        try await store.add(pages: [(10, "Энтальпия образования вещества и закон Гесса в учебнике Еремина", "ocr"),
+        try await store.add(pages: [(10, "Энтальпия образования вещества и закон Гесса во втором учебнике химии", "ocr"),
                                     (11, "Совсем другая тема: строение атома и квантовые числа", "ocr")], book: e)
         try await store.add(pages: [(5, "Предел функции и непрерывность, энтальпия не упоминается всерьёз", "layer")], book: z)
         return store
@@ -204,15 +204,15 @@ struct LiteratureRetrievalTests {
         let passages = try await LiteratureRetrieval.passages(collection: "Химия", topic: "Закон Гесса",
                                                               texts: ["энтальпия реакции тепловой эффект"], store: store)
         #expect(!passages.isEmpty)
-        #expect(passages.filter { $0.book == "Ахметов" }.count <= LiteratureRetrieval.maxPerBook)
-        #expect(passages.contains { $0.book == "Еремин" && $0.page == 10 })
-        #expect(!passages.contains { $0.book == "Зорич" })
+        #expect(passages.filter { $0.book == "Химия-1" }.count <= LiteratureRetrieval.maxPerBook)
+        #expect(passages.contains { $0.book == "Химия-2" && $0.page == 10 })
+        #expect(!passages.contains { $0.book == "Матанализ" })
         #expect(!passages.contains { $0.page == 11 })
     }
 
     @Test func promptBlockCitesBooksAndPagesAndTreatsExcerptsAsData() {
-        let block = LiteratureRetrieval.promptBlock([LiteraturePassage(book: "Ахметов", page: 42, text: "Текст", score: -1)])
-        #expect(block.contains("[Ахметов, с. 42]\nТекст"))
+        let block = LiteratureRetrieval.promptBlock([LiteraturePassage(book: "Химия-1", page: 42, text: "Текст", score: -1)])
+        #expect(block.contains("[Химия-1, с. 42]\nТекст"))
         #expect(block.contains("инструкции") && block.contains("## Источники"))
         #expect(LiteratureRetrieval.promptBlock([]).isEmpty)
         #expect(LiteratureRetrieval.references([LiteraturePassage(book: "Б", page: 3, text: "", score: 0)]) == ["Б, с. 3"])
