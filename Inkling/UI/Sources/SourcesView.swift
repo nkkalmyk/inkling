@@ -393,7 +393,8 @@ struct SlidePageMenu: View {
 
 // MARK: Распознавание
 
-/// Ошибка, остановившая очередь распознавания (нет входа, лимит, нет движка). Прогресс показывает тулбар.
+/// Ошибка, остановившая очередь распознавания (нет входа, лимит, нет движка), или страницы с ошибкой.
+/// Прогресс показывает тулбар.
 private struct RecognitionBar: View {
     @Environment(RecognitionCenter.self) private var recognition
     @Environment(\.openSettings) private var openSettings
@@ -414,12 +415,28 @@ private struct RecognitionBar: View {
                 }
                 .transition(.notice(reduceMotion: reduceMotion))
                 Divider()
+            } else if !failed.isEmpty, !recognition.isBusy(lecture.id) {
+                // Ошибки отдельных страниц: значок на миниатюре, здесь — общий счёт и повтор одним нажатием.
+                InlineNotice(.error, "Не удалось распознать страниц: \(failed.count)",
+                             systemImage: "exclamationmark.triangle.fill") {
+                    Button("Повторить") { recognition.recognize(lectureID: lecture.id, pageIDs: failed) }
+                }
+                .transition(.notice(reduceMotion: reduceMotion))
+                Divider()
             }
         }
         .motion(.standard, value: recognition.blockingError == nil)
+        .motion(.standard, value: failed.isEmpty)
     }
 
     private var pending: [String] { recognition.pendingPages(in: lecture) }
+
+    /// Страницы лекции, распознавание которых завершилось ошибкой.
+    private var failed: [String] {
+        (lecture.meta.notes.map(\.id) + lecture.meta.slides.map(\.id)).filter {
+            if case .failed = recognition.state(of: $0) { true } else { false }
+        }
+    }
 }
 
 /// Значок состояния текста на миниатюре. Цвет только у ошибки; остальное — значок с подписью.

@@ -28,3 +28,5 @@ docs/cli-experiments/tmp/
 
 # Локальный просмотр рендера
 .claude/launch.json
+# Список личных учебников владельца (имена файлов) — только локально
+docs/LITERATURE.local.md

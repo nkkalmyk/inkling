@@ -37,7 +37,7 @@ final class StudyCenter {
 
     /// Хеш текущего конспекта — входные данные учебных материалов.
     static func inputHash(_ lecture: LectureRecord) -> String? {
-        KonspektStore(folder: lecture.folder).read().map { FileHash.sha256(Enrichment.removing(from: $0)) }
+        KonspektStore(folder: lecture.folder).read().map { FileHash.sha256(Enrichment.baseText($0, info: lecture.meta.konspekt)) }
     }
 
     /// Конспект изменился после подготовки материалов. Читает конспект: для действий и тестов, не для `body`.
@@ -62,19 +62,19 @@ final class StudyCenter {
     }
 
     private func refreshHash(_ lecture: LectureRecord, key: HashKey) {
-        let id = lecture.id, folder = lecture.folder
+        let id = lecture.id, folder = lecture.folder, info = lecture.meta.konspekt
         hashKeys[id] = key
         hashTasks[id]?.cancel()
         hashTasks[id] = Task {
-            let hash = await Self.konspektHash(folder: folder)
+            let hash = await Self.konspektHash(folder: folder, info: info)
             guard !Task.isCancelled else { return }
             konspektHashes[id] = .some(hash)
         }
     }
 
     @concurrent
-    private static func konspektHash(folder: URL) async -> String? {
-        KonspektStore(folder: folder).read().map { FileHash.sha256(Enrichment.removing(from: $0)) }
+    private static func konspektHash(folder: URL, info: ArtifactInfo?) async -> String? {
+        KonspektStore(folder: folder).read().map { FileHash.sha256(Enrichment.baseText($0, info: info)) }
     }
 
     func cancel(_ lectureID: UUID) { tasks[lectureID]?.cancel() }
@@ -84,8 +84,8 @@ final class StudyCenter {
     func generate(_ lectureID: UUID) {
         guard runs[lectureID] == nil, let lecture = library.lecture(id: lectureID) else { return }
         errors[lectureID] = nil
-        // Учебные материалы строятся по авторскому тексту: блоки «Дополнить» в них и в хеш не входят.
-        let raw = Enrichment.removing(from: KonspektStore(folder: lecture.folder).read() ?? "")
+        // Учебные материалы строятся по авторскому тексту: блоки кнопки «Дополнить» в них и в хеш не входят.
+        let raw = Enrichment.baseText(KonspektStore(folder: lecture.folder).read() ?? "", info: lecture.meta.konspekt)
         let konspekt = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !konspekt.isEmpty else {
             errors[lectureID] = .invalidOutput("Сначала соберите конспект: материалы готовятся только по нему.")

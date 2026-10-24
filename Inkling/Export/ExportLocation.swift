@@ -16,9 +16,20 @@ enum ExportLocation {
         return "\(title) — \(FolderNaming.sanitize(subject)) — \(date)"
     }
 
-    /// Путь PDF лекции. Повторный экспорт той же лекции заменяет прежний файл.
-    static func pdfURL(baseName: String, documents: URL = ExportLocation.documents) throws -> URL {
+    /// `Шпаргалка — Тема — Предмет — ГГГГ-ММ-ДД`.
+    static func cheatSheetBaseName(subject: String, topic: String, date: CalendarDate) -> String {
+        "Шпаргалка — " + pdfBaseName(subject: subject, topic: topic, date: date)
+    }
+
+    /// Папка предмета внутри «Конспекты»: название предмета с маленькой буквы («математический анализ»).
+    static func subjectFolderName(_ subject: String) -> String {
+        FolderNaming.sanitize(subject).lowercased(with: Locale(identifier: "ru_RU"))
+    }
+
+    /// Путь PDF лекции: `Конспекты/<предмет>/<имя>.pdf`. Повторный экспорт той же лекции заменяет прежний файл.
+    static func pdfURL(baseName: String, subject: String, documents: URL = ExportLocation.documents) throws -> URL {
         let folder = documents.appendingPathComponent(pdfFolderName, isDirectory: true)
+            .appendingPathComponent(subjectFolderName(subject), isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder.appendingPathComponent("\(baseName).pdf")
     }

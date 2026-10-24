@@ -1,5 +1,18 @@
 import SwiftUI
 
+private struct LoadedStudyFiles {
+    var materials: StudyMaterials?
+    var progress: StudyProgress
+}
+
+/// Файлы самопроверки читаются в фоне: в iCloud Drive они могут быть выгружены из Mac, и чтение
+/// на главном потоке ждало бы загрузки — окно замирало. Вне `StudyContainer`: обобщённый вид нельзя
+/// передать в `@concurrent`-контекст.
+@concurrent
+private func loadStudyFiles(_ store: StudyStore) async -> LoadedStudyFiles {
+    LoadedStudyFiles(materials: store.readStudy(), progress: store.readProgress())
+}
+
 /// Общая обвязка вкладок «Вопросы», «Тест», «Карточки»: тёплый фон зоны, подготовка материалов,
 /// «Устарело», ошибки.
 struct StudyContainer<Content: View>: View {
@@ -13,13 +26,8 @@ struct StudyContainer<Content: View>: View {
     @Environment(\.isActiveTab) private var isActive
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Материалы и прогресс, прочитанные в фоне (`load`). `nil` — ещё читаются.
-    @State private var loaded: Loaded?
-
-    private struct Loaded {
-        var materials: StudyMaterials?
-        var progress: StudyProgress
-    }
+    /// Материалы и прогресс, прочитанные в фоне (`loadStudyFiles`). `nil` — ещё читаются.
+    @State private var loaded: LoadedStudyFiles?
 
     /// Когда перечитывать файлы: перезапись материалов или прогресса и новые сведения о материалах.
     private struct LoadKey: Equatable {
@@ -59,7 +67,7 @@ struct StudyContainer<Content: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.surfaceStudy)
         .task(id: LoadKey(revision: study.revision(lecture.id), study: lecture.meta.study)) {
-            let read = await Self.load(study.store(lecture))
+            let read = await loadStudyFiles(study.store(lecture))
             if !Task.isCancelled { loaded = read }
         }
         .motion(.standard, value: study.errors[lecture.id] == nil)
@@ -75,13 +83,6 @@ struct StudyContainer<Content: View>: View {
             Text("Прогресс самопроверки начнётся заново. Старые материалы и прогресс сохранятся в истории"
                  + (lecture.meta.study?.manuallyEdited == true ? ", включая ваши правки." : "."))
         }
-    }
-
-    /// Файлы самопроверки читаются в фоне: в iCloud Drive они могут быть выгружены из Mac, и чтение
-    /// на главном потоке ждало бы загрузки — окно замирало.
-    @concurrent
-    private static func load(_ store: StudyStore) async -> Loaded {
-        Loaded(materials: store.readStudy(), progress: store.readProgress())
     }
 
     private var hasKonspekt: Bool { lecture.meta.konspekt != nil }
@@ -110,33 +111,44 @@ struct StudyContainer<Content: View>: View {
     }
 }
 
-/// Строка с источником материалов и кнопкой «Подготовить заново».
-private struct StudyToolbar<Trailing: View>: View {
+/// Единая полоса самопроверки под тулбаром: слева — чем и когда подготовлены материалы, по центру — режим
+/// («Вопросы · Тест · Карточки»), справа — «Подготовить заново». Одна на три вкладки (лежит поверх них в `LectureView`),
+/// вместо отдельных строк переключателя и источника.
+struct StudyModeBar: View {
     @Environment(StudyCenter.self) private var study
     let lecture: LectureRecord
-    @ViewBuilder var trailing: () -> Trailing
+    @Binding var mode: LectureTab
     @State private var confirm = false
 
     var body: some View {
+        // Стороны одинаково гибкие: переключатель остаётся ровно по центру, подпись обрезается на своей стороне.
         HStack(spacing: Spacing.m) {
-            if let info = lecture.meta.study {
-                Text([info.model, info.updatedAt.stamp, info.manuallyEdited ? "правлено вручную" : nil]
-                    .compactMap { $0 }.joined(separator: " · "))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                ReviewBadge(engine: info.engine, manuallyEdited: info.manuallyEdited)
-            }
-            Spacer()
-            trailing()
-            // Когда материалы устарели, «Подготовить заново» уже есть в уведомлении над строкой.
-            if !study.knownStale(lecture) {
-                Button("Подготовить заново") {
-                    let progress = study.store(lecture).readProgress()
-                    if lecture.meta.study?.manuallyEdited == true || !progress.isEmpty { confirm = true }
-                    else { study.generate(lecture.id) }
+            HStack(spacing: Spacing.s) {
+                if let info = lecture.meta.study {
+                    Text([info.model, info.updatedAt.stamp, info.manuallyEdited ? "правлено вручную" : nil]
+                        .compactMap { $0 }.joined(separator: " · "))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    ReviewBadge(engine: info.engine, manuallyEdited: info.manuallyEdited)
                 }
-                .disabled(study.isRunning(lecture.id))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Picker("Режим", selection: $mode) {
+                ForEach(LectureTab.studyTabs) { Text($0.title).tag($0) }
+            }
+            .sectionSwitcher()
+            HStack {
+                // Когда материалы устарели, «Подготовить заново» уже есть в уведомлении под полосой.
+                if lecture.meta.study != nil, !study.knownStale(lecture) {
+                    Button("Подготовить заново") {
+                        let progress = study.store(lecture).readProgress()
+                        if lecture.meta.study?.manuallyEdited == true || !progress.isEmpty { confirm = true }
+                        else { study.generate(lecture.id) }
+                    }
+                    .disabled(study.isRunning(lecture.id))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .font(.meta)
         .padding(.horizontal, Spacing.m)
@@ -147,12 +159,6 @@ private struct StudyToolbar<Trailing: View>: View {
         } message: {
             Text("Прогресс самопроверки начнётся заново. Старые материалы и прогресс сохранятся в истории.")
         }
-    }
-}
-
-extension StudyToolbar where Trailing == EmptyView {
-    init(lecture: LectureRecord) {
-        self.init(lecture: lecture) { EmptyView() }
     }
 }
 
@@ -192,6 +198,7 @@ private struct StudyStart<Actions: View>: View {
         VStack(spacing: Spacing.l) {
             Image(systemName: systemImage)
                 .font(.illustration)
+                .imageScale(.large)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Color.accentColor)
                 .accessibilityHidden(true)
@@ -234,8 +241,6 @@ struct QuestionsView: View {
                 (typeFilter == nil || $0.type == typeFilter) && (difficultyFilter == nil || $0.difficulty == difficultyFilter)
             }
             VStack(spacing: 0) {
-                StudyToolbar(lecture: lecture)
-                Divider()
                 HSplitView {
                     VStack(spacing: 0) {
                         filters
@@ -406,8 +411,6 @@ struct QuizView: View {
         StudyContainer(lecture: lecture, showNotes: showNotes) { materials, progress in
             let available = materials.quiz.filter { !progress.flagged.contains($0.id) }
             VStack(spacing: 0) {
-                StudyToolbar(lecture: lecture)
-                Divider()
                 Group {
                     if let session, !session.isFinished, let item = session.current {
                         question(item, session: session, flagged: progress.flagged.contains(item.id))
@@ -583,48 +586,25 @@ struct QuizView: View {
 // MARK: Карточки
 
 struct FlashcardsView: View {
-    @Environment(StudyCenter.self) private var study
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(Library.self) private var library
+    @Environment(\.lectureRequests) private var requests
+    @Environment(\.isActiveTab) private var isActive
     let lecture: LectureRecord
     let showNotes: () -> Void
 
-    @State private var session: FlashcardSession?
-    @State private var startedFor: Date?
-    @State private var editing: EditTarget?
-    /// Куда ушла последняя карточка: «знаю» — вправо, «не знаю» — влево.
-    @State private var lastKnown = true
-    @FocusState private var focused: Bool
-    @Environment(\.isActiveTab) private var isActive
-
     var body: some View {
         StudyContainer(lecture: lecture, showNotes: showNotes) { materials, progress in
-            VStack(spacing: 0) {
-                StudyToolbar(lecture: lecture)
-                Divider()
-                Group {
-                    if let session, let card = session.current {
-                        cardView(card, session: session, flagged: progress.flagged.contains(card.id))
-                    } else if let session, session.isFinished {
-                        results(session, materials: materials, progress: progress)
-                    } else {
-                        start(materials: materials, progress: progress)
-                    }
-                }
+            start(materials: materials, progress: progress)
                 .frame(maxWidth: ReadingWidth.focused)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(Spacing.xxl)
-            }
-            .sheet(item: $editing) { target in
-                StudyItemEditor(target: target, materials: materials) { study.saveEdited($0, lectureID: lecture.id) }
-            }
-        }
-        .focusable(isActive)
-        .focused($focused)
-        .focusEffectDisabled()
-        .onChange(of: isActive, initial: true) { if isActive { focused = true } }
-        .onKeyPress(phases: .down) { press in isActive ? handleKey(press) : .ignored }
-        .onChange(of: study.revision(lecture.id)) {
-            if lecture.meta.study?.createdAt != startedFor { session = nil }
+                // «Лекция → Повторить карточки» (⌘R): все карточки, кроме помеченных, как кнопкой «Начать».
+                .task(id: requests.wrappedValue.reviewCards && isActive) {
+                    guard requests.wrappedValue.reviewCards, isActive else { return }
+                    requests.wrappedValue.reviewCards = false
+                    let cards = materials.flashcards.filter { !progress.flagged.contains($0.id) }
+                    if !cards.isEmpty { begin(cards.shuffled(), onlyUnknown: false) }
+                }
         }
     }
 
@@ -634,7 +614,8 @@ struct FlashcardsView: View {
         let known = cards.filter { progress.items[$0.id]?.result == .known }.count
         return StudyStart(systemImage: "rectangle.on.rectangle.angled", title: "Карточки: \(cards.count)",
                           subtitle: known + unknown.count > 0 ? "Знаю: \(known) · Не знаю: \(unknown.count)" : nil,
-                          hint: "Клавиши: пробел — перевернуть, ← — не знаю, → — знаю.") {
+                          hint: "Повторение открывается на всё окно (⌘R). Пробел — перевернуть, ← — не знаю, "
+                              + "→ — знаю, Esc — закончить.") {
             Button("Повторить незнакомые (\(unknown.count))") { begin(unknown.shuffled(), onlyUnknown: true) }
                 .disabled(unknown.isEmpty)
             Button("Начать") { begin(cards.shuffled(), onlyUnknown: false) }
@@ -644,14 +625,94 @@ struct FlashcardsView: View {
     }
 
     private func begin(_ cards: [StudyMaterials.Flashcard], onlyUnknown: Bool) {
-        startedFor = lecture.meta.study?.createdAt
-        withMotion(.standard, reduceMotion: reduceMotion) {
-            session = FlashcardSession(cards: cards, onlyUnknown: onlyUnknown)
-        }
-        focused = true
+        library.review = FlashcardReview(lectureID: lecture.id, cards: cards, onlyUnknown: onlyUnknown,
+                                         materialsCreatedAt: lecture.meta.study?.createdAt)
+    }
+}
+
+/// Сеанс повторения карточек, запущенный с вкладки «Карточки».
+struct FlashcardReview: Identifiable, Equatable {
+    let id = UUID()
+    let lectureID: UUID
+    let cards: [StudyMaterials.Flashcard]
+    let onlyUnknown: Bool
+    /// Материалы, по которым начат сеанс: если их подготовили заново, сеанс закрывается.
+    let materialsCreatedAt: Date?
+}
+
+/// Режим повторения: карточка на всё окно поверх колонок, без тулбара (ContentView). Esc или ✕ — выход.
+/// Материалы и прогресс читает в фоне, как вкладки самопроверки; ответы и пометки сохраняет сразу.
+struct FlashcardReviewView: View {
+    @Environment(Library.self) private var library
+    @Environment(StudyCenter.self) private var study
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let review: FlashcardReview
+    let lecture: LectureRecord
+
+    @State private var session: FlashcardSession
+    @State private var loaded: LoadedStudyFiles?
+    @State private var editing: EditTarget?
+    /// Куда ушла последняя карточка: «знаю» — вправо, «не знаю» — влево.
+    @State private var lastKnown = true
+    @FocusState private var focused: Bool
+
+    init(review: FlashcardReview, lecture: LectureRecord) {
+        self.review = review
+        self.lecture = lecture
+        _session = State(initialValue: FlashcardSession(cards: review.cards, onlyUnknown: review.onlyUnknown))
     }
 
-    private func cardView(_ card: StudyMaterials.Flashcard, session: FlashcardSession, flagged: Bool) -> some View {
+    var body: some View {
+        VStack(spacing: Spacing.xxl) {
+            header
+            Group {
+                if let card = session.current {
+                    cardView(card)
+                } else {
+                    results
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: ReadingWidth.focused)
+        .padding(Spacing.xxxl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.surfaceStudy)
+        .focusable()
+        .focused($focused)
+        .focusEffectDisabled()
+        .onAppear { focused = true }
+        .onKeyPress(phases: .down, action: handleKey)
+        .task(id: study.revision(lecture.id)) {
+            let read = await loadStudyFiles(study.store(lecture))
+            if !Task.isCancelled { loaded = read }
+        }
+        .onChange(of: lecture.meta.study?.createdAt) { if lecture.meta.study?.createdAt != review.materialsCreatedAt { close() } }
+        .sheet(item: $editing) { target in
+            if let materials = loaded?.materials {
+                StudyItemEditor(target: target, materials: materials) { study.saveEdited($0, lectureID: lecture.id) }
+            }
+        }
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private var header: some View {
+        HStack(spacing: Spacing.m) {
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                Text("Повторение карточек").font(.headline)
+                Text("\(lecture.meta.topic) · \(lecture.meta.subject)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button("Готово", action: close)
+                .keyboardShortcut(.cancelAction)
+                .help("Закончить повторение (Esc)")
+        }
+    }
+
+    private func cardView(_ card: StudyMaterials.Flashcard) -> some View {
         VStack(spacing: Spacing.l) {
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 HStack {
@@ -660,7 +721,9 @@ struct FlashcardsView: View {
                         .monospacedDigit()
                     Spacer()
                     IconButton("Изменить карточку", systemImage: "pencil") { editing = .flashcard(card.id) }
-                    FlagButton(lectureID: lecture.id, itemID: card.id, flagged: flagged)
+                        .disabled(loaded?.materials == nil)
+                    FlagButton(lectureID: lecture.id, itemID: card.id,
+                               flagged: loaded?.progress.flagged.contains(card.id) ?? false)
                 }
                 ProgressView(value: Double(session.index), total: Double(max(session.cards.count, 1)))
                     .tint(.accentColor)
@@ -687,29 +750,15 @@ struct FlashcardsView: View {
         }
     }
 
-    private func flip() {
-        withMotion(.card, reduceMotion: reduceMotion) { session?.flipped.toggle() }
-    }
-
-    private func mark(known: Bool) {
-        guard var current = session, let card = current.current else { return }
-        lastKnown = known
-        current.mark(known: known)
-        withMotion(.card, reduceMotion: reduceMotion) { session = current }
-        study.updateProgress(lecture.id) { $0.record(known ? .known : .unknown, for: card.id) }
-    }
-
-    private func results(_ session: FlashcardSession, materials: StudyMaterials, progress: StudyProgress) -> some View {
-        let unknown = materials.flashcards.filter { session.unknownIDs.contains($0.id) }
+    private var results: some View {
+        let unknown = session.cards.filter { session.unknownIDs.contains($0.id) }
         return VStack(spacing: Spacing.l) {
             ScoreRing(score: session.knownCount, total: session.cards.count)
             Text(unknown.isEmpty ? "Все карточки знакомы!" : "Незнакомых: \(unknown.count)")
                 .font(.screenTitle)
             HStack(spacing: Spacing.m) {
-                Button("Ещё раз все") {
-                    begin(materials.flashcards.filter { !progress.flagged.contains($0.id) }.shuffled(), onlyUnknown: false)
-                }
-                Button("Повторить незнакомые (\(unknown.count))") { begin(unknown.shuffled(), onlyUnknown: true) }
+                Button("Ещё раз все") { restart(session.cards.shuffled(), onlyUnknown: false) }
+                Button("Повторить незнакомые (\(unknown.count))") { restart(unknown.shuffled(), onlyUnknown: true) }
                     .prominentAction()
                     .disabled(unknown.isEmpty)
             }
@@ -717,8 +766,29 @@ struct FlashcardsView: View {
         }
     }
 
+    private func flip() {
+        withMotion(.card, reduceMotion: reduceMotion) { session.flipped.toggle() }
+    }
+
+    private func mark(known: Bool) {
+        guard let card = session.current else { return }
+        lastKnown = known
+        withMotion(.card, reduceMotion: reduceMotion) { session.mark(known: known) }
+        study.updateProgress(lecture.id) { $0.record(known ? .known : .unknown, for: card.id) }
+    }
+
+    private func restart(_ cards: [StudyMaterials.Flashcard], onlyUnknown: Bool) {
+        withMotion(.standard, reduceMotion: reduceMotion) {
+            session = FlashcardSession(cards: cards, onlyUnknown: onlyUnknown)
+        }
+    }
+
+    private func close() {
+        withMotion(.standard, reduceMotion: reduceMotion) { library.review = nil }
+    }
+
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        guard session?.current != nil, editing == nil else { return .ignored }
+        guard session.current != nil, editing == nil else { return .ignored }
         switch press.key {
         case .space: flip()
         case .leftArrow: mark(known: false)

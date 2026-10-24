@@ -12,7 +12,8 @@ struct InklingApp: App {
     @State private var recognition: RecognitionCenter
     @State private var assembly: AssemblyCenter
     @State private var study: StudyCenter
-    @State private var enrichment: EnrichmentCenter
+    @State private var literature: LiteratureCenter
+    @State private var konspektCheck: KonspektCheckCenter
 
     init() {
         let settings = AppSettings()
@@ -26,8 +27,14 @@ struct InklingApp: App {
         _library = State(initialValue: library)
         _engines = State(initialValue: engines)
         _recognition = State(initialValue: recognition)
+        let literature = LiteratureCenter(settings: settings)
+        _literature = State(initialValue: literature)
         let assembly = AssemblyCenter(library: library, router: { engines.router },
-                                      threshold: { engines.chunkThreshold })
+                                      threshold: { engines.chunkThreshold },
+                                      style: { settings.assemblyStyle }, model: { settings.assemblyModel },
+                                      literature: { subject, topic, texts in
+                                          await literature.passages(subject: subject, topic: topic, texts: texts)
+                                      })
         let study = StudyCenter(library: library, router: { engines.router })
         // «Запускать учебные материалы автоматически после сборки» (SPEC, раздел 4, пункт 5).
         assembly.onAssembled = { lectureID in
@@ -35,7 +42,7 @@ struct InklingApp: App {
         }
         _assembly = State(initialValue: assembly)
         _study = State(initialValue: study)
-        _enrichment = State(initialValue: EnrichmentCenter(library: library, router: { engines.router }))
+        _konspektCheck = State(initialValue: KonspektCheckCenter(library: library, router: { engines.router }))
     }
 
     var body: some Scene {
@@ -47,25 +54,31 @@ struct InklingApp: App {
                 .environment(recognition)
                 .environment(assembly)
                 .environment(study)
-                .environment(enrichment)
+                .environment(literature)
+                .environment(konspektCheck)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
                 .task {
                     appDelegate.library = library
-                    if !Self.isRunningTests { library.open(root: settings.storageRoot) }
+                    if !Self.isRunningTests {
+                        library.open(root: settings.storageRoot)
+                        literature.refresh()
+                    }
                 }
                 .onChange(of: settings.storageRootPath) { library.open(root: settings.storageRoot) }
         }
         .defaultSize(width: 1100, height: 720)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Новая лекция…") { library.sheet = .newLecture(subject: library.selectedLecture?.meta.subject) }
-                    .keyboardShortcut("n")
+                Button("Новая лекция…") { library.sheet = .newLecture(subject: library.currentSubject) }
+                    .keyboardShortcut("t")
                 Button("Новый предмет…") { library.sheet = .newSubject }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
             }
             // «Файл» → «Импорт с iPhone»: снимок получает экран с .importsItemProviders («Источники»).
             ImportFromDevicesCommands()
             CommandGroup(before: .sidebar) { LectureViewCommands() }
+            CommandGroup(after: .toolbar) { ReadingScaleCommands() }
+            CommandGroup(after: .textEditing) { FindLectureCommand() }
             CommandMenu("Лекция") { LectureMenuCommands() }
         }
 
@@ -74,6 +87,7 @@ struct InklingApp: App {
                 .environment(settings)
                 .environment(engines)
                 .environment(library)
+                .environment(literature)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
         }
     }

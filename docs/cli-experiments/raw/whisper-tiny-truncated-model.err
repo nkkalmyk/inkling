@@ -1,0 +1,16 @@
+error: failed to initialize whisper context
+src/ggml-metal/ggml-metal-device.m:1041: GGML_ASSERT([rsets->data count] == 0) failed
+WARNING: Using native backtrace. Set GGML_BACKTRACE_LLDB for more info.
+WARNING: GGML_BACKTRACE_LLDB may cause native MacOS Terminal.app to crash.
+See: https://github.com/ggml-org/llama.cpp/pull/17869
+0   libggml-base.0.27.0.dylib           0x0000000103119804 ggml_print_backtrace + 276
+1   libggml-base.0.27.0.dylib           0x000000010315f9f0 ggml_abort + 156
+2   libggml-metal.so                    0x00000001082c6268 ggml_metal_device_id_token + 0
+3   libggml-metal.so                    0x00000001082c69ac ggml_metal_device_free + 40
+4   libggml-metal.so                    0x00000001082d0014 _ZNSt3__110unique_ptrI17ggml_metal_device25ggml_metal_device_deleterE5resetB9nqe220106EPS1_ + 28
+5   libggml-metal.so                    0x00000001082c83f8 _ZNSt3__16vectorINS_10unique_ptrI17ggml_metal_device25ggml_metal_device_deleterEENS_9allocatorIS4_EEED1B9nqe220106Ev + 56
+6   libsystem_c.dylib                   0x0000000199afdbb0 __cxa_finalize_ranges + 436
+7   libsystem_c.dylib                   0x0000000199afd99c exit + 44
+8   libdyld.dylib                       0x0000000199826d34 _ZNK5dyld416LibSystemHelpers6getenvEPKc + 0
+9   dyld                                0x000000019987845c dyld-internal + 320
+10  dyld                                0x0000000199877eb0 start + 6736

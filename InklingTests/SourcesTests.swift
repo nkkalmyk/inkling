@@ -363,3 +363,76 @@ struct ExternalLinkTests {
         #expect(!open("x-apple.systempreferences:com.apple.preference.security") && !open("/relative"))
     }
 }
+
+/// Фото, брошенные в окно без открытой лекции, ждут её и уходят в «Мой конспект» созданной лекции.
+@MainActor
+struct WindowImportTests {
+    @Test func droppedFilesGoToTheNextCreatedLecture() async throws {
+        let dir = try TempDir()
+        let library = Library(root: dir.url.appendingPathComponent("Inkling"),
+                              trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: library.root)
+        let photo = Fixtures.write(Fixtures.paperOnDesk(), to: dir.url.appendingPathComponent("page.jpg"))
+        let subject = try #require(library.subjectNames.first)
+        library.scope = .subject(subject)
+
+        library.importIntoWindow([try #require(NSItemProvider(contentsOf: photo))])
+        for _ in 0..<250 where library.pendingImport == nil { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(library.sheet == .newLecture(subject: subject))
+        let staging = try #require(library.pendingImport?.staging)
+
+        #expect(library.createLecture(subject: subject, topic: "Тема", date: .d("2026-10-14")))
+        #expect(library.pendingImport == nil)
+        let id = try #require(library.selection)
+        for _ in 0..<500 where (library.lecture(id: id)?.meta.notes.count ?? 0) == 0 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(library.lecture(id: id)?.meta.notes.count == 1)
+        for _ in 0..<250 where FileManager.default.fileExists(atPath: staging.path) {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(!FileManager.default.fileExists(atPath: staging.path))
+    }
+
+    @Test func cancellingTheSheetRemovesStagedCopies() async throws {
+        let dir = try TempDir()
+        let library = Library(root: dir.url.appendingPathComponent("Inkling"),
+                              trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: library.root)
+        let photo = Fixtures.write(Fixtures.halfRed(), to: dir.url.appendingPathComponent("page.png"), type: .png)
+        library.importIntoWindow([try #require(NSItemProvider(contentsOf: photo))])
+        for _ in 0..<250 where library.pendingImport == nil { try await Task.sleep(for: .milliseconds(20)) }
+        let staging = try #require(library.pendingImport?.staging)
+        library.discardPendingImport()
+        #expect(library.pendingImport == nil)
+        #expect(!FileManager.default.fileExists(atPath: staging.path))
+    }
+}
+
+struct ReadingScaleTests {
+    @Test func stepsStopAtBounds() {
+        #expect(ReadingScale.larger(1) == 1.15)
+        #expect(ReadingScale.smaller(1) == 0.85)
+        #expect(ReadingScale.larger(ReadingScale.steps.last!) == ReadingScale.steps.last!)
+        #expect(ReadingScale.smaller(ReadingScale.steps.first!) == ReadingScale.steps.first!)
+        // Значение не из шагов (правка настроек вручную) идёт к ближайшему шагу.
+        #expect(ReadingScale.larger(1.2) == 1.3)
+    }
+}
+
+@MainActor
+struct CurrentSubjectTests {
+    @Test func openLectureWinsOverSidebarScope() throws {
+        let dir = try TempDir()
+        let library = Library(root: dir.url.appendingPathComponent("Inkling"),
+                              trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: library.root)
+        let names = library.subjectNames
+        try #require(names.count >= 2)
+        #expect(library.currentSubject == nil)
+        library.scope = .subject(names[1])
+        #expect(library.currentSubject == names[1])
+        #expect(library.createLecture(subject: names[0], topic: "Тема", date: .d("2026-10-14")))
+        #expect(library.currentSubject == names[0])
+    }
+}

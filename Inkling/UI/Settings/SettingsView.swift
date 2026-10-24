@@ -9,6 +9,8 @@ struct SettingsView: View {
                 .tabItem { Label("Основные", systemImage: "gearshape") }
             EngineSettings()
                 .tabItem { Label("Движок", systemImage: "cpu") }
+            LiteratureSettings()
+                .tabItem { Label("Учебники", systemImage: "books.vertical") }
             ProcessingSettings()
                 .tabItem { Label("Обработка", systemImage: "slider.horizontal.3") }
         }
@@ -110,6 +112,24 @@ private struct EngineSettings: View {
                 ForEach(AppSettings.EngineMode.allCases) { Text($0.title).tag($0) }
             }
             .help("То же, что меню «Модель» на панели лекции. Действует на новые запуски.")
+            Section {
+                Picker("Стиль по умолчанию", selection: $settings.assemblyStyle) {
+                    ForEach(AssemblyStyle.allCases) { Text($0.title).tag($0) }
+                }
+                Picker("Модель Claude для сборки", selection: $settings.assemblyModel) {
+                    Text("Как в настройках Claude Code").tag("")
+                    ForEach(AppSettings.claudeModels, id: \.id) { Text($0.title).tag($0.id) }
+                    if !settings.assemblyModel.isEmpty, !AppSettings.claudeModels.contains(where: { $0.id == settings.assemblyModel }) {
+                        Text(settings.assemblyModel).tag(settings.assemblyModel)
+                    }
+                }
+            } header: {
+                Text("Сборка конспекта")
+            } footer: {
+                Text(settings.assemblyStyle.hint + " Opus даёт лучший результат, но быстрее расходует лимит подписки. "
+                     + "Выбор модели действует только для Claude Code; Codex и локальная модель берут свои настройки.")
+                    .foregroundStyle(.secondary)
+            }
             Section("Claude Code") {
                 TextField("Путь к claude", text: $settings.claudePathOverride, prompt: Text("Автопоиск"))
                 ClaudeModelPicker()
@@ -284,5 +304,122 @@ private struct ConnectionCheckRow: View {
             }
         }
         .font(.meta)
+    }
+}
+
+
+/// Учебники для учебной сборки: коллекции книг (PDF), привязка предметов, индекс с распознаванием сканов.
+private struct LiteratureSettings: View {
+    @Environment(AppSettings.self) private var settings
+    @Environment(Library.self) private var library
+    @Environment(LiteratureCenter.self) private var literature
+    @State private var newCollection = ""
+
+    var body: some View {
+        @Bindable var settings = settings
+        Form {
+            Section {
+                Toggle("Использовать учебники при сборке", isOn: $settings.literatureEnabled)
+            } footer: {
+                Text("Для «Учебного конспекта» приложение находит в ваших учебниках страницы по теме лекции и передаёт их модели "
+                     + "для объяснений и точных формулировок. Сканы распознаются на этом компьютере (Vision), индекс лежит в "
+                     + "Application Support, в облако уходят только найденные выдержки.")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(settings.literatureCollections.keys.sorted(), id: \.self) { collection in
+                Section(collection) {
+                    ForEach(settings.literatureCollections[collection] ?? [], id: \.self) { path in
+                        bookRow(path: path, collection: collection)
+                    }
+                    Button("Добавить книги…") { addBooks(to: collection) }
+                }
+            }
+            Section("Новая коллекция") {
+                HStack {
+                    TextField("Название", text: $newCollection, prompt: Text("Например, Физика"))
+                    Button("Создать") {
+                        let name = newCollection.trimmingCharacters(in: .whitespaces)
+                        guard !name.isEmpty, settings.literatureCollections[name] == nil else { return }
+                        settings.literatureCollections[name] = []
+                        newCollection = ""
+                    }
+                    .disabled(newCollection.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            if !settings.literatureCollections.isEmpty {
+                Section("Предметы") {
+                    ForEach(library.subjectNames, id: \.self) { subject in
+                        Picker(subject, selection: Binding(
+                            get: { settings.literatureSubjectCollections[subject] ?? "" },
+                            set: { settings.literatureSubjectCollections[subject] = $0.isEmpty ? nil : $0 })) {
+                            Text("Без учебников").tag("")
+                            ForEach(settings.literatureCollections.keys.sorted(), id: \.self) { Text($0).tag($0) }
+                        }
+                    }
+                }
+            }
+            Section("Индекс") {
+                HStack {
+                    Button(literature.isIndexing ? "Остановить" : "Обновить индекс") {
+                        literature.isIndexing ? literature.cancel() : literature.startIndexing()
+                    }
+                    Button("Очистить индекс", role: .destructive) { literature.clearIndex() }
+                        .disabled(literature.isIndexing)
+                }
+                if let progress = literature.progress {
+                    VStack(alignment: .leading, spacing: Spacing.xxs) {
+                        ProgressView(value: Double(progress.pagesDone), total: Double(max(progress.pagesTotal, 1)))
+                        Text("Книга \(progress.bookNumber) из \(progress.bookCount): \(progress.title), \(progress.pagesDone) из \(progress.pagesTotal) стр.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let summary = literature.lastSummary, !summary.skippedBooks.isEmpty {
+                    Text("Пропущено: " + summary.skippedBooks.joined(separator: "; ")).font(.caption).foregroundStyle(.secondary)
+                }
+                if let error = literature.errorMessage {
+                    Label(error, systemImage: "xmark.octagon.fill").foregroundStyle(Color.statusError).font(.caption)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear { literature.refresh() }
+    }
+
+    private func bookRow(path: String, collection: String) -> some View {
+        let info = literature.info(forPath: path)
+        return HStack {
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                Text(LiteratureIndexer.title(of: URL(fileURLWithPath: path))).lineLimit(1).truncationMode(.middle)
+                Text(status(info)).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                settings.literatureCollections[collection]?.removeAll { $0 == path }
+                literature.removeFromIndex(path: path)
+            } label: { Image(systemName: "minus.circle") }
+                .buttonStyle(.borderless)
+                .help("Убрать книгу из коллекции и индекса")
+        }
+    }
+
+    private func status(_ info: LiteratureBookInfo?) -> String {
+        guard let info else { return "Ещё не в индексе" }
+        if info.isComplete {
+            return info.ocrPages > 0 ? "Скан: распознано \(info.ocrPages) из \(info.pages) стр." : "Текстовый слой, \(info.pages) стр."
+        }
+        return "В индексе \(info.indexedPages) из \(info.pages) стр."
+    }
+
+    private func addBooks(to collection: String) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.message = "Выберите учебники в формате PDF"
+        guard panel.runModal() == .OK else { return }
+        var paths = settings.literatureCollections[collection] ?? []
+        for url in panel.urls where !paths.contains(url.path) { paths.append(url.path) }
+        settings.literatureCollections[collection] = paths
+        literature.startIndexing()
     }
 }

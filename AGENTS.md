@@ -14,10 +14,11 @@
 |---|---|
 | `Inkling/App` | `InklingApp`, `AppDelegate`, `AppSettings`, `EngineCenter` (выбор и состояние движков) |
 | `Inkling/Engine` | `AIEngine` (протокол), `ClaudeCodeEngine`, `CodexEngine`, `OllamaEngine`, `EngineRouter` (основной → запасной), `ProcessRunner` (`posix_spawn`), `BinaryLocator`, `RateLimitDetector` |
-| `Inkling/Pipeline` | `Recognition` (страница → Markdown), `Assembly` (сборка `konspekt.md`), `Study` (вопросы, тест, карточки), `Enrichment` («Дополнить»), `Prompts/PromptLibrary` |
+| `Inkling/Pipeline` | `Recognition` (страница → Markdown, режим «Подробно»), `Assembly` (сборка `konspekt.md`: «Учебный конспект» по фото страниц — `StudyAssembly`, «Точная сборка» по тексту), `Study` (вопросы, тест, карточки), `Enrichment` (разбор блоков прежней функции «Дополнить» в старых конспектах), `Check` (локальная проверка конспекта и «Исправить формулы»), `Prompts/PromptLibrary` |
+| `Inkling/Literature` | индекс учебников: `LiteratureIndexer` (PDFKit-слой или Vision OCR сканов), `LiteratureStore` (SQLite FTS5 в Application Support), `RussianNormalizer`, `LiteratureRetrieval` (выдержки по словам лекции), `LiteratureCenter` (состояние для UI) |
 | `Inkling/Library`, `Inkling/Storage` | состояние библиотеки для UI; файловое хранилище (`AtomicFile`, `LectureMeta`, `KonspektStore`, `HistoryStore`, iCloud) |
 | `Inkling/Import`, `Inkling/Processing` | импорт файлов, буфера, Камеры непрерывности; обработка фото и PDF |
-| `Inkling/Export` | Markdown, PDF, Anki CSV |
+| `Inkling/Export` | Markdown, PDF, Anki CSV, шпаргалка (`CheatSheet`) |
 | `Inkling/UI` | экраны: `Sidebar`, `Lecture`, `Sources`, `Notes`, `Study`, `Settings` |
 | `Inkling/DesignSystem` | токены (`Tokens/`) и общие компоненты (`Components/`) |
 | `Inkling/Resources` | `Prompts/` (промпты), `Web/` (рендер конспекта: KaTeX, mhchem, markdown-it в `vendor/`), `Assets.xcassets`, `Inkling.icon`, `ru.lproj` |
@@ -25,7 +26,7 @@
 | `Config` | `Project.xcconfig` (подпись по умолчанию — ad-hoc), `Signing.example.xcconfig` |
 | `scripts` | `release.sh` (публичная сборка), `cli-run.sh` и `make-test-images.swift` (разведка CLI) |
 
-Поток данных: импорт → предобработка → `Recognition` (по странице) → `Assembly` (кнопка «Собрать») → `Study` → экспорт. Любой вызов модели идёт через `EngineRouter`.
+Поток данных: импорт → предобработка → `Recognition` (по странице) → `Assembly` (кнопка «Собрать»; по умолчанию «Учебный конспект»: фото страниц целиком + выдержки из учебников индекса) → `Study` → экспорт. Любой вызов модели идёт через `EngineRouter`.
 `project.yml` — источник правды для проекта; `Inkling.xcodeproj` генерируется (`xcodegen generate`) и в git не лежит.
 
 ## Команды (проверены)
@@ -33,7 +34,7 @@
 ```bash
 brew install xcodegen                                        # один раз
 xcodegen generate                                            # после любого изменения project.yml, добавления/удаления файлов
-xcodebuild -scheme Inkling -destination 'platform=macOS' build test   # сборка и 334 теста, ~1–2 мин
+xcodebuild -scheme Inkling -destination 'platform=macOS' build test   # сборка и 381 тест, ~1–2 мин
 xcodebuild -scheme Inkling -destination 'platform=macOS' analyze      # статический анализ (отдельного линтера нет)
 scripts/release.sh                                           # публичный zip в build/release/ (ad-hoc, без личных путей)
 ```
@@ -49,7 +50,7 @@ TEST_RUNNER_INKLING_LIVE_OLLAMA=1 xcodebuild -scheme Inkling -destination 'platf
   -only-testing:InklingTests/OllamaLiveTests -only-testing:InklingTests/EndToEndTests   # ~9 ГБ памяти; потом pkill -f "ollama serve"
 ```
 
-«Дополнить» на реальном конспекте: `TEST_RUNNER_INKLING_LIVE_CLAUDE=1 TEST_RUNNER_INKLING_LIVE_KONSPEKT=<konspekt.md> TEST_RUNNER_INKLING_LIVE_OUT=<файл> xcodebuild … -only-testing:InklingTests/EnrichmentLiveTests` (работает с копией).
+Учебная сборка на копии реальной лекции: `TEST_RUNNER_INKLING_LIVE_CLAUDE=1 TEST_RUNNER_INKLING_LIVE_LECTURE=<папка лекции> TEST_RUNNER_INKLING_LIVE_OUT=<файл> xcodebuild -scheme Inkling -destination 'platform=macOS' test -only-testing:InklingTests/StudyAssemblyLiveTests` (модель — `INKLING_LIVE_MODEL`, по умолчанию opus). Индексация реальных учебников (долго, греет процессор): `TEST_RUNNER_INKLING_LIVE_INDEX=1 TEST_RUNNER_INKLING_LIVE_BOOKS=<файл строк «коллекция|путь к PDF»> TEST_RUNNER_INKLING_LIVE_LOG=<лог> xcodebuild … test -only-testing:InklingTests/LiteratureIndexLiveTests`; пишет в настоящий индекс приложения. Сравнение обычного и подробного распознавания: `INKLING_LIVE_PAGE`, `INKLING_LIVE_OUT_DIR`, `INKLING_LIVE_VARIANTS` (`DetailedRecognitionLiveTests`).
 
 ## Конвенции кода
 
@@ -170,7 +171,7 @@ open /Applications/Inkling.app
 xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' build test
 ```
 
-Сборка без предупреждений, все тесты зелёные (сейчас 334). Меняешь поведение — добавь тест. Меняешь интерфейс — следуй
+Сборка без предупреждений, все тесты зелёные (сейчас 381). Меняешь поведение — добавь тест. Меняешь интерфейс — следуй
 [`docs/design-system.md`](docs/design-system.md) и проверь экран в запущенном приложении, а не только сборкой. Не нашёл способа проверить — напиши об этом в PR.
 
 ### Документация идёт вместе с кодом

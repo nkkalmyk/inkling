@@ -3,8 +3,9 @@ import SwiftUI
 /// Вкладка «Конспект» (SPEC, разделы 4 и 7): сборка, просмотр с формулами, правка, история, «Устарело».
 struct NotesView: View {
     @Environment(Library.self) private var library
+    @Environment(AppSettings.self) private var settings
     @Environment(AssemblyCenter.self) private var assembly
-    @Environment(EnrichmentCenter.self) private var enrichment
+    @Environment(KonspektCheckCenter.self) private var checker
     @Environment(RecognitionCenter.self) private var recognition
     let lecture: LectureRecord
 
@@ -32,14 +33,6 @@ struct NotesView: View {
         // Из кэша: тексты страниц читаются в фоне, `nil` — ещё читаются.
         let readiness = assembly.knownReadiness(lecture)
         VStack(spacing: 0) {
-            if let error = enrichment.errors[lecture.id], !enrichment.isRunning(lecture.id) {
-                InlineNotice(.error, "Конспект не дополнен. \(error.userMessage)", systemImage: "exclamationmark.octagon.fill",
-                             details: error.details, dismiss: { enrichment.errors[lecture.id] = nil }) {
-                    Button("Повторить") { enrich() }
-                }
-                .transition(.notice(reduceMotion: reduceMotion))
-                Divider()
-            }
             if !assembly.isRunning(lecture.id) {
                 if let error = assembly.errors[lecture.id] {
                     InlineNotice(.error, "Конспект не собран. \(error.userMessage)", systemImage: "exclamationmark.octagon.fill",
@@ -63,15 +56,20 @@ struct NotesView: View {
             } else {
                 header(readiness)
                 Divider()
-                if editing {
-                    PageTextEditor(text: Binding(get: { text }, set: { text = $0; scheduleSave() }))
-                } else {
-                    NotesWebView(markdown: text) { katexErrors = $0 }
+                // Просмотр и правка сменяют друг друга растворением, а не скачком.
+                ZStack {
+                    if editing {
+                        PageTextEditor(text: Binding(get: { text }, set: { text = $0; scheduleSave() }))
+                            .transition(.opacity)
+                    } else {
+                        NotesWebView(markdown: text) { katexErrors = $0 }
+                            .transition(.opacity)
+                    }
                 }
+                .motion(.standard, value: editing)
             }
         }
         .motion(.standard, value: assembly.errors[lecture.id] == nil)
-        .motion(.standard, value: enrichment.errors[lecture.id] == nil)
         .motion(.standard, value: readiness?.isStale == true)
         .focusedSceneValue(\.notesEditing, !isActive || info == nil && text.isEmpty ? nil : $editing)
         .onChange(of: isActive) { if !isActive { flushSave() } }
@@ -80,12 +78,8 @@ struct NotesView: View {
             requests.wrappedValue.assemble = false
             start(force: false)
         }
-        .task(id: requests.wrappedValue.enrich && isActive) {
-            guard requests.wrappedValue.enrich, isActive else { return }
-            requests.wrappedValue.enrich = false
-            enrich()
-        }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { await load() }
+        .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { checker.refresh(lecture) }
         .onDisappear(perform: flushSave)
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
                             presenting: confirm) { _ in
@@ -132,27 +126,35 @@ struct NotesView: View {
                 Label("ошибок в формулах: \(katexErrors)", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(Color.statusError)
                     .help("Формулы с ошибкой показаны исходным LaTeX красным")
+                if checker.checks[lecture.id]?.brokenFormulas.isEmpty == false {
+                    if checker.isFixing(lecture.id) {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("Исправить формулы") { flushSave(); checker.fixFormulas(lecture.id) }
+                            .help("Один короткий вызов модели: исправляется только синтаксис формул, смысл не меняется. Прежняя версия уйдёт в историю.")
+                    }
+                }
+            }
+            if let check = checker.checks[lecture.id], !check.missingStructure.isEmpty || check.diagramErrors > 0, !editing {
+                Label("проверка: " + KonspektCheck(diagramErrors: check.diagramErrors, missingStructure: check.missingStructure).summary,
+                      systemImage: "checklist")
+                    .foregroundStyle(.secondary)
+                    .help("Локальная проверка конспекта. Недостающие разделы появятся после «Пересобрать».")
             }
             Spacer()
             // При «Устарело» кнопка «Пересобрать» есть в уведомлении над шапкой — здесь не повторяем.
             if readiness?.isStale != true || assembly.errors[lecture.id] != nil {
-                Button(info == nil ? "Собрать" : "Пересобрать") { start(force: false) }
-                    .disabled(assembly.isRunning(lecture.id) || readiness?.plan == nil || recognition.isBusy(lecture.id))
-            }
-            if info != nil {
-                Button("Дополнить") { enrich() }
-                    .disabled(assembly.isRunning(lecture.id) || enrichment.isRunning(lecture.id)
-                              || recognition.isBusy(lecture.id))
-                    .help((info?.enrichment == nil ? "" : "Прежнее дополнение заменится. ")
-                          + "Добавить резюме, пояснения, примеры и схемы помеченными блоками. Текст автора не меняется, "
-                          + "добавленное проверяется вторым проходом. Только через Claude.")
+                assembleMenu(title: info == nil ? "Собрать" : "Пересобрать", disabled: assembly.isRunning(lecture.id)
+                             || readiness?.plan == nil || recognition.isBusy(lecture.id))
             }
             Button {
                 flushSave()
                 showHistory = true
             } label: {
                 Label("История", systemImage: "clock.arrow.circlepath")
+                    .labelStyle(.iconOnly)
             }
+            .help("История версий конспекта")
             .popover(isPresented: $showHistory, arrowEdge: .bottom) {
                 HistoryPopover(entries: store.history.entries(),
                                emptyHint: "Они появляются, когда конспект перезаписывается.",
@@ -178,6 +180,7 @@ struct NotesView: View {
         guard let info else { return "без описания" }
         var parts: [String] = []
         if let model = info.model { parts.append(model) }
+        if info.style == .study { parts.append("учебный") }
         if let mode = info.mode { parts.append(mode.title) }
         if info.parts > 1 { parts.append("частей: \(info.parts)") }
         parts.append(info.updatedAt.stamp)
@@ -215,7 +218,28 @@ struct NotesView: View {
 
     // MARK: Действия
 
-    private func start(force: Bool) {
+    /// Кнопка сборки: по щелчку — стиль из настроек, в меню — другой стиль и модель Claude.
+    private func assembleMenu(title: String, disabled: Bool) -> some View {
+        @Bindable var settings = settings
+        return Menu(title) {
+            ForEach(AssemblyStyle.allCases) { style in
+                Button(style.title) { start(force: false, style: style) }
+                    .help(style.hint)
+            }
+            Divider()
+            Picker("Модель Claude", selection: $settings.assemblyModel) {
+                Text("Как в настройках").tag("")
+                ForEach(AppSettings.claudeModels, id: \.id) { Text($0.title).tag($0.id) }
+            }
+        } primaryAction: {
+            start(force: false)
+        }
+        .fixedSize()
+        .disabled(disabled)
+        .help("\(settings.assemblyStyle.title). Стрелка — выбрать стиль и модель.")
+    }
+
+    private func start(force: Bool, style: AssemblyStyle? = nil) {
         flushSave()
         if !force {
             let missing = assembly.readiness(lecture).input
@@ -224,12 +248,7 @@ struct NotesView: View {
             if skipped > 0 { confirm = .skipUnrecognized(skipped); return }
         }
         editing = false
-        assembly.assemble(lecture.id)
-    }
-
-    private func enrich() {
-        flushSave()
-        enrichment.enrich(lecture.id)
+        assembly.assemble(lecture.id, style: style)
     }
 
     /// Когда перечитывать конспект: новая ревизия (сборка, восстановление) или новые сведения о нём.

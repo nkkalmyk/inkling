@@ -1,0 +1,3 @@
+read_audio_data: reading audio data from '/tmp/audio/lecture.wav' ...
+read_audio_data: trying to decode with miniaudio
+output_json: saving output to '/tmp/json/lecture-full.json'

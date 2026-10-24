@@ -56,8 +56,8 @@ enum LectureZoneItem: String, CaseIterable, Identifiable {
 /// и когда флаг поднят при уже открытом экране, и когда экран только появился после переключения вкладки.
 struct LectureRequests: Equatable {
     var assemble = false
-    var enrich = false
     var prepareStudy = false
+    var reviewCards = false
 }
 
 extension EnvironmentValues {
@@ -94,10 +94,9 @@ enum LecturePrimaryAction: Equatable {
     /// Пока по лекции что-то идёт, следующий шаг не предлагается.
     @MainActor
     static func next(for lecture: LectureRecord, recognition: RecognitionCenter, assembly: AssemblyCenter,
-                     enrichment: EnrichmentCenter, study: StudyCenter) -> LecturePrimaryAction? {
+                     study: StudyCenter) -> LecturePrimaryAction? {
         let id = lecture.id
-        guard !recognition.isBusy(id), !assembly.isRunning(id), !enrichment.isRunning(id), !study.isRunning(id)
-        else { return nil }
+        guard !recognition.isBusy(id), !assembly.isRunning(id), !study.isRunning(id) else { return nil }
         let pending = recognition.pendingPages(in: lecture)
         if !pending.isEmpty { return .recognize(pages: pending) }
         // Сводки из кэша: тексты читаются в фоне, пока их нет — следующий шаг не предлагается.
@@ -114,13 +113,12 @@ enum LecturePrimaryAction: Equatable {
 
 // MARK: Активность
 
-/// Что сейчас идёт по лекции: импорт, распознавание, сборка, дополнение, подготовка материалов, экспорт PDF.
+/// Что сейчас идёт по лекции: импорт, распознавание, сборка, подготовка материалов, экспорт PDF.
 struct LectureActivityIndicator: View {
     @Environment(Library.self) private var library
     @Environment(RecognitionCenter.self) private var recognition
     @Environment(AssemblyCenter.self) private var assembly
     @Environment(StudyCenter.self) private var study
-    @Environment(EnrichmentCenter.self) private var enrichment
     let lecture: LectureRecord
     var exportingPDFSince: Date?
 
@@ -155,12 +153,6 @@ struct LectureActivityIndicator: View {
                                    fraction: run.totalCalls > 1 ? Double(run.finishedCalls) / Double(run.totalCalls) : nil,
                                    startedAt: run.startedAt, note: run.note, cancel: { assembly.cancel(id) }))
         }
-        if let run = enrichment.runs[id] {
-            result.append(Activity(id: "enrichment",
-                                   title: run.stage == .verifying ? "Проверка дополнения" : "Дополнение конспекта",
-                                   detail: run.engine?.title, startedAt: run.startedAt, note: run.note,
-                                   cancel: { enrichment.cancel(id) }))
-        }
         if let run = study.runs[id] {
             result.append(Activity(id: "study", title: "Подготовка материалов", detail: run.engine?.title,
                                    startedAt: run.startedAt, note: run.note, cancel: { study.cancel(id) }))
@@ -179,7 +171,7 @@ struct LectureCommands {
     var tab: Binding<LectureTab>
     var primary: LecturePrimaryAction?
     var perform: (LecturePrimaryAction) -> Void
-    var enrich: (() -> Void)?
+    var reviewCards: (() -> Void)?
     var exportMarkdown: (() -> Void)?
     var exportPDF: (() -> Void)?
     var exportAnki: (() -> Void)?
@@ -203,8 +195,9 @@ struct LectureMenuCommands: View {
         }
         .keyboardShortcut(.return, modifiers: .command)
         .disabled(commands?.primary == nil)
-        Button("Дополнить конспект") { commands?.enrich?() }
-            .disabled(commands?.enrich == nil)
+        Button("Повторить карточки") { commands?.reviewCards?() }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(commands?.reviewCards == nil)
         Divider()
         Menu("Экспорт") {
             Button("Конспект в Markdown…") { commands?.exportMarkdown?() }
@@ -222,6 +215,34 @@ struct LectureMenuCommands: View {
         Button("Показать в Finder") { commands?.reveal() }
             .keyboardShortcut("r", modifiers: [.command, .shift])
             .disabled(commands == nil)
+    }
+}
+
+/// «Правка → Найти лекцию» (⌘F): фокус в поиск списка лекций.
+struct FindLectureCommand: View {
+    @FocusedValue(\.focusLectureSearch) private var focusSearch
+
+    var body: some View {
+        Button("Найти лекцию") { focusSearch?.wrappedValue = true }
+            .keyboardShortcut("f", modifiers: .command)
+            .disabled(focusSearch == nil)
+    }
+}
+
+/// «Вид → Крупнее / Мельче / Обычный размер»: масштаб текста для чтения (конспект, вопросы, карточки).
+struct ReadingScaleCommands: View {
+    @AppStorage(ReadingScale.key) private var scale = 1.0
+
+    var body: some View {
+        Button("Крупнее") { scale = ReadingScale.larger(scale) }
+            .keyboardShortcut("+", modifiers: .command)
+            .disabled(ReadingScale.larger(scale) == scale)
+        Button("Мельче") { scale = ReadingScale.smaller(scale) }
+            .keyboardShortcut("-", modifiers: .command)
+            .disabled(ReadingScale.smaller(scale) == scale)
+        Button("Обычный размер") { scale = 1 }
+            .keyboardShortcut("0", modifiers: .command)
+            .disabled(scale == 1)
     }
 }
 
@@ -295,7 +316,8 @@ struct KeptAliveTabs<Content: View>: NSViewRepresentable {
                                  contrast: environment.colorSchemeContrast,
                                  reduceMotion: environment.accessibilityReduceMotion,
                                  reduceTransparency: environment.accessibilityReduceTransparency,
-                                 dynamicTypeSize: environment.dynamicTypeSize)
+                                 dynamicTypeSize: environment.dynamicTypeSize,
+                                 readingScale: environment.readingScale)
         let revisionChanged = coordinator.key != key
         coordinator.key = key
         for tab in tabs {
@@ -333,6 +355,7 @@ struct KeptAliveTabs<Content: View>: NSViewRepresentable {
         var reduceMotion: Bool
         var reduceTransparency: Bool
         var dynamicTypeSize: DynamicTypeSize
+        var readingScale: Double
     }
 }
 

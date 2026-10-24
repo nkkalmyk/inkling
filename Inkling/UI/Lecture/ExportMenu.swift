@@ -39,13 +39,29 @@ final class ExportController {
 
     func exportPDF() {
         guard exportingPDFSince == nil, let konspekt else { return }
-        // PDF сразу падает в «Документы → Конспекты», без панели сохранения.
+        exportPDF(markdown: konspekt, baseName: ExportLocation.pdfBaseName(
+            subject: lecture.meta.subject, topic: lecture.meta.topic, date: lecture.meta.date))
+    }
+
+    /// Шпаргалка по конспекту: определения, законы и формулы подряд (без вызовов модели).
+    func exportCheatSheet() {
+        guard exportingPDFSince == nil, let konspekt else { return }
+        guard let sheet = CheatSheet.build(from: konspekt, subject: lecture.meta.subject, topic: lecture.meta.topic) else {
+            library.errorMessage = "В конспекте нет определений, законов и вынесенных формул для шпаргалки."
+            return
+        }
+        exportPDF(markdown: sheet, baseName: ExportLocation.cheatSheetBaseName(
+            subject: lecture.meta.subject, topic: lecture.meta.topic, date: lecture.meta.date))
+    }
+
+    private func exportPDF(markdown konspekt: String, baseName: String) {
+        // PDF сразу падает в «Документы → Конспекты → <предмет>», без панели сохранения.
         let url: URL
         do {
-            url = try ExportLocation.pdfURL(baseName: ExportLocation.pdfBaseName(
-                subject: lecture.meta.subject, topic: lecture.meta.topic, date: lecture.meta.date))
+            url = try ExportLocation.pdfURL(baseName: baseName, subject: lecture.meta.subject)
         } catch {
-            library.errorMessage = "Не удалось создать папку «\(ExportLocation.pdfFolderName)»: \(error.localizedDescription)"
+            library.errorMessage = "Не удалось создать папку «\(ExportLocation.pdfFolderName)/"
+                + "\(ExportLocation.subjectFolderName(lecture.meta.subject))»: \(error.localizedDescription)"
             return
         }
         exportingPDFSince = .now
@@ -97,6 +113,9 @@ struct ExportMenuItems: View {
             .disabled(!export.hasKonspekt)
         Button("Конспект в PDF") { export.exportPDF() }
             .disabled(!export.hasKonspekt || export.exportingPDFSince != nil)
+        Button("Шпаргалка в PDF") { export.exportCheatSheet() }
+            .disabled(!export.hasKonspekt || export.exportingPDFSince != nil)
+            .help("Определения, законы, теоремы и формулы конспекта подряд на одном листе")
         Button("Карточки для Anki…") { export.askAnki = true }
             .disabled(!export.hasStudy)
     }

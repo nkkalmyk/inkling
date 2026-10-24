@@ -84,7 +84,7 @@ struct QuizOptionStyle: ButtonStyle {
                 Button {} label: {
                     HStack(alignment: .firstTextBaseline, spacing: Spacing.m) {
                         Text("\(index + 1)").font(.headline.monospacedDigit()).foregroundStyle(.secondary)
-                        Text(item.0).font(.reading)
+                        Text(item.0).readingFont()
                     }
                 }
                 .buttonStyle(QuizOptionStyle(state: item.1))

@@ -2,12 +2,18 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(Library.self) private var library
+    @AppStorage(ReadingScale.key) private var readingScale = 1.0
+    @State private var dropTargeted = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         @Bindable var library = library
         NavigationSplitView {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 360)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 320)
+        } content: {
+            LectureListView()
+                .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 400)
         } detail: {
             if let lecture = library.selectedLecture {
                 LectureView(lecture: lecture)
@@ -18,9 +24,41 @@ struct ContentView: View {
                 } description: {
                     Text("Или создайте новую: фото конспекта и слайды добавляются внутри лекции.")
                 } actions: {
-                    Button("Новая лекция…") { library.sheet = .newLecture(subject: nil) }
+                    Button("Новая лекция…") { library.sheet = .newLecture(subject: library.currentSubject) }
                 }
             }
+        }
+        .environment(\.readingScale, readingScale)
+        // Фото и PDF можно бросить или вставить в любое место окна; «Источники» принимают их в свой раздел сами.
+        .onDrop(of: ImportStaging.acceptedTypes, isTargeted: $dropTargeted) { providers in
+            library.importIntoWindow(providers)
+            return true
+        }
+        .onPasteCommand(of: ImportStaging.acceptedTypes) { library.importIntoWindow($0) }
+        .overlay { if dropTargeted { dropHint.transition(.opacity) } }
+        .motion(.snappy, value: dropTargeted)
+        .overlay {
+            if let review = library.review, let lecture = library.lecture(id: review.lectureID) {
+                FlashcardReviewView(review: review, lecture: lecture)
+                    .id(review.id)
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.97).combined(with: .opacity))
+            }
+        }
+        .toolbarVisibility(library.review == nil ? .automatic : .hidden, for: .windowToolbar)
+        .motion(.standard, value: library.review?.id)
+        .onChange(of: library.selection) { library.review = nil }
+        .onChange(of: library.sheet == nil) { if library.sheet == nil { library.discardPendingImport() } }
+        // Пункт меню «Крупнее» ловит только ⌘⇧= (символ «+»); ⌘= без Shift, как в Safari, — этой кнопкой.
+        .background {
+            Button("Крупнее") { readingScale = ReadingScale.larger(readingScale) }
+                .keyboardShortcut("=", modifiers: .command)
+                .hidden()
+                .accessibilityHidden(true)
+            // «Новая лекция» в меню — ⌘T; привычный ⌘N тоже работает.
+            Button("Новая лекция") { library.sheet = .newLecture(subject: library.currentSubject) }
+                .keyboardShortcut("n", modifiers: .command)
+                .hidden()
+                .accessibilityHidden(true)
         }
         .sheet(item: $library.sheet) { sheet in
             switch sheet {
@@ -56,6 +94,24 @@ struct ContentView: View {
         } message: {
             Text(library.errorMessage ?? "")
         }
+    }
+
+    /// Куда попадут брошенные файлы: рамка по краю окна и подпись на стекле.
+    private var dropHint: some View {
+        ZStack(alignment: .bottom) {
+            RoundedRectangle.ds(Radius.card)
+                .strokeBorder(Color.accentColor, lineWidth: 3)
+                .padding(Spacing.s)
+            Label(library.selectedLecture.map { "Добавить в «\($0.meta.topic)»" } ?? "Добавить в новую лекцию",
+                  systemImage: "photo.badge.plus")
+                .font(.headline)
+                .padding(.horizontal, Spacing.l)
+                .padding(.vertical, Spacing.s)
+                .background(.regularMaterial, in: .capsule)
+                .padding(.bottom, Spacing.xxl)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private var deletionBinding: Binding<Bool> {

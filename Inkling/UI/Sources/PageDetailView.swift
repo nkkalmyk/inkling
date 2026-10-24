@@ -119,7 +119,9 @@ private struct PageEditor: View {
                 showHistory = true
             } label: {
                 Label("История", systemImage: "clock.arrow.circlepath")
+                    .labelStyle(.iconOnly)
             }
+            .help("История версий текста страницы")
             .popover(isPresented: $showHistory, arrowEdge: .bottom) {
                 HistoryPopover(entries: PageTextStore(paths: paths).history(pageID, in: section).entries(),
                                emptyHint: "Они появляются, когда текст перезаписывается.",
@@ -225,6 +227,8 @@ private struct PageEditor: View {
                     .foregroundStyle(.primary)
                     .help(error.details)
                     .accessibilityLabel("Ошибка: \(error.userMessage)")
+                Button("Повторить") { rerecognize(detailed: false) }
+                    .controlSize(.small)
             case nil:
                 provenance
             }

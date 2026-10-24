@@ -81,16 +81,104 @@ struct ExportLocationTests {
                 == "ОВР- основы-баланс — Химия — 2026-10-14")
     }
 
-    @Test func pdfGoesToKonspektyFolderInDocuments() throws {
+    @Test func pdfGoesToSubjectFolderInKonspekty() throws {
         let dir = try TempDir()
-        let url = try ExportLocation.pdfURL(baseName: "2026-10-09 — пределы функций", documents: dir.url)
-        #expect(url.deletingLastPathComponent().lastPathComponent == "Конспекты")
-        #expect(url.deletingLastPathComponent().deletingLastPathComponent().path == dir.url.path)
+        let url = try ExportLocation.pdfURL(baseName: "2026-10-09 — пределы функций", subject: "Математический анализ",
+                                            documents: dir.url)
+        #expect(url.deletingLastPathComponent().lastPathComponent == "математический анализ")
+        #expect(url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "Конспекты")
+        #expect(url.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path == dir.url.path)
         #expect(url.lastPathComponent == "2026-10-09 — пределы функций.pdf")
         var isDirectory: ObjCBool = false
         #expect(FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path, isDirectory: &isDirectory))
         #expect(isDirectory.boolValue)
         // Повтор не падает на уже существующей папке.
-        #expect(try ExportLocation.pdfURL(baseName: "x", documents: dir.url).lastPathComponent == "x.pdf")
+        #expect(try ExportLocation.pdfURL(baseName: "x", subject: "Математический анализ", documents: dir.url)
+            .lastPathComponent == "x.pdf")
+    }
+
+    @Test func subjectFolderIsLowercasedAndSafe() {
+        #expect(ExportLocation.subjectFolderName("Общая и неорганическая химия") == "общая и неорганическая химия")
+        #expect(ExportLocation.subjectFolderName("ВЫСШАЯ Алгебра") == "высшая алгебра")
+        #expect(ExportLocation.subjectFolderName("Физика: механика/МКТ") == FolderNaming.sanitize("физика: механика/мкт"))
+    }
+}
+
+@Suite("Шпаргалка")
+struct CheatSheetTests {
+    private let konspekt = """
+    # Конспект
+
+    Химия — Термодинамика
+
+    ## Оглавление
+
+    1. Закон Гесса
+
+    ## 1. Закон Гесса
+
+    Вводный абзац без определения.
+
+    **Закон Гесса (Г. И. Гесс, 1840 г.):** тепловой эффект не зависит от пути.
+
+    $$\\Delta H = \\Delta H_1 + \\Delta H_2$$
+
+    ### 1.1. Следствия
+
+    > **Определение.** Энтальпия образования — тепловой эффект образования 1 моль вещества.
+
+    Просто текст. **Выделенный термин** внутри абзаца.
+
+    ## 2. Примеры решения типовых задач
+
+    **Закон в примере:** не должен попасть.
+
+    $$x = 1$$
+
+    ## Источники
+
+    Книга.
+    """
+
+    @Test func collectsDefinitionsAndDisplayFormulasWithoutExamplesAndSources() throws {
+        let sheet = try #require(CheatSheet.build(from: konspekt, subject: "Химия", topic: "Термодинамика"))
+        #expect(sheet.hasPrefix("# Шпаргалка"))
+        #expect(sheet.contains("**Закон Гесса (Г. И. Гесс, 1840 г.):** тепловой эффект не зависит от пути."))
+        #expect(sheet.contains("$$\\Delta H = \\Delta H_1 + \\Delta H_2$$"))
+        #expect(sheet.contains("**Определение.** Энтальпия образования"))
+        #expect(sheet.contains("**1.1. Следствия**"))
+        #expect(!sheet.contains("Вводный абзац") && !sheet.contains("Просто текст"))
+        #expect(!sheet.contains("не должен попасть") && !sheet.contains("x = 1") && !sheet.contains("Книга."))
+        #expect(!sheet.contains("Оглавление"))
+    }
+
+    @Test func longDerivationsAndEmptySubsectionsAreLeftOut() throws {
+        let text = "## 1. Раздел\n\n### 1.1. Пустой подраздел\n\n### 1.2. Нужный\n\n$$a = b$$\n\n$$= c + d$$\n\n$$x =$$\n\n$$" + String(repeating: "y+", count: 150) + "z$$\n\n$$\\begin{array}{c} 1 \\end{array}$$\n"
+        let sheet = try #require(CheatSheet.build(from: text, subject: "С", topic: "Т"))
+        #expect(sheet.contains("$$a = b$$") && sheet.contains("**1.2. Нужный**"))
+        #expect(!sheet.contains("1.1. Пустой") && !sheet.contains("= c + d") && !sheet.contains("x =$$") && !sheet.contains("y+y+"))
+        #expect(!sheet.contains("begin{array}"))
+    }
+
+    @Test func emptyWhenNothingToCollectAndIgnoresCodeBlocks() {
+        #expect(CheatSheet.build(from: "# К\n\n## 1. Раздел\n\nТолько текст.\n", subject: "С", topic: "Т") == nil)
+        #expect(CheatSheet.build(from: "# К\n\n## 1. Р\n\n```\n$$x$$\n```\n", subject: "С", topic: "Т") == nil)
+    }
+
+    @Test func cheatSheetFileNameHasPrefix() {
+        #expect(ExportLocation.cheatSheetBaseName(subject: "Химия", topic: "тема", date: .d("2026-10-14"))
+                == "Шпаргалка — Тема — Химия — 2026-10-14")
+    }
+}
+
+/// Шпаргалка из реального конспекта (без лимита): `INKLING_CHEAT_FILE` — konspekt.md, `INKLING_CHEAT_OUT` — куда записать.
+@Suite("Шпаргалка: реальный файл", .enabled(if: ProcessInfo.processInfo.environment["INKLING_CHEAT_FILE"] != nil))
+struct CheatSheetRealFileTests {
+    @Test func buildsFromRealKonspekt() throws {
+        let environment = ProcessInfo.processInfo.environment
+        let text = try String(contentsOfFile: try #require(environment["INKLING_CHEAT_FILE"]), encoding: .utf8)
+        let sheet = try #require(CheatSheet.build(from: text, subject: "Предмет", topic: "Тема"))
+        print("Шпаргалка: \(sheet.count) символов из \(text.count)")
+        if let out = environment["INKLING_CHEAT_OUT"] { try sheet.write(toFile: out, atomically: true, encoding: .utf8) }
     }
 }

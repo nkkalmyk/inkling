@@ -31,3 +31,5 @@ Your data stays in plain files under `~/Documents/Inkling/`. Nothing is uploaded
 ## License
 
 [MIT](LICENSE)
+
+**Study note (0.6):** the default assembly lets the model see the page photos whole and write a complete study guide (title, table of contents, numbered sections, worked examples); the old text-only assembly stays as "Exact assembly". In Settings → Textbooks you can add your own PDF textbooks: scans are recognised on-device with Vision, indexed locally (SQLite FTS5), and the best-matching pages are passed to the model as excerpts with a sources list.
