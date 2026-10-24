@@ -236,7 +236,7 @@ struct FindLectureCommand: View {
     @FocusedValue(\.focusLectureSearch) private var focusSearch
 
     var body: some View {
-        Button("Найти лекцию") { focusSearch?() }
+        Button("Найти лекцию") { focusSearch?.wrappedValue = true }
             .keyboardShortcut("f", modifiers: .command)
             .disabled(focusSearch == nil)
     }

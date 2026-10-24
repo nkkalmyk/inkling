@@ -6,6 +6,8 @@ struct LectureListView: View {
     @Environment(Library.self) private var library
     @State private var query = ""
     @FocusState private var searchFocused: Bool
+    /// Запрос «Найти лекцию» (⌘F) из строки меню: флаг, а не замыкание — значения `FocusedValues` сравниваются.
+    @State private var searchRequested = false
 
     var body: some View {
         @Bindable var library = library
@@ -20,11 +22,14 @@ struct LectureListView: View {
             }
         }
         .overlay { emptyState(sections) }
-        // ⌘⌫ — «Удалить…» выбранной лекции, с тем же подтверждением, что и в контекстном меню.
+        // ⌫ в списке — «Удалить…» выбранной лекции, с тем же подтверждением, что и в контекстном меню.
         .onDeleteCommand { if let id = library.selection { library.requestDeleteLecture(id) } }
         .searchable(text: $query, placement: .toolbar, prompt: "Поиск лекций")
         .searchFocused($searchFocused)
-        .focusedSceneValue(\.focusLectureSearch, { searchFocused = true })
+        .focusedSceneValue(\.focusLectureSearch, $searchRequested)
+        .onChange(of: searchRequested) {
+            if searchRequested { searchFocused = true; searchRequested = false }
+        }
         .navigationTitle(title)
         .navigationSubtitle(subtitle(sections))
         .toolbar {
@@ -120,7 +125,7 @@ struct LectureListView: View {
 
 extension FocusedValues {
     /// «Правка → Найти лекцию» (⌘F) ставит фокус в поиск списка лекций.
-    @Entry var focusLectureSearch: (() -> Void)?
+    @Entry var focusLectureSearch: Binding<Bool>?
 }
 
 /// Строка лекции: тема, дата и число страниц, справа — тихий статус.

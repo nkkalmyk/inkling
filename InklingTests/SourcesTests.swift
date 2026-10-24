@@ -408,3 +408,31 @@ struct WindowImportTests {
         #expect(!FileManager.default.fileExists(atPath: staging.path))
     }
 }
+
+struct ReadingScaleTests {
+    @Test func stepsStopAtBounds() {
+        #expect(ReadingScale.larger(1) == 1.15)
+        #expect(ReadingScale.smaller(1) == 0.85)
+        #expect(ReadingScale.larger(ReadingScale.steps.last!) == ReadingScale.steps.last!)
+        #expect(ReadingScale.smaller(ReadingScale.steps.first!) == ReadingScale.steps.first!)
+        // Значение не из шагов (правка настроек вручную) идёт к ближайшему шагу.
+        #expect(ReadingScale.larger(1.2) == 1.3)
+    }
+}
+
+@MainActor
+struct CurrentSubjectTests {
+    @Test func openLectureWinsOverSidebarScope() throws {
+        let dir = try TempDir()
+        let library = Library(root: dir.url.appendingPathComponent("Inkling"),
+                              trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: library.root)
+        let names = library.subjectNames
+        try #require(names.count >= 2)
+        #expect(library.currentSubject == nil)
+        library.scope = .subject(names[1])
+        #expect(library.currentSubject == names[1])
+        #expect(library.createLecture(subject: names[0], topic: "Тема", date: .d("2026-10-14")))
+        #expect(library.currentSubject == names[0])
+    }
+}
