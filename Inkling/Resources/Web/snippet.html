@@ -16,9 +16,8 @@
   main { max-width: none; padding: 0; }
   main > :first-child { margin-top: 0; }
   main > :last-child { margin-bottom: 0; }
-  /* Кегли совпадают с Font.reading / Font.readingLarge в приложении. */
+  /* Кегль приходит из приложения (Font.readingPointSize): стиль текста и масштаб «Крупнее/Мельче». */
   body { font-size: 15px; }
-  body.large { font-size: 19px; }
 </style>
 </head>
 <body>
@@ -31,8 +30,8 @@
       window.webkit.messageHandlers.height.postMessage(h);
     }
   }
-  window.inklingShow = function (markdown, large) {
-    document.body.classList.toggle('large', !!large);
+  window.inklingShow = function (markdown, fontSize) {
+    if (fontSize) document.body.style.fontSize = fontSize + 'px';
     document.getElementById('content').innerHTML = InklingRender.toHTML(markdown);
     reportHeight();
     document.fonts.ready.then(reportHeight);

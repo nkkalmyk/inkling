@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(Library.self) private var library
+    @AppStorage(ReadingScale.key) private var readingScale = 1.0
 
     var body: some View {
         @Bindable var library = library
@@ -21,6 +22,14 @@ struct ContentView: View {
                     Button("Новая лекция…") { library.sheet = .newLecture(subject: nil) }
                 }
             }
+        }
+        .environment(\.readingScale, readingScale)
+        // Пункт меню «Крупнее» ловит только ⌘⇧= (символ «+»); ⌘= без Shift, как в Safari, — этой кнопкой.
+        .background {
+            Button("Крупнее") { readingScale = ReadingScale.larger(readingScale) }
+                .keyboardShortcut("=", modifiers: .command)
+                .hidden()
+                .accessibilityHidden(true)
         }
         .sheet(item: $library.sheet) { sheet in
             switch sheet {

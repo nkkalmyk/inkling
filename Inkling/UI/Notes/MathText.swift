@@ -12,7 +12,7 @@ struct MathText: View {
             MathSnippetView(markdown: markdown, large: large)
         } else {
             Text(Self.attributed(markdown))
-                .font(large ? .readingLarge : .reading)
+                .readingFont(large: large)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -43,10 +43,12 @@ struct MathText: View {
 private struct MathSnippetView: View {
     let markdown: String
     let large: Bool
+    @Environment(\.readingScale) private var scale
     @State private var height: CGFloat = 24
 
     var body: some View {
-        SnippetWebView(markdown: markdown, large: large, height: $height)
+        SnippetWebView(markdown: markdown, large: large,
+                       fontSize: Font.readingPointSize(scale: scale, large: large), height: $height)
             .frame(height: height)
             .frame(maxWidth: .infinity)
     }
@@ -55,6 +57,7 @@ private struct MathSnippetView: View {
 private struct SnippetWebView: NSViewRepresentable {
     let markdown: String
     let large: Bool
+    let fontSize: CGFloat
     @Binding var height: CGFloat
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -84,16 +87,16 @@ private struct SnippetWebView: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate {
         var parent: SnippetWebView
         private var loaded = false
-        private var shown: (String, Bool)?
+        private var shown: (String, CGFloat)?
         lazy var handler = HeightHandler { [weak self] height in self?.parent.height = max(height, 1) }
 
         init(_ parent: SnippetWebView) { self.parent = parent }
 
         func show(in view: WKWebView) {
-            guard loaded, shown.map({ $0 != (parent.markdown, parent.large) }) ?? true else { return }
-            shown = (parent.markdown, parent.large)
+            guard loaded, shown.map({ $0 != (parent.markdown, parent.fontSize) }) ?? true else { return }
+            shown = (parent.markdown, parent.fontSize)
             let json = (try? JSONEncoder().encode(parent.markdown)).map { String(decoding: $0, as: UTF8.self) } ?? "\"\""
-            view.evaluateJavaScript("window.inklingShow(\(json), \(parent.large))")
+            view.evaluateJavaScript("window.inklingShow(\(json), \(parent.fontSize))")
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

@@ -1,5 +1,18 @@
 import SwiftUI
 
+private struct LoadedStudyFiles {
+    var materials: StudyMaterials?
+    var progress: StudyProgress
+}
+
+/// Файлы самопроверки читаются в фоне: в iCloud Drive они могут быть выгружены из Mac, и чтение
+/// на главном потоке ждало бы загрузки — окно замирало. Вне `StudyContainer`: обобщённый вид нельзя
+/// передать в `@concurrent`-контекст.
+@concurrent
+private func loadStudyFiles(_ store: StudyStore) async -> LoadedStudyFiles {
+    LoadedStudyFiles(materials: store.readStudy(), progress: store.readProgress())
+}
+
 /// Общая обвязка вкладок «Вопросы», «Тест», «Карточки»: тёплый фон зоны, подготовка материалов,
 /// «Устарело», ошибки.
 struct StudyContainer<Content: View>: View {
@@ -13,13 +26,8 @@ struct StudyContainer<Content: View>: View {
     @Environment(\.isActiveTab) private var isActive
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Материалы и прогресс, прочитанные в фоне (`load`). `nil` — ещё читаются.
-    @State private var loaded: Loaded?
-
-    private struct Loaded {
-        var materials: StudyMaterials?
-        var progress: StudyProgress
-    }
+    /// Материалы и прогресс, прочитанные в фоне (`loadStudyFiles`). `nil` — ещё читаются.
+    @State private var loaded: LoadedStudyFiles?
 
     /// Когда перечитывать файлы: перезапись материалов или прогресса и новые сведения о материалах.
     private struct LoadKey: Equatable {
@@ -59,7 +67,7 @@ struct StudyContainer<Content: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.surfaceStudy)
         .task(id: LoadKey(revision: study.revision(lecture.id), study: lecture.meta.study)) {
-            let read = await Self.load(study.store(lecture))
+            let read = await loadStudyFiles(study.store(lecture))
             if !Task.isCancelled { loaded = read }
         }
         .motion(.standard, value: study.errors[lecture.id] == nil)
@@ -75,13 +83,6 @@ struct StudyContainer<Content: View>: View {
             Text("Прогресс самопроверки начнётся заново. Старые материалы и прогресс сохранятся в истории"
                  + (lecture.meta.study?.manuallyEdited == true ? ", включая ваши правки." : "."))
         }
-    }
-
-    /// Файлы самопроверки читаются в фоне: в iCloud Drive они могут быть выгружены из Mac, и чтение
-    /// на главном потоке ждало бы загрузки — окно замирало.
-    @concurrent
-    private static func load(_ store: StudyStore) async -> Loaded {
-        Loaded(materials: store.readStudy(), progress: store.readProgress())
     }
 
     private var hasKonspekt: Bool { lecture.meta.konspekt != nil }
@@ -192,6 +193,7 @@ private struct StudyStart<Actions: View>: View {
         VStack(spacing: Spacing.l) {
             Image(systemName: systemImage)
                 .font(.illustration)
+                .imageScale(.large)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Color.accentColor)
                 .accessibilityHidden(true)

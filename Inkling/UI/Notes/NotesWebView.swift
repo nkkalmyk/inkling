@@ -6,6 +6,7 @@ import WebKit
 /// страница присылает сигнал `rendered` (для печати в PDF на этапе экспорта).
 struct NotesWebView: NSViewRepresentable {
     var markdown: String
+    @Environment(\.readingScale) private var readingScale
     var onRendered: (_ katexErrors: Int) -> Void = { _ in }
 
     nonisolated static var webFolder: URL? { Bundle.main.url(forResource: "Web", withExtension: nil) }
@@ -26,6 +27,8 @@ struct NotesWebView: NSViewRepresentable {
 
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.parent = self
+        // «Крупнее/Мельче» масштабирует конспект целиком, как ⌘+ в Safari: текст, формулы и ширина колонки.
+        if view.pageZoom != readingScale { view.pageZoom = readingScale }
         context.coordinator.show(markdown, in: view)
     }
 

@@ -66,6 +66,7 @@ struct InklingApp: App {
             // «Файл» → «Импорт с iPhone»: снимок получает экран с .importsItemProviders («Источники»).
             ImportFromDevicesCommands()
             CommandGroup(before: .sidebar) { LectureViewCommands() }
+            CommandGroup(after: .toolbar) { ReadingScaleCommands() }
             CommandMenu("Лекция") { LectureMenuCommands() }
         }
 

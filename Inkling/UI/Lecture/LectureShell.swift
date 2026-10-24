@@ -225,6 +225,23 @@ struct LectureMenuCommands: View {
     }
 }
 
+/// «Вид → Крупнее / Мельче / Обычный размер»: масштаб текста для чтения (конспект, вопросы, карточки).
+struct ReadingScaleCommands: View {
+    @AppStorage(ReadingScale.key) private var scale = 1.0
+
+    var body: some View {
+        Button("Крупнее") { scale = ReadingScale.larger(scale) }
+            .keyboardShortcut("+", modifiers: .command)
+            .disabled(ReadingScale.larger(scale) == scale)
+        Button("Мельче") { scale = ReadingScale.smaller(scale) }
+            .keyboardShortcut("-", modifiers: .command)
+            .disabled(ReadingScale.smaller(scale) == scale)
+        Button("Обычный размер") { scale = 1 }
+            .keyboardShortcut("0", modifiers: .command)
+            .disabled(scale == 1)
+    }
+}
+
 /// Пункты меню «Вид»: разделы лекции и режим конспекта.
 struct LectureViewCommands: View {
     @FocusedValue(\.lectureCommands) private var commands
@@ -295,7 +312,8 @@ struct KeptAliveTabs<Content: View>: NSViewRepresentable {
                                  contrast: environment.colorSchemeContrast,
                                  reduceMotion: environment.accessibilityReduceMotion,
                                  reduceTransparency: environment.accessibilityReduceTransparency,
-                                 dynamicTypeSize: environment.dynamicTypeSize)
+                                 dynamicTypeSize: environment.dynamicTypeSize,
+                                 readingScale: environment.readingScale)
         let revisionChanged = coordinator.key != key
         coordinator.key = key
         for tab in tabs {
@@ -333,6 +351,7 @@ struct KeptAliveTabs<Content: View>: NSViewRepresentable {
         var reduceMotion: Bool
         var reduceTransparency: Bool
         var dynamicTypeSize: DynamicTypeSize
+        var readingScale: Double
     }
 }
 
