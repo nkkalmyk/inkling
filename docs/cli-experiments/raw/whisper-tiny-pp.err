@@ -1,0 +1,6 @@
+read_audio_data: reading audio data from '/tmp/audio/lecture.wav' ...
+read_audio_data: trying to decode with miniaudio
+whisper_print_progress_callback: progress =  31%
+whisper_print_progress_callback: progress =  59%
+whisper_print_progress_callback: progress =  88%
+whisper_print_progress_callback: progress = 100%

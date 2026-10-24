@@ -1,0 +1,5 @@
+read_audio_data: reading audio data from '/tmp/audio/fake.wav' ...
+read_audio_data: trying to decode with miniaudio
+read_audio_data: failed to read audio data
+error: failed to read audio file '/tmp/audio/fake.wav'
+error: 1 input file(s) failed
