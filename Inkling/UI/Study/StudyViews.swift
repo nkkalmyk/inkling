@@ -111,33 +111,44 @@ struct StudyContainer<Content: View>: View {
     }
 }
 
-/// Строка с источником материалов и кнопкой «Подготовить заново».
-private struct StudyToolbar<Trailing: View>: View {
+/// Единая полоса самопроверки под тулбаром: слева — чем и когда подготовлены материалы, по центру — режим
+/// («Вопросы · Тест · Карточки»), справа — «Подготовить заново». Одна на три вкладки (лежит поверх них в `LectureView`),
+/// вместо отдельных строк переключателя и источника.
+struct StudyModeBar: View {
     @Environment(StudyCenter.self) private var study
     let lecture: LectureRecord
-    @ViewBuilder var trailing: () -> Trailing
+    @Binding var mode: LectureTab
     @State private var confirm = false
 
     var body: some View {
+        // Стороны одинаково гибкие: переключатель остаётся ровно по центру, подпись обрезается на своей стороне.
         HStack(spacing: Spacing.m) {
-            if let info = lecture.meta.study {
-                Text([info.model, info.updatedAt.stamp, info.manuallyEdited ? "правлено вручную" : nil]
-                    .compactMap { $0 }.joined(separator: " · "))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                ReviewBadge(engine: info.engine, manuallyEdited: info.manuallyEdited)
-            }
-            Spacer()
-            trailing()
-            // Когда материалы устарели, «Подготовить заново» уже есть в уведомлении над строкой.
-            if !study.knownStale(lecture) {
-                Button("Подготовить заново") {
-                    let progress = study.store(lecture).readProgress()
-                    if lecture.meta.study?.manuallyEdited == true || !progress.isEmpty { confirm = true }
-                    else { study.generate(lecture.id) }
+            HStack(spacing: Spacing.s) {
+                if let info = lecture.meta.study {
+                    Text([info.model, info.updatedAt.stamp, info.manuallyEdited ? "правлено вручную" : nil]
+                        .compactMap { $0 }.joined(separator: " · "))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    ReviewBadge(engine: info.engine, manuallyEdited: info.manuallyEdited)
                 }
-                .disabled(study.isRunning(lecture.id))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Picker("Режим", selection: $mode) {
+                ForEach(LectureTab.studyTabs) { Text($0.title).tag($0) }
+            }
+            .sectionSwitcher()
+            HStack {
+                // Когда материалы устарели, «Подготовить заново» уже есть в уведомлении под полосой.
+                if lecture.meta.study != nil, !study.knownStale(lecture) {
+                    Button("Подготовить заново") {
+                        let progress = study.store(lecture).readProgress()
+                        if lecture.meta.study?.manuallyEdited == true || !progress.isEmpty { confirm = true }
+                        else { study.generate(lecture.id) }
+                    }
+                    .disabled(study.isRunning(lecture.id))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .font(.meta)
         .padding(.horizontal, Spacing.m)
@@ -148,12 +159,6 @@ private struct StudyToolbar<Trailing: View>: View {
         } message: {
             Text("Прогресс самопроверки начнётся заново. Старые материалы и прогресс сохранятся в истории.")
         }
-    }
-}
-
-extension StudyToolbar where Trailing == EmptyView {
-    init(lecture: LectureRecord) {
-        self.init(lecture: lecture) { EmptyView() }
     }
 }
 
@@ -236,8 +241,6 @@ struct QuestionsView: View {
                 (typeFilter == nil || $0.type == typeFilter) && (difficultyFilter == nil || $0.difficulty == difficultyFilter)
             }
             VStack(spacing: 0) {
-                StudyToolbar(lecture: lecture)
-                Divider()
                 HSplitView {
                     VStack(spacing: 0) {
                         filters
@@ -408,8 +411,6 @@ struct QuizView: View {
         StudyContainer(lecture: lecture, showNotes: showNotes) { materials, progress in
             let available = materials.quiz.filter { !progress.flagged.contains($0.id) }
             VStack(spacing: 0) {
-                StudyToolbar(lecture: lecture)
-                Divider()
                 Group {
                     if let session, !session.isFinished, let item = session.current {
                         question(item, session: session, flagged: progress.flagged.contains(item.id))
@@ -601,8 +602,6 @@ struct FlashcardsView: View {
     var body: some View {
         StudyContainer(lecture: lecture, showNotes: showNotes) { materials, progress in
             VStack(spacing: 0) {
-                StudyToolbar(lecture: lecture)
-                Divider()
                 Group {
                     if let session, let card = session.current {
                         cardView(card, session: session, flagged: progress.flagged.contains(card.id))

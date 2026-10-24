@@ -16,10 +16,11 @@ extension Color {
     static let surfaceRaised = Color(nsColor: .quaternarySystemFill)
     /// Утопленная подложка: под миниатюрами и превью, где содержимое само даёт цвет.
     static let surfaceSunken = Color(nsColor: .quinarySystemFill)
-    /// Тёплый фон зоны самопроверки (вопросы, тест, карточки).
-    static let surfaceStudy = Color("StudySurface")
+    /// Фон зоны самопроверки (вопросы, тест, карточки): системный фон окна. Тепло зоны — в символах
+    /// и анимациях, а не в своём цвете фона.
+    static let surfaceStudy = Color(nsColor: .windowBackgroundColor)
     /// Карточка внутри зоны самопроверки.
-    static let surfaceStudyRaised = Color("StudySurfaceRaised")
+    static let surfaceStudyRaised = Color(nsColor: .quaternarySystemFill)
 
     // MARK: Статусы
 

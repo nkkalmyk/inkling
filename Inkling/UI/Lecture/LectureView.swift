@@ -99,21 +99,12 @@ struct LectureView: View {
         }
     }
 
-    /// Режимы самопроверки: вторая ступень навигации внутри тёплой зоны. Один на все три вкладки и лежит
-    /// поверх них: будь он в каждой вкладке, при щелчке нажатый переключатель пропадал бы вместе со своей
+    /// Полоса самопроверки (режим, источник материалов, «Подготовить заново»). Одна на все три вкладки и лежит
+    /// поверх них: будь она в каждой вкладке, при щелчке нажатый переключатель пропадал бы вместе со своей
     /// вкладкой, а на его месте появлялся другой — нажатие обрывалось, выбор перескакивал без анимации.
     private var studyModePicker: some View {
-        studyModeSwitcher(selection: $tab)
+        StudyModeBar(lecture: lecture, mode: $tab)
             .background(Color.surfaceStudy)
-    }
-
-    private func studyModeSwitcher(selection: Binding<LectureTab>) -> some View {
-        Picker("Режим", selection: selection) {
-            ForEach(LectureTab.studyTabs) { Text($0.title).tag($0) }
-        }
-        .sectionSwitcher()
-        .padding(.vertical, Spacing.s)
-        .frame(maxWidth: .infinity)
     }
 
     /// Открытые вкладки живут каждая в своём хост-виде, видна одна (`KeptAliveTabs`). Повторное
@@ -139,7 +130,7 @@ struct LectureView: View {
     private func tabContent(_ item: LectureTab) -> some View {
         if item.isStudy {
             VStack(spacing: 0) {
-                studyModeSwitcher(selection: .constant(item))
+                StudyModeBar(lecture: lecture, mode: .constant(item))
                     .hidden()
                     .accessibilityHidden(true)
                 screen(item)
