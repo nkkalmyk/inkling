@@ -63,11 +63,17 @@ struct NotesView: View {
             } else {
                 header(readiness)
                 Divider()
-                if editing {
-                    PageTextEditor(text: Binding(get: { text }, set: { text = $0; scheduleSave() }))
-                } else {
-                    NotesWebView(markdown: text) { katexErrors = $0 }
+                // Просмотр и правка сменяют друг друга растворением, а не скачком.
+                ZStack {
+                    if editing {
+                        PageTextEditor(text: Binding(get: { text }, set: { text = $0; scheduleSave() }))
+                            .transition(.opacity)
+                    } else {
+                        NotesWebView(markdown: text) { katexErrors = $0 }
+                            .transition(.opacity)
+                    }
                 }
+                .motion(.standard, value: editing)
             }
         }
         .motion(.standard, value: assembly.errors[lecture.id] == nil)
@@ -140,7 +146,7 @@ struct NotesView: View {
                     .disabled(assembly.isRunning(lecture.id) || readiness?.plan == nil || recognition.isBusy(lecture.id))
             }
             if info != nil {
-                Button("Дополнить") { enrich() }
+                Button("Дополнить", systemImage: "sparkles") { enrich() }
                     .disabled(assembly.isRunning(lecture.id) || enrichment.isRunning(lecture.id)
                               || recognition.isBusy(lecture.id))
                     .help((info?.enrichment == nil ? "" : "Прежнее дополнение заменится. ")
@@ -152,7 +158,9 @@ struct NotesView: View {
                 showHistory = true
             } label: {
                 Label("История", systemImage: "clock.arrow.circlepath")
+                    .labelStyle(.iconOnly)
             }
+            .help("История версий конспекта")
             .popover(isPresented: $showHistory, arrowEdge: .bottom) {
                 HistoryPopover(entries: store.history.entries(),
                                emptyHint: "Они появляются, когда конспект перезаписывается.",
