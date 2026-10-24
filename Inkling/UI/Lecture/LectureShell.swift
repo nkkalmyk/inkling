@@ -58,6 +58,7 @@ struct LectureRequests: Equatable {
     var assemble = false
     var enrich = false
     var prepareStudy = false
+    var reviewCards = false
 }
 
 extension EnvironmentValues {
@@ -180,6 +181,7 @@ struct LectureCommands {
     var primary: LecturePrimaryAction?
     var perform: (LecturePrimaryAction) -> Void
     var enrich: (() -> Void)?
+    var reviewCards: (() -> Void)?
     var exportMarkdown: (() -> Void)?
     var exportPDF: (() -> Void)?
     var exportAnki: (() -> Void)?
@@ -204,7 +206,11 @@ struct LectureMenuCommands: View {
         .keyboardShortcut(.return, modifiers: .command)
         .disabled(commands?.primary == nil)
         Button("Дополнить конспект") { commands?.enrich?() }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
             .disabled(commands?.enrich == nil)
+        Button("Повторить карточки") { commands?.reviewCards?() }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(commands?.reviewCards == nil)
         Divider()
         Menu("Экспорт") {
             Button("Конспект в Markdown…") { commands?.exportMarkdown?() }

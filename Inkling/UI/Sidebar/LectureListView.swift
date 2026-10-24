@@ -20,6 +20,8 @@ struct LectureListView: View {
             }
         }
         .overlay { emptyState(sections) }
+        // ⌘⌫ — «Удалить…» выбранной лекции, с тем же подтверждением, что и в контекстном меню.
+        .onDeleteCommand { if let id = library.selection { library.requestDeleteLecture(id) } }
         .searchable(text: $query, placement: .toolbar, prompt: "Поиск лекций")
         .searchFocused($searchFocused)
         .focusedSceneValue(\.focusLectureSearch, { searchFocused = true })

@@ -587,6 +587,8 @@ struct QuizView: View {
 
 struct FlashcardsView: View {
     @Environment(Library.self) private var library
+    @Environment(\.lectureRequests) private var requests
+    @Environment(\.isActiveTab) private var isActive
     let lecture: LectureRecord
     let showNotes: () -> Void
 
@@ -596,6 +598,13 @@ struct FlashcardsView: View {
                 .frame(maxWidth: ReadingWidth.focused)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(Spacing.xxl)
+                // «Лекция → Повторить карточки» (⌘R): все карточки, кроме помеченных, как кнопкой «Начать».
+                .task(id: requests.wrappedValue.reviewCards && isActive) {
+                    guard requests.wrappedValue.reviewCards, isActive else { return }
+                    requests.wrappedValue.reviewCards = false
+                    let cards = materials.flashcards.filter { !progress.flagged.contains($0.id) }
+                    if !cards.isEmpty { begin(cards.shuffled(), onlyUnknown: false) }
+                }
         }
     }
 
@@ -605,8 +614,8 @@ struct FlashcardsView: View {
         let known = cards.filter { progress.items[$0.id]?.result == .known }.count
         return StudyStart(systemImage: "rectangle.on.rectangle.angled", title: "Карточки: \(cards.count)",
                           subtitle: known + unknown.count > 0 ? "Знаю: \(known) · Не знаю: \(unknown.count)" : nil,
-                          hint: "Повторение открывается на всё окно. Пробел — перевернуть, ← — не знаю, → — знаю, "
-                              + "Esc — закончить.") {
+                          hint: "Повторение открывается на всё окно (⌘R). Пробел — перевернуть, ← — не знаю, "
+                              + "→ — знаю, Esc — закончить.") {
             Button("Повторить незнакомые (\(unknown.count))") { begin(unknown.shuffled(), onlyUnknown: true) }
                 .disabled(unknown.isEmpty)
             Button("Начать") { begin(cards.shuffled(), onlyUnknown: false) }

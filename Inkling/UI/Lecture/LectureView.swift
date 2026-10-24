@@ -231,6 +231,8 @@ struct LectureView: View {
         LectureCommands(
             tab: $tab, primary: primary, perform: perform,
             enrich: canEnrich ? { tab = .notes; requests.enrich = true } : nil,
+            reviewCards: lecture.meta.study != nil && !study.isRunning(lecture.id)
+                ? { tab = .flashcards; requests.reviewCards = true } : nil,
             exportMarkdown: export?.hasKonspekt == true ? { export?.exportMarkdown() } : nil,
             exportPDF: export?.hasKonspekt == true && export?.exportingPDFSince == nil ? { export?.exportPDF() } : nil,
             exportAnki: export?.hasStudy == true ? { export?.askAnki = true } : nil,

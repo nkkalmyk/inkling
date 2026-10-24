@@ -33,7 +33,7 @@
 ```bash
 brew install xcodegen                                        # один раз
 xcodegen generate                                            # после любого изменения project.yml, добавления/удаления файлов
-xcodebuild -scheme Inkling -destination 'platform=macOS' build test   # сборка и 334 теста, ~1–2 мин
+xcodebuild -scheme Inkling -destination 'platform=macOS' build test   # сборка и 336 тестов, ~1–2 мин
 xcodebuild -scheme Inkling -destination 'platform=macOS' analyze      # статический анализ (отдельного линтера нет)
 scripts/release.sh                                           # публичный zip в build/release/ (ad-hoc, без личных путей)
 ```
@@ -170,7 +170,7 @@ open /Applications/Inkling.app
 xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' build test
 ```
 
-Сборка без предупреждений, все тесты зелёные (сейчас 334). Меняешь поведение — добавь тест. Меняешь интерфейс — следуй
+Сборка без предупреждений, все тесты зелёные (сейчас 336). Меняешь поведение — добавь тест. Меняешь интерфейс — следуй
 [`docs/design-system.md`](docs/design-system.md) и проверь экран в запущенном приложении, а не только сборкой. Не нашёл способа проверить — напиши об этом в PR.
 
 ### Документация идёт вместе с кодом
