@@ -39,13 +39,15 @@ final class ExportController {
 
     func exportPDF() {
         guard exportingPDFSince == nil, let konspekt else { return }
-        // PDF сразу падает в «Документы → Конспекты», без панели сохранения.
+        // PDF сразу падает в «Документы → Конспекты → <предмет>», без панели сохранения.
         let url: URL
         do {
             url = try ExportLocation.pdfURL(baseName: ExportLocation.pdfBaseName(
-                subject: lecture.meta.subject, topic: lecture.meta.topic, date: lecture.meta.date))
+                subject: lecture.meta.subject, topic: lecture.meta.topic, date: lecture.meta.date),
+                subject: lecture.meta.subject)
         } catch {
-            library.errorMessage = "Не удалось создать папку «\(ExportLocation.pdfFolderName)»: \(error.localizedDescription)"
+            library.errorMessage = "Не удалось создать папку «\(ExportLocation.pdfFolderName)/"
+                + "\(ExportLocation.subjectFolderName(lecture.meta.subject))»: \(error.localizedDescription)"
             return
         }
         exportingPDFSince = .now

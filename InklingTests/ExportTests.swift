@@ -81,16 +81,25 @@ struct ExportLocationTests {
                 == "ОВР- основы-баланс — Химия — 2026-10-14")
     }
 
-    @Test func pdfGoesToKonspektyFolderInDocuments() throws {
+    @Test func pdfGoesToSubjectFolderInKonspekty() throws {
         let dir = try TempDir()
-        let url = try ExportLocation.pdfURL(baseName: "2026-10-09 — пределы функций", documents: dir.url)
-        #expect(url.deletingLastPathComponent().lastPathComponent == "Конспекты")
-        #expect(url.deletingLastPathComponent().deletingLastPathComponent().path == dir.url.path)
+        let url = try ExportLocation.pdfURL(baseName: "2026-10-09 — пределы функций", subject: "Математический анализ",
+                                            documents: dir.url)
+        #expect(url.deletingLastPathComponent().lastPathComponent == "математический анализ")
+        #expect(url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "Конспекты")
+        #expect(url.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path == dir.url.path)
         #expect(url.lastPathComponent == "2026-10-09 — пределы функций.pdf")
         var isDirectory: ObjCBool = false
         #expect(FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path, isDirectory: &isDirectory))
         #expect(isDirectory.boolValue)
         // Повтор не падает на уже существующей папке.
-        #expect(try ExportLocation.pdfURL(baseName: "x", documents: dir.url).lastPathComponent == "x.pdf")
+        #expect(try ExportLocation.pdfURL(baseName: "x", subject: "Математический анализ", documents: dir.url)
+            .lastPathComponent == "x.pdf")
+    }
+
+    @Test func subjectFolderIsLowercasedAndSafe() {
+        #expect(ExportLocation.subjectFolderName("Общая и неорганическая химия") == "общая и неорганическая химия")
+        #expect(ExportLocation.subjectFolderName("ВЫСШАЯ Алгебра") == "высшая алгебра")
+        #expect(ExportLocation.subjectFolderName("Физика: механика/МКТ") == FolderNaming.sanitize("физика: механика/мкт"))
     }
 }
