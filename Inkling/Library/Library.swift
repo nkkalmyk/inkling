@@ -45,6 +45,8 @@ final class Library {
     private(set) var store: LibraryStore
     /// Что показано в списке лекций: все или одного предмета (выбор в сайдбаре).
     var scope: LibraryScope = .all
+    /// Идёт повторение карточек: слой на всё окно (`FlashcardReviewView`), тулбар скрыт.
+    var review: FlashcardReview?
     var selection: UUID?
     var sheet: Sheet?
     var pendingDeletion: Deletion?

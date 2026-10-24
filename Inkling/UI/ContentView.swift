@@ -37,6 +37,16 @@ struct ContentView: View {
         .onPasteCommand(of: ImportStaging.acceptedTypes) { library.importIntoWindow($0) }
         .overlay { if dropTargeted { dropHint.transition(.opacity) } }
         .motion(.snappy, value: dropTargeted)
+        .overlay {
+            if let review = library.review, let lecture = library.lecture(id: review.lectureID) {
+                FlashcardReviewView(review: review, lecture: lecture)
+                    .id(review.id)
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.97).combined(with: .opacity))
+            }
+        }
+        .toolbarVisibility(library.review == nil ? .automatic : .hidden, for: .windowToolbar)
+        .motion(.standard, value: library.review?.id)
+        .onChange(of: library.selection) { library.review = nil }
         .onChange(of: library.sheet == nil) { if library.sheet == nil { library.discardPendingImport() } }
         // Пункт меню «Крупнее» ловит только ⌘⇧= (символ «+»); ⌘= без Shift, как в Safari, — этой кнопкой.
         .background {
