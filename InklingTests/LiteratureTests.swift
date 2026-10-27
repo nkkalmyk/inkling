@@ -38,6 +38,18 @@ struct LiteratureSearchTests {
         #expect(try await store.totalPages() == 3)
     }
 
+    @Test func hostileTermsAreQuotedNotParsedAsFTSSyntax() async throws {
+        let store = try LiteratureStore.inMemory()
+        let book = try await store.upsertBook(path: "/b.pdf", title: "Учебник", subject: "Химия", size: 1, mtime: 1, pages: 1)
+        try await store.add(pages: [(1, "Закон Гесса и NEAR AND OR NOT", "layer")], book: book)
+        for term in ["OR", "NEAR", "\"", "a\" OR \"b", "hesse*", "col:x", "-x", "(", ")", "'; DROP TABLE pages; --"] {
+            // Не бросает ошибку разбора и не находит лишнего.
+            _ = try await store.search(terms: [term], subject: nil, limit: 5)
+        }
+        #expect(try await store.totalPages() == 1)
+        #expect(try await store.search(terms: ["гесса"], subject: nil, limit: 5).map(\.page) == [1])
+    }
+
     @Test func changedFileDropsOldPagesAndResumeSkipsDone() async throws {
         let store = try LiteratureStore.inMemory()
         let id = try await store.upsertBook(path: "/b.pdf", title: "Б", subject: "С", size: 10, mtime: 5, pages: 4)
