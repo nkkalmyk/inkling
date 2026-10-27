@@ -140,9 +140,11 @@ actor OllamaServer {
         defer { try? FileManager.default.removeItem(at: pidFile) }
         guard let text = try? String(contentsOf: pidFile, encoding: .utf8),
               let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 else { return false }
-        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
-        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0,
-              URL(fileURLWithPath: String(cString: buffer)).lastPathComponent == executableName else { return false }
+        var buffer = [UInt8](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        let length = Int(proc_pidpath(pid, &buffer, UInt32(buffer.count)))
+        guard length > 0,
+              URL(fileURLWithPath: String(decoding: buffer.prefix(length), as: UTF8.self)).lastPathComponent == executableName
+        else { return false }
         return kill(pid, SIGTERM) == 0
     }
 
