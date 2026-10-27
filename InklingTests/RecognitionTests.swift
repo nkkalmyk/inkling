@@ -23,6 +23,16 @@ struct PromptLibraryTests {
         #expect(prompts.subjectInsert("Высшая алгебра").contains("pmatrix"))
     }
 
+    @Test func subjectInsertCannotLeaveSubjectsFolder() throws {
+        let dir = try TempDir()
+        let prompts = PromptLibrary(root: dir.url)
+        try FileManager.default.createDirectory(at: prompts.folder.appendingPathComponent("subjects"), withIntermediateDirectories: true)
+        // Файл рядом с папкой промптов: через `..` из названия предмета его не должно быть видно.
+        try "ЧУЖОЙ ТЕКСТ".write(to: dir.url.appendingPathComponent("secret.md"), atomically: true, encoding: .utf8)
+        #expect(prompts.subjectInsert("../../secret") == "")
+        #expect(prompts.subjectInsert("../secret") == "")
+    }
+
     @Test func resetKeepsUserVersions() throws {
         let dir = try TempDir()
         let prompts = PromptLibrary(root: dir.url)
