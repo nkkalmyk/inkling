@@ -233,6 +233,15 @@ struct PDFNavigationTests {
         #expect(targets == [1, 2])
         let titles = (0..<(document.outlineRoot?.numberOfChildren ?? 0)).compactMap { document.outlineRoot?.child(at: $0)?.label }
         #expect(titles == ["Оглавление", "1. Определение матрицы", "2. Сложение матриц и умножение на скаляр"])
+        // Адрес — прямо в ссылке (`/Dest [страница /XYZ …]`): «Файлы» на iPhone и Google Диск не открывают ссылку на объект.
+        let raw = String(decoding: try Data(contentsOf: url), as: UTF8.self)
+        #expect(raw.firstMatch(of: /\/Dest \d+ 0 R/) == nil)
+        #expect(raw.matches(of: /\/Dest \[ \d+ 0 R +\/XYZ/).count >= 2)
+    }
+
+    @Test func inlinerLeavesUnknownFilesAlone() {
+        #expect(PDFLinkInliner.inline(Data("не PDF".utf8)) == nil)
+        #expect(PDFLinkInliner.inline(Data()) == nil)
     }
 
     @Test func nestedHeadingsBecomeNestedBookmarks() {
