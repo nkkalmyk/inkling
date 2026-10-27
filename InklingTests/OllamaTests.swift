@@ -310,7 +310,7 @@ struct EngineChoiceTests {
     @Test func settingsPersistModeAndModels() throws {
         let suite = "InklingTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        defer { discardDefaultsSuite(suite) }
         let settings = AppSettings(defaults: defaults)
         #expect(settings.engineMode == .auto)
         #expect(settings.ollamaModel == "inkling-ocr")
@@ -326,7 +326,7 @@ struct EngineChoiceTests {
     @Test func localEngineLowersChunkThreshold() throws {
         let suite = "InklingTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        defer { discardDefaultsSuite(suite) }
         let settings = AppSettings(defaults: defaults)
         let engines = EngineCenter(settings: settings)
         #expect(engines.chunkThreshold == 40_000)
