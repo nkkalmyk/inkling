@@ -31,6 +31,7 @@ enum PDFFooter {
         }
         if let navigation, !navigation.bookmarks.isEmpty { CGPDFContextSetOutline(context, navigation.outlineDictionary()) }
         context.closePDF()
+        if navigation?.links.isEmpty == false { try PDFLinkInliner.inline(temp) }
         _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
     }
 
