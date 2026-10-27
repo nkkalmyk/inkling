@@ -1,6 +1,13 @@
 import Foundation
 @testable import Inkling
 
+/// Удаляет тестовый набор настроек вместе с файлом `~/Library/Preferences/<имя>.plist`: `removePersistentDomain` файл оставляет.
+func discardDefaultsSuite(_ suite: String) {
+    UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+    let plist = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/\(suite).plist")
+    try? FileManager.default.removeItem(at: plist)
+}
+
 /// Временная папка, которая удаляется вместе с объектом.
 final class TempDir {
     let url: URL

@@ -117,11 +117,10 @@ final class RecognitionCenter {
 
     /// Закрывает прогресс лекции, когда у неё не осталось ни задач в очереди, ни идущих вызовов.
     private func settle(_ lectureID: UUID) {
-        guard let batch = batches[lectureID],
+        guard batches[lectureID] != nil,
               !queue.contains(where: { $0.lectureID == lectureID }),
               !jobsLecture.values.contains(lectureID) else { return }
         batches[lectureID] = nil
-        if batch.failed > 0 { lastFailures[lectureID] = batch.failed }
     }
 
     // MARK: Одна страница
@@ -270,9 +269,4 @@ final class RecognitionCenter {
         batch.note = nil
         batches[job.lectureID] = batch
     }
-
-    /// Сколько страниц не распознано в последнем прогоне лекции (для подсказки после окончания).
-    private(set) var lastFailures: [UUID: Int] = [:]
-
-    func clearFailures(_ lectureID: UUID) { lastFailures[lectureID] = nil }
 }

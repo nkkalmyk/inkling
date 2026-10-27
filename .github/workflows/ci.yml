@@ -10,7 +10,7 @@ jobs:
     # Нужен Xcode 26+ и macOS 26 SDK (минимум приложения — macOS 26).
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: XcodeGen
         run: brew install xcodegen
       - name: Сборка и тесты (ad-hoc подпись)

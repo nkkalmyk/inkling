@@ -99,10 +99,6 @@ actor LiteratureStore {
         try database.run("DELETE FROM books WHERE id = ?", [.int(id)])
     }
 
-    func removeBooks(notIn keep: Set<String>) throws {
-        for book in try books() where !keep.contains(book.path) { try removeBook(path: book.path) }
-    }
-
     func clear() throws {
         try database.execute("DELETE FROM pages; DELETE FROM fts; DELETE FROM books;")
     }
