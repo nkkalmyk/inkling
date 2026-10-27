@@ -92,7 +92,8 @@ struct PromptLibrary: Sendable {
 
     /// Вставка `subjects/<Предмет>.md`; если файла нет — пусто.
     func subjectInsert(_ subject: String) -> String {
-        let url = folder.appendingPathComponent("subjects").appendingPathComponent("\(subject).md")
+        // Название предмета приходит из meta.json: через `FolderNaming` в имени не остаётся `/`, `..` и ведущей точки.
+        let url = folder.appendingPathComponent("subjects").appendingPathComponent("\(FolderNaming.sanitize(subject)).md")
         return ((try? String(contentsOf: url, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
