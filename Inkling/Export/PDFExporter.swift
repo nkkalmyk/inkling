@@ -29,6 +29,8 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
     private var window: NSWindow?
     private var markdown = ""
     private var heading: PrintHeading?
+    /// Заголовки и ссылки оглавления отрисованной страницы — для переходов в готовом PDF.
+    private var outline: PDFNavigation.Outline?
     private var rendered: CheckedContinuation<Void, Error>?
 
     /// A4 в пунктах.
@@ -67,6 +69,10 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
             }
         }
 
+        if let json = try? await view.evaluateJavaScript(PDFNavigation.outlineScript) as? String {
+            outline = try? JSONDecoder().decode(PDFNavigation.Outline.self, from: Data(json.utf8))
+        }
+
         let info = NSPrintInfo()
         info.paperSize = Self.a4
         info.orientation = .portrait
@@ -93,7 +99,9 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
         }
         guard ok, FileManager.default.fileExists(atPath: url.path) else { throw PDFExportError.printFailed }
         let label = heading.map { "\($0.subject) · \($0.topic)" } ?? title
-        try PDFFooter.stamp(url, label: label, title: title)
+        // Места ссылок ищутся в напечатанном файле, а ставятся при перерисовке с колонтитулами.
+        let navigation = outline.flatMap { PDFNavigation.plan($0, for: url) }
+        try PDFFooter.stamp(url, label: label, title: title, navigation: navigation)
     }
 
     private nonisolated let printed = OneShot()

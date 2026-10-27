@@ -182,3 +182,73 @@ struct CheatSheetRealFileTests {
         if let out = environment["INKLING_CHEAT_OUT"] { try sheet.write(toFile: out, atomically: true, encoding: .utf8) }
     }
 }
+
+/// Переходы в PDF: пункты оглавления ведут на разделы, заголовки становятся закладками (`PDFNavigation`, `PDFFooter`).
+struct PDFNavigationTests {
+    /// PDF из трёх страниц: оглавление на первой, разделы на второй и третьей. Пункт «Сложение» набран системным
+    /// шрифтом, который отдаёт «к» как «ĸ» — как в настоящем оглавлении.
+    private func makePDF(at url: URL) throws {
+        var box = CGRect(x: 0, y: 0, width: 595, height: 842)
+        let context = try #require(CGContext(url as CFURL, mediaBox: &box, nil))
+        func line(_ text: String, y: CGFloat, size: CGFloat = 14) {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+            NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: size)]).draw(at: CGPoint(x: 60, y: y))
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        context.beginPage(mediaBox: &box)
+        line("Оглавление", y: 760, size: 20)
+        line("Определение матрицы", y: 720)
+        line("Сложение матриц и умножение на скаляр", y: 700)
+        context.endPage()
+        context.beginPage(mediaBox: &box)
+        line("1. Определение матрицы", y: 760, size: 20)
+        line("Текст раздела про сложение матриц и умножение на скаляр.", y: 700)
+        context.endPage()
+        context.beginPage(mediaBox: &box)
+        line("2. Сложение матриц и умножение на скаляр", y: 760, size: 20)
+        context.endPage()
+        context.closePDF()
+    }
+
+    private let outline = PDFNavigation.Outline(
+        headings: [.init(id: "sec-1", level: 2, text: "Оглавление"),
+                   .init(id: "sec-2", level: 2, text: "1. Определение матрицы"),
+                   .init(id: "sec-3", level: 2, text: "2. Сложение матриц и умножение на скаляр")],
+        links: [.init(text: "Определение матрицы", target: "sec-2"),
+                .init(text: "Сложение матриц и умножение на скаляр", target: "sec-3")])
+
+    @Test func tocEntriesLinkToTheirSectionsAndHeadingsBecomeBookmarks() throws {
+        let dir = try TempDir()
+        let url = dir.url.appendingPathComponent("konspekt.pdf")
+        try makePDF(at: url)
+        let plan = try #require(PDFNavigation.plan(outline, for: url))
+        #expect(plan.links.map(\.page) == [0, 0])
+        // Пункт «Сложение…» ведёт на раздел (стр. 3), а не на упоминание тех же слов в тексте (стр. 2).
+        #expect(plan.anchors.first { $0.name == "sec-3" }?.page == 2)
+        try PDFFooter.stamp(url, label: "Предмет · Тема", title: "Тема", navigation: plan)
+
+        let document = try #require(PDFDocument(url: url))
+        let targets = (document.page(at: 0)?.annotations ?? []).compactMap { $0.destination?.page.map(document.index(for:)) }
+        #expect(targets == [1, 2])
+        let titles = (0..<(document.outlineRoot?.numberOfChildren ?? 0)).compactMap { document.outlineRoot?.child(at: $0)?.label }
+        #expect(titles == ["Оглавление", "1. Определение матрицы", "2. Сложение матриц и умножение на скаляр"])
+    }
+
+    @Test func nestedHeadingsBecomeNestedBookmarks() {
+        let headings: [PDFNavigation.Heading] = [.init(id: "a", level: 1, text: "Конспект"), .init(id: "b", level: 2, text: "1. Раздел"),
+                                                 .init(id: "c", level: 3, text: "1.1. Подраздел"), .init(id: "d", level: 2, text: "2. Раздел")]
+        let targets = Dictionary(uniqueKeysWithValues: headings.map { ($0.id, (page: 0, point: CGPoint.zero)) })
+        let marks = PDFNavigation.bookmarks(headings, targets: targets)
+        // Одинокий h1 не оборачивает разделы: они на верхнем уровне.
+        #expect(marks.map(\.title) == ["1. Раздел", "2. Раздел"])
+        #expect(marks.first?.children.map(\.title) == ["1.1. Подраздел"])
+    }
+
+    @Test func longTextIsSearchedByItsBeginning() {
+        #expect(PDFNavigation.prefix(of: "Короткий") == "Короткий")
+        let long = "Вычисление определителя приведением к треугольному виду методом Гаусса"
+        #expect(PDFNavigation.prefix(of: long).count <= 40)
+        #expect(long.hasPrefix(PDFNavigation.prefix(of: long)))
+    }
+}
