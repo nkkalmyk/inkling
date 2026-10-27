@@ -34,7 +34,7 @@
 ```bash
 brew install xcodegen                                        # один раз
 xcodegen generate                                            # после любого изменения project.yml, добавления/удаления файлов
-xcodebuild -scheme Inkling -destination 'platform=macOS' build test   # сборка и 381 тест, ~1–2 мин
+xcodebuild -scheme Inkling -destination 'platform=macOS' build test   # сборка и тесты (~390), ~1–2 мин
 xcodebuild -scheme Inkling -destination 'platform=macOS' analyze      # статический анализ (отдельного линтера нет)
 scripts/release.sh                                           # публичный zip в build/release/ (ad-hoc, без личных путей)
 ```
@@ -159,7 +159,7 @@ ditto -x -k "$d"/Inkling-*.zip "$d/out" && ditto "$d/out/Inkling.app" /Applicati
 ```
 
 Если сумма не совпала, остановись и не устанавливай. Распаковывай в отдельную пустую папку, не в папку со скриптами.
-Репозиторий приватный: если `gh` вернул 404, пользователю нужно выполнить `gh auth login` под аккаунтом с доступом.
+Репозиторий публичный; если `gh` вернул ошибку авторизации, пользователю нужно выполнить `gh auth login`.
 
 ### 2. Способ 2: сборка из исходников
 
@@ -216,7 +216,7 @@ open /Applications/Inkling.app
 xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' build test
 ```
 
-Сборка без предупреждений, все тесты зелёные (сейчас 381). Меняешь поведение — добавь тест. Меняешь интерфейс — следуй
+Сборка без предупреждений, все тесты зелёные. Меняешь поведение — добавь тест. Меняешь интерфейс — следуй
 [`docs/design-system.md`](docs/design-system.md) и проверь экран в запущенном приложении, а не только сборкой. Не нашёл способа проверить — напиши об этом в PR.
 
 ### Документация идёт вместе с кодом
