@@ -35,7 +35,7 @@ struct HistoryStore: Sendable {
     }
 
     /// Создаётся один раз: `DateFormatter` дорог, а `entries()` вызывает его на каждый файл. Только чтение, поэтому безопасен.
-    private nonisolated(unsafe) static let stampFormatter: DateFormatter = {
+    private static let stampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "UTC")
