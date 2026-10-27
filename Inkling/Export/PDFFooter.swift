@@ -3,8 +3,9 @@ import CoreGraphics
 
 /// Колонтитулы готового PDF: слева «Предмет · Тема», справа «3 / 12». Печать WKWebView своих колонтитулов
 /// не даёт, поэтому страницы перерисовываются в новый PDF с подписью внизу. Метаданные: название и программа.
+/// Там же ставятся переходы из `navigation`: якоря заголовков, ссылки оглавления и закладки.
 enum PDFFooter {
-    static func stamp(_ url: URL, label: String, title: String) throws {
+    static func stamp(_ url: URL, label: String, title: String, navigation: PDFNavigation.Plan? = nil) throws {
         guard let source = CGPDFDocument(url as CFURL), source.numberOfPages > 0 else {
             throw PDFExportError.printFailed
         }
@@ -20,8 +21,15 @@ enum PDFFooter {
             context.beginPage(mediaBox: &box)
             context.drawPDFPage(page)
             draw(left: label, right: "\(index) / \(count)", in: box, context: context)
+            for anchor in navigation?.anchors ?? [] where anchor.page == index - 1 {
+                context.addDestination(anchor.name as CFString, at: anchor.point)
+            }
+            for link in navigation?.links ?? [] where link.page == index - 1 {
+                context.setDestination(link.name as CFString, for: link.rect)
+            }
             context.endPage()
         }
+        if let navigation, !navigation.bookmarks.isEmpty { CGPDFContextSetOutline(context, navigation.outlineDictionary()) }
         context.closePDF()
         _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
     }
