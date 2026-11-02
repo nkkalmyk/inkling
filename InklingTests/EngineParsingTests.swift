@@ -87,6 +87,12 @@ struct ClaudeParsingTests {
         #expect(details.contains("Not logged in"))
     }
 
+    @Test func expiredSessionIsNotAuthenticated() {
+        let error = ClaudeCodeEngine.classify(message: "Failed to authenticate: OAuth session expired and could not be refreshed",
+                                              stderr: "", apiStatus: nil, exitCode: 1)
+        #expect(error == .notAuthenticated("Failed to authenticate: OAuth session expired and could not be refreshed"))
+    }
+
     @Test func realNodeMissingIsBinaryNotFound() throws {
         guard case .failure(.binaryNotFound) = parse(try RawCLI.output("gemini-nonode")) else {
             Issue.record("Ожидалась binaryNotFound")
