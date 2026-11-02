@@ -136,8 +136,20 @@
     }
   }
 
+  // Модель часто пишет подпункты оглавления как `   1.1. Название` без маркера: для Markdown это не список, и строки
+  // склеиваются в абзац вместе с пунктом выше. Такие строки внутри раздела «Оглавление» становятся вложенным списком.
+  function normalizeToc(markdown) {
+    var inToc = false;
+    return markdown.split('\n').map(function (line) {
+      if (/^##\s+Оглавление\s*$/.test(line)) { inToc = true; return line; }
+      if (inToc && (/^#{1,6}\s/.test(line) || /^---+\s*$/.test(line))) inToc = false;
+      var sub = inToc && /^\s*(\d+(?:\.\d+)+\.?)\s+(\S.*)$/.exec(line);
+      return sub ? '   - ' + sub[1] + ' ' + sub[2] : line;
+    }).join('\n');
+  }
+
   function toHTML(markdown) {
-    var extracted = extractMath(markdown || '');
+    var extracted = extractMath(normalizeToc(markdown || ''));
     var html = md.render(extracted.text);
     // `[?слово]` — догадка модели по смыслу там, где почерк не читается; до подстановки формул, пока они ещё метки.
     html = html.replace(/\[\?([^\]\n<>]+)\]/g, '<mark class="guess" title="Догадка модели по смыслу: проверьте по фото">$1</mark>');
