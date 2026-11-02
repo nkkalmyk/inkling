@@ -127,6 +127,7 @@ h2, h3 { scroll-margin-top: 1em; }
 nav.toc { background: var(--surface); border-radius: 12px; padding: 0.6em 1.2em; margin: 0.8em 0 1.2em; font-family: var(--interface);
           font-size: 0.93em; }
 nav.toc ol, nav.toc ul { margin: 0.2em 0; padding-left: 1.4em; }
+nav.toc ul { list-style: none; padding-left: 1.2em; }
 nav.toc li { margin: 0.25em 0; }
 nav.toc li::marker { color: var(--muted); font-weight: 600; }
 nav.toc a { color: var(--text); text-decoration: none; }

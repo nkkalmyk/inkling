@@ -117,6 +117,35 @@ struct RenderJSTests {
         #expect(!out.contains("href=\"#sec-6\">Пример 1<"))
     }
 
+    @Test func unmarkedSubsectionLinesInTableOfContentsBecomeLinks() {
+        // Так оглавление выдаёт модель: подпункты с отступом, но без маркера списка.
+        let md = """
+        # Конспект
+
+        ## Оглавление
+
+        1. Векторное пространство
+           1.1. Определение и аксиомы
+           1.2. Примеры
+        2. Линейная зависимость
+           2.1. Линейная комбинация
+
+        ## 1. Векторное пространство
+
+        ### 1.1. Определение и аксиомы
+
+        ### 1.2. Примеры
+
+        ## 2. Линейная зависимость
+
+        ### 2.1. Линейная комбинация
+        """
+        let out = html(md)
+        #expect(out.contains("<nav class=\"toc\">"))
+        #expect(out.components(separatedBy: "<a href=\"#sec-").count - 1 == 5, "Все пять пунктов оглавления — ссылки")
+        #expect(!out.contains("1.1. Определение и аксиомы 1.2."), "Подпункты не склеиваются в одну строку")
+    }
+
     @Test func tasksAndDefinitionsGetClasses() {
         let out = html("**Условие:** найти ΔH.\n\n**Решение:** считаем.\n\n**Ответ:** −853,6 кДж.\n\n**Закон Гесса (1840 г.):** эффект не зависит от пути.\n\n**Просто жирный** текст.")
         #expect(out.contains("<p class=\"task task-condition\">"))
