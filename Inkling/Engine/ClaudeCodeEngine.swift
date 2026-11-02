@@ -103,7 +103,8 @@ struct ClaudeCodeEngine: AIEngine {
             return .binaryNotFound(combined)
         }
         if lower.contains("not logged in") || lower.contains("please run /login") || lower.contains("invalid api key")
-            || lower.contains("authentication_failed") || lower.contains("oauth token") {
+            || lower.contains("authentication_failed") || lower.contains("oauth token")
+            || lower.contains("failed to authenticate") || lower.contains("session expired") {
             return .notAuthenticated(combined)
         }
         if apiStatus == 429 || RateLimitDetector.isRateLimited(combined) {
