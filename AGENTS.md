@@ -133,6 +133,7 @@ sqlite3 "$DB" "select method, count(*) from pages group by method;"           # 
 - **Не коммить данные пользователя:** `TestData/real/`, `~/Documents/Inkling/`, фото конспектов, `docs/cli-experiments/tmp/`.
 - **Не снимай карантин и не обходи Gatekeeper молча.** Команду `xattr -dr com.apple.quarantine` выполняй только после явного согласия пользователя и только для `/Applications/Inkling.app`.
 - Не запускай живые тесты (`TEST_RUNNER_INKLING_LIVE_*`) без просьбы: они тратят лимит подписки и память (Ollama ~9 ГБ).
+  В Claude Code это страхует хук `.claude/hooks/guard.sh`: живой тест требует подтверждения, а коммит с личными файлами в индексе отклоняется.
 
 ## Установка для пользователя (сценарий для агента)
 
@@ -216,7 +217,7 @@ open /Applications/Inkling.app
 xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' build test
 ```
 
-Сборка без предупреждений, все тесты зелёные. Меняешь поведение — добавь тест. Меняешь интерфейс — следуй
+Сборка без предупреждений, все тесты зелёные. Полный порядок проверки (сборка, `analyze`, `gitleaks`, индекс, дифф против правил) с итоговым отчётом — в [`.claude/skills/inkling-check/SKILL.md`](.claude/skills/inkling-check/SKILL.md); проходи его перед каждым коммитом и PR. Меняешь поведение — добавь тест. Меняешь интерфейс — следуй
 [`docs/design-system.md`](docs/design-system.md) и проверь экран в запущенном приложении, а не только сборкой. Не нашёл способа проверить — напиши об этом в PR.
 
 ### Документация идёт вместе с кодом
