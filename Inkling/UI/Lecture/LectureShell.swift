@@ -121,6 +121,7 @@ struct LectureActivityIndicator: View {
     @Environment(StudyCenter.self) private var study
     let lecture: LectureRecord
     var exportingPDFSince: Date?
+    var exportingHTMLSince: Date?
 
     var body: some View {
         ActivityIndicator(activities: activities)
@@ -160,6 +161,9 @@ struct LectureActivityIndicator: View {
         if let exportingPDFSince {
             result.append(Activity(id: "pdf", title: "Экспорт в PDF", startedAt: exportingPDFSince))
         }
+        if let exportingHTMLSince {
+            result.append(Activity(id: "html", title: "Экспорт в HTML", startedAt: exportingHTMLSince))
+        }
         return result
     }
 }
@@ -175,6 +179,7 @@ struct LectureCommands {
     var exportMarkdown: (() -> Void)?
     var exportPDF: (() -> Void)?
     var exportCheatSheet: (() -> Void)?
+    var exportHTML: (() -> Void)?
     var exportAnki: (() -> Void)?
     var copyForChat: (() -> Void)?
     var previousLecture: (() -> Void)?
@@ -246,6 +251,8 @@ struct LectureMenuCommands: View {
                 .disabled(commands?.exportPDF == nil)
             Button("Шпаргалка в PDF") { commands?.exportCheatSheet?() }
                 .disabled(commands?.exportCheatSheet == nil)
+            Button("Конспект в HTML") { commands?.exportHTML?() }
+                .disabled(commands?.exportHTML == nil)
             Button("Карточки для Anki…") { commands?.exportAnki?() }
                 .disabled(commands?.exportAnki == nil)
         }
