@@ -10,7 +10,7 @@
 по химии, математике и физике, собирает из них учебный конспект с формулами,
 связывает лекции между собой и готовит вопросы, тест и флеш-карточки.
 
-[![Скачать Inkling 1.0.0](https://img.shields.io/badge/Скачать-Inkling_1.0.0-F5B83D?style=for-the-badge&logo=apple&logoColor=black&labelColor=1C1C1E)](https://github.com/nkkalmyk/inkling/releases/latest)
+[![Скачать Inkling 1.0.0](https://img.shields.io/badge/Скачать-Inkling_1.0.0-F5B83D?style=for-the-badge&logo=apple&logoColor=white&labelColor=1C1C1E)](https://github.com/nkkalmyk/inkling/releases/latest)
 
 ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-111111?logo=apple&logoColor=white)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)

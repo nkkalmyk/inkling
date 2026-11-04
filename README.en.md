@@ -4,7 +4,7 @@
 
 # Inkling
 
-[![Download Inkling 1.0.0](https://img.shields.io/badge/Download-Inkling_1.0.0-F5B83D?style=for-the-badge&logo=apple&logoColor=black&labelColor=1C1C1E)](https://github.com/nkkalmyk/inkling/releases/latest)
+[![Download Inkling 1.0.0](https://img.shields.io/badge/Download-Inkling_1.0.0-F5B83D?style=for-the-badge&logo=apple&logoColor=white&labelColor=1C1C1E)](https://github.com/nkkalmyk/inkling/releases/latest)
 
 ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-111111?logo=apple&logoColor=white)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
