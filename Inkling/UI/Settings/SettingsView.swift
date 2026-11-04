@@ -101,6 +101,7 @@ private struct EngineSettings: View {
             Picker("Основной движок", selection: $settings.primaryEngine) {
                 Text(AppSettings.Engine.claude.pickerTitle).tag(AppSettings.Engine.claude)
                 Text(AppSettings.Engine.codex.pickerTitle).tag(AppSettings.Engine.codex)
+                Text(AppSettings.Engine.gemini.pickerTitle).tag(AppSettings.Engine.gemini)
                 Text(AppSettings.Engine.ollama.pickerTitle).tag(AppSettings.Engine.ollama)
             }
             Picker("Запасной движок", selection: $settings.fallbackEngine) {
@@ -153,6 +154,19 @@ private struct EngineSettings: View {
                     .foregroundStyle(.secondary)
             }
             Section {
+                GeminiKeyField()
+                GeminiModelPicker()
+                ConnectionCheckRow(engine: .gemini)
+            } header: {
+                Text("Gemini (ключ AI Studio)")
+            } footer: {
+                Text("Вход по подписке Google AI Pro недоступен: Gemini CLI и Antigravity отказывают таким аккаунтам, а условия Google "
+                     + "запрещают чужой вход из сторонних приложений. Нужен ключ с aistudio.google.com/apikey, он хранится в связке ключей. "
+                     + "Страницы конспектов уходят в Google; на бесплатном уровне Google может использовать их для улучшения своих продуктов "
+                     + "(проверьте условия).")
+                    .foregroundStyle(.secondary)
+            }
+            Section {
                 TextField("Путь к ollama", text: $settings.ollamaPathOverride, prompt: Text("Автопоиск"))
                 OllamaModelPicker()
                 ConnectionCheckRow(engine: .ollama)
@@ -186,6 +200,63 @@ private struct ClaudeModelPicker: View {
         }
         if !known.contains(settings.claudeModel) {
             TextField("Своя модель", text: $settings.claudeModel, prompt: Text("например, claude-sonnet-5-5"))
+        }
+    }
+}
+
+/// Ключ Gemini: вводится один раз, дальше хранится в связке ключей и в поле не показывается.
+private struct GeminiKeyField: View {
+    @Environment(EngineCenter.self) private var engines
+    @State private var input = ""
+    @State private var failed = false
+
+    var body: some View {
+        LabeledContent("Ключ API") {
+            VStack(alignment: .trailing, spacing: Spacing.s) {
+                HStack {
+                    SecureField("Ключ API", text: $input, prompt: Text(engines.geminiKeyStored ? "Ключ сохранён" : "Вставьте ключ"))
+                        .labelsHidden()
+                        .onSubmit(save)
+                    Button("Сохранить", action: save)
+                        .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty)
+                    if engines.geminiKeyStored {
+                        Button("Удалить") { failed = !engines.saveGeminiKey("") }
+                    }
+                }
+                if failed {
+                    Label("Связка ключей отказала в записи.", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Color.statusError)
+                        .font(.meta)
+                }
+            }
+        }
+        .onAppear { engines.refreshGeminiKey() }
+    }
+
+    private func save() {
+        guard !input.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        failed = !engines.saveGeminiKey(input)
+        if !failed { input = "" }
+    }
+}
+
+/// Модель Gemini: из списка или своя строка.
+private struct GeminiModelPicker: View {
+    @Environment(AppSettings.self) private var settings
+    private static let custom = "__custom__"
+
+    var body: some View {
+        @Bindable var settings = settings
+        let known = AppSettings.geminiModels.map(\.id)
+        Picker("Модель", selection: Binding(
+            get: { known.contains(settings.geminiModel) ? settings.geminiModel : Self.custom },
+            set: { settings.geminiModel = $0 == Self.custom ? "" : $0 })) {
+            ForEach(AppSettings.geminiModels, id: \.id) { Text($0.title).tag($0.id) }
+            Divider()
+            Text("Другая…").tag(Self.custom)
+        }
+        if !known.contains(settings.geminiModel) {
+            TextField("Своя модель", text: $settings.geminiModel, prompt: Text("например, gemini-3.5-flash"))
         }
     }
 }

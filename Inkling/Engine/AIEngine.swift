@@ -1,16 +1,18 @@
 import Foundation
 
-/// Идентификатор движка: Claude Code, Codex (ChatGPT) и локальная Ollama (SPEC, раздел 13).
+/// Идентификатор движка: Claude Code, Codex (ChatGPT), Gemini (ключ AI Studio) и локальная Ollama (SPEC, раздел 13).
 enum EngineID: String, Codable, Sendable, CaseIterable {
     case claude
     case ollama
     case codex
+    case gemini
 
     var title: String {
         switch self {
         case .claude: "Claude Code"
         case .ollama: "Ollama (локально)"
         case .codex: "Codex (ChatGPT)"
+        case .gemini: "Gemini (ключ AI Studio)"
         }
     }
 
@@ -74,6 +76,10 @@ enum AIError: Error, Equatable, Sendable {
     case codexUnavailable(String)
     /// Codex: нет входа через ChatGPT.
     case codexNotAuthenticated(String)
+    /// Gemini: ключ не задан или Google его не принял.
+    case geminiNotAuthenticated(String)
+    /// Gemini: выбранной модели нет (404).
+    case geminiModelUnavailable(model: String)
 
     /// Повтор на том же движке имеет смысл (SPEC, раздел 2.6).
     var isRetryable: Bool {
@@ -119,6 +125,10 @@ enum AIError: Error, Equatable, Sendable {
             return "Не найден Codex. Установите его (brew install codex) или укажите путь к codex в настройках (вкладка «Движок»)."
         case .codexNotAuthenticated:
             return "Codex не выполнил вход. Откройте Терминал, запустите «codex login», войдите через ChatGPT и повторите."
+        case .geminiNotAuthenticated:
+            return "Gemini не принял ключ или отказал в доступе. Создайте ключ на aistudio.google.com/apikey и вставьте его в настройках (вкладка «Движок»)."
+        case .geminiModelUnavailable(let model):
+            return "Модель Gemini «\(model)» недоступна для вашего ключа. Выберите другую в настройках (вкладка «Движок»)."
         }
     }
 
@@ -126,8 +136,8 @@ enum AIError: Error, Equatable, Sendable {
     var details: String {
         switch self {
         case .binaryNotFound(let s), .notAuthenticated(let s), .invalidOutput(let s), .ollamaUnavailable(let s),
-             .codexUnavailable(let s), .codexNotAuthenticated(let s): s
-        case .modelNotInstalled(let model): model
+             .codexUnavailable(let s), .codexNotAuthenticated(let s), .geminiNotAuthenticated(let s): s
+        case .modelNotInstalled(let model), .geminiModelUnavailable(let model): model
         case .rateLimited(_, let s): s
         case .processFailed(_, let stderr): stderr
         case .timeout, .cancelled: ""

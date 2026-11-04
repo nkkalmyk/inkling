@@ -247,7 +247,7 @@ final class RecognitionCenter {
         // Нет входа, нет бинарника, лимит без запасного: остальные страницы упадут так же — останавливаем очередь.
         switch error {
         case .notAuthenticated, .binaryNotFound, .rateLimited, .ollamaUnavailable, .modelNotInstalled,
-             .codexUnavailable, .codexNotAuthenticated:
+             .codexUnavailable, .codexNotAuthenticated, .geminiNotAuthenticated, .geminiModelUnavailable:
             blockingError = error
             let stopped = queue
             queue.removeAll()

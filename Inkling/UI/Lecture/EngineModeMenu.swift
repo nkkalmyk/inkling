@@ -23,6 +23,7 @@ struct EngineModeMenu: View {
 
     private var claude: String { "Claude (\(settings.claudeModel.isEmpty ? "sonnet" : settings.claudeModel))" }
     private var codex: String { "Codex (не проверен вживую)" }
+    private var gemini: String { "Gemini (\(settings.geminiModel.isEmpty ? GeminiEngine.Config.defaultModel : settings.geminiModel))" }
     private var local: String { "локальная (\(settings.ollamaModel))" }
 
     private func description(_ mode: AppSettings.EngineMode) -> String {
@@ -34,6 +35,7 @@ struct EngineModeMenu: View {
             return "Авто: \(main), при лимите — \(name(spare, capitalized: false))"
         case .claudeOnly: return "Только \(claude)"
         case .codexOnly: return "Только \(codex)"
+        case .geminiOnly: return "Только \(gemini)"
         case .localOnly: return "Только \(local)"
         }
     }
@@ -42,6 +44,7 @@ struct EngineModeMenu: View {
         switch engine {
         case .claude: claude
         case .codex: codex
+        case .gemini: gemini
         case .ollama: capitalized ? local.capitalizedFirst : local
         }
     }
@@ -51,6 +54,7 @@ struct EngineModeMenu: View {
         case .auto: "Авто"
         case .claudeOnly: "Claude"
         case .codexOnly: "Codex"
+        case .geminiOnly: "Gemini"
         case .localOnly: "Локально"
         }
     }
@@ -58,7 +62,7 @@ struct EngineModeMenu: View {
     private var icon: String {
         switch settings.engineMode {
         case .auto: "arrow.triangle.branch"
-        case .claudeOnly, .codexOnly: "cloud"
+        case .claudeOnly, .codexOnly, .geminiOnly: "cloud"
         case .localOnly: "desktopcomputer"
         }
     }

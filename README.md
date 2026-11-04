@@ -16,7 +16,7 @@
 ![Claude Code](https://img.shields.io/badge/движок-Claude_Code-D97757)
 ![Codex](https://img.shields.io/badge/движок-Codex_(не_проверен)-10A37F)
 ![Ollama](https://img.shields.io/badge/запасной-Ollama-555555)
-![Version](https://img.shields.io/badge/версия-0.8.0-F5B83D)
+![Version](https://img.shields.io/badge/версия-0.9.0-F5B83D)
 
 </div>
 
@@ -65,13 +65,14 @@ flowchart LR
 
 ### Движки
 
-Своих API-ключей у Inkling нет. Приложение вызывает уже установленные инструменты:
+Своих API-ключей у Inkling нет, кроме необязательного Gemini (ваш ключ, в связке ключей). Остальное приложение вызывает уже установленные инструменты:
 
 - **Claude Code** (`claude -p`) — основной движок, работает по подписке Claude Pro. Каждый вызов изолирован: отдельная временная папка, без MCP, хуков и ваших настроек, из инструментов доступно только чтение.
 - **Codex** (`codex exec`) — для подписки ChatGPT, если Claude нет. Вход один раз командой `codex login`. Написан по документации OpenAI и пока **не проверен вживую**: нужны отзывы тех, у кого есть подписка.
+- **Gemini** (необязательно) — по ключу с [aistudio.google.com/apikey](https://aistudio.google.com/apikey), не по подписке Google AI Pro: подписки Gemini CLI и Antigravity не принимают. Страницы уходят в Google.
 - **Ollama** с моделью `inkling-ocr` (Qwen3.5-9B) — необязательный локальный запасной движок. Включается, когда кончился лимит, или вручную через меню «Модель». Всё, что сделала локальная модель, помечено «проверьте».
 
-Почему не Gemini, описано в [`docs/cli-notes.md`](docs/cli-notes.md).
+Почему Gemini идёт по ключу, а не по подписке, описано в [`docs/cli-notes.md`](docs/cli-notes.md).
 
 ## Установка
 

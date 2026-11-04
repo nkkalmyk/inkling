@@ -6,6 +6,11 @@ import Observation
 @Observable
 final class EngineCenter {
     private let settings: AppSettings
+    private let secrets: any SecretStore
+    /// Имя записи в связке ключей.
+    nonisolated static let geminiKeyAccount = "gemini-api-key"
+    /// Есть ли ключ Gemini; обновляется `refreshGeminiKey()`, чтобы не трогать связку ключей при запуске.
+    private(set) var geminiKeyStored = false
     private(set) var checking: Set<EngineID> = []
     private(set) var reports: [EngineID: ConnectionReport] = [:]
     /// Модели, установленные в Ollama, для списка в настройках.
@@ -17,8 +22,25 @@ final class EngineCenter {
     /// Порог сборки по частям для локального движка (SPEC, раздел 13, этап 8).
     static let localChunkThreshold = 15_000
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, secrets: any SecretStore = KeychainSecretStore()) {
         self.settings = settings
+        self.secrets = secrets
+    }
+
+    func refreshGeminiKey() {
+        geminiKeyStored = secrets.read(account: Self.geminiKeyAccount) != nil
+    }
+
+    /// Сохраняет ключ (пустая строка удаляет). Возвращает `false`, если связка ключей отказала.
+    @discardableResult
+    func saveGeminiKey(_ key: String) -> Bool {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        defer { refreshGeminiKey() }
+        guard !trimmed.isEmpty else {
+            secrets.delete(account: Self.geminiKeyAccount)
+            return true
+        }
+        return secrets.write(trimmed, account: Self.geminiKeyAccount)
     }
 
     func engine(_ id: EngineID) -> any AIEngine {
@@ -30,6 +52,9 @@ final class EngineCenter {
         case .codex:
             CodexEngine(config: .init(manualPath: settings.codexPathOverride, model: settings.codexModel,
                                       keepTempOnError: settings.keepTempFoldersOnError))
+        case .gemini:
+            GeminiEngine(config: .init(model: settings.geminiModel.isEmpty ? GeminiEngine.Config.defaultModel : settings.geminiModel),
+                         apiKey: { [secrets] in secrets.read(account: Self.geminiKeyAccount) })
         case .ollama:
             OllamaEngine(config: .init(manualPath: settings.ollamaPathOverride,
                                        model: settings.ollamaModel.isEmpty ? OllamaEngine.Config.defaultModel
@@ -43,6 +68,7 @@ final class EngineCenter {
         switch mode {
         case .claudeOnly: return (.claude, nil)
         case .codexOnly: return (.codex, nil)
+        case .geminiOnly: return (.gemini, nil)
         case .localOnly: return (.ollama, nil)
         case .auto:
             let main = primary.engineID ?? .claude
@@ -65,7 +91,7 @@ final class EngineCenter {
         let routing = routing
         let key = [routing.primary.rawValue, routing.fallback?.rawValue ?? "-", "\(settings.autoFallback)",
                    "\(settings.maxParallelCalls)", settings.claudePathOverride, settings.claudeModel,
-                   settings.codexPathOverride, settings.codexModel, settings.ollamaPathOverride, settings.ollamaModel,
+                   settings.codexPathOverride, settings.codexModel, settings.geminiModel, settings.ollamaPathOverride, settings.ollamaModel,
                    "\(settings.keepTempFoldersOnError)"].joined(separator: "|")
         if let cachedRouter, cachedRouter.key == key { return cachedRouter.router }
         let router = EngineRouter(primary: engine(routing.primary),
