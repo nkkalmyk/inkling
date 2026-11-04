@@ -22,15 +22,21 @@ struct LectureNeighbors: Equatable, Sendable {
 }
 
 extension Library {
+    /// Лекции предмета, к которому относится лекция.
+    func subjectLectures(containing id: UUID) -> [LectureRecord] {
+        subjects.first(where: { $0.lectures.contains { $0.id == id } })?.lectures ?? []
+    }
+
     /// Соседи лекции внутри её предмета.
     func neighbors(of id: UUID) -> LectureNeighbors {
-        guard let subject = subjects.first(where: { $0.lectures.contains { $0.id == id } }) else { return LectureNeighbors() }
-        return LectureNeighbors.find(id, in: subject.lectures)
+        LectureNeighbors.find(id, in: subjectLectures(containing: id))
     }
 
     /// Открывает лекцию на той же вкладке, что и текущая: переход из конспекта ведёт в конспект соседа.
-    func openLecture(_ id: UUID, tab: LectureTab) {
+    /// `anchor` — раздел конспекта (`sec-N`), к которому прокрутить.
+    func openLecture(_ id: UUID, tab: LectureTab, anchor: String? = nil) {
         requestedTab = tab
+        requestedAnchor = anchor.map { AnchorRequest(lecture: id, anchor: $0) }
         selection = id
     }
 }

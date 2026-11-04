@@ -24,10 +24,13 @@ struct KonspektSearchText: Sendable {
 
     let plain: String
     private let words: [Word]
+    /// Понятия, определённые в этом конспекте (`ConceptExtractor`), для ссылок между лекциями.
+    let concepts: [Concept]
 
     init(markdown: String) {
         let plain = Self.plainText(markdown)
         self.plain = plain
+        concepts = ConceptExtractor.concepts(in: markdown)
         var words: [Word] = []
         var start: String.Index?
         var index = plain.startIndex
@@ -56,14 +59,29 @@ struct KonspektSearchText: Sendable {
         return query.split { !$0.isLetter && !$0.isNumber }.compactMap { piece -> String? in
             let word = normalized(piece)
             guard word.count >= RussianNormalizer.minimumLength, !RussianNormalizer.stopwords.contains(word) else { return nil }
-            var stem = Substring(word)
-            while stem.count > 4, let last = stem.last, "аеиоуыэюяйь".contains(last) { stem = stem.dropLast() }
-            return seen.insert(String(stem)).inserted ? String(stem) : nil
+            let stem = stem(Substring(word))
+            return seen.insert(stem).inserted ? stem : nil
         }
     }
 
-    private static func normalized(_ word: Substring) -> String {
+    /// Основа слова: нижний регистр, `ё → е`, отрезаны гласные окончания, но не короче четырёх букв.
+    /// Та же основа у понятий (`ConceptExtractor`); в `render.js` слова текста приводятся так же (`normalizeWord`).
+    static func stem(_ word: Substring) -> String {
+        var stem = Substring(normalized(word))
+        while stem.count > 4, let last = stem.last, "аеиоуыэюяйь".contains(last) { stem = stem.dropLast() }
+        return String(stem)
+    }
+
+    static func normalized(_ word: Substring) -> String {
         word.lowercased().replacingOccurrences(of: "ё", with: "е")
+    }
+
+    /// Есть ли в тексте подряд слова с этими основами (понятие из нескольких слов).
+    func contains(_ stems: [String]) -> Bool {
+        guard !stems.isEmpty, words.count >= stems.count else { return false }
+        return (0...(words.count - stems.count)).contains { start in
+            stems.indices.allSatisfy { words[start + $0].token.hasPrefix(stems[$0]) }
+        }
     }
 
     /// Фрагмент вокруг первого найденного слова, если в конспекте есть все слова запроса.
@@ -150,6 +168,11 @@ final class KonspektSearchCenter {
                 if let text { texts[id] = text } else { keys[id] = nil }
             }
         }
+    }
+
+    /// Ссылки по понятиям для конспекта лекции среди лекций её предмета (`ConceptLinks`).
+    func conceptLinks(for id: UUID, among lectures: [LectureRecord]) -> ConceptLinks {
+        ConceptLinks.build(for: id, lectures: lectures, texts: texts)
     }
 
     /// Фрагменты лекций, в конспекте которых есть все слова запроса.

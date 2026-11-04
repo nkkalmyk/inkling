@@ -28,6 +28,31 @@ struct RenderJSTests {
         context.objectForKeyedSubscript("InklingRender")!.invokeMethod("toHTML", withArguments: [markdown])!.toString()
     }
 
+    /// Ссылка на понятие ведёт в раздел по якорю `sec-N`: приложение считает заголовки так же, как `render.js`.
+    @Test func conceptAnchorsMatchRenderedHeadings() throws {
+        let markdown = """
+        # Конспект
+        Вступление.
+        ## 1. Матрицы
+        **Квадратная матрица** — матрица, у которой строк столько же, сколько столбцов.
+        #### Мелкий подзаголовок без якоря
+        ```
+        # не заголовок
+        ```
+        ### 1.1. Определитель
+        **Определитель (детерминант)** — число, сопоставленное квадратной матрице.
+        """
+        let concepts = ConceptExtractor.concepts(in: markdown)
+        let rendered = html(markdown)
+        for concept in concepts {
+            let anchor = try #require(concept.anchor)
+            let heading = try #require(rendered.range(of: "id=\"\(anchor)\""))
+            #expect(rendered[heading.upperBound...].hasPrefix(">\(concept.section ?? "")"),
+                    "якорь \(anchor) стоит у заголовка «\(concept.section ?? "")»")
+        }
+        #expect(concepts.map(\.anchor) == ["sec-2", "sec-3", "sec-3"])
+    }
+
     @Test func remoteImagesAreNotRendered() {
         let out = html("![схема](https://evil.example/p.png?d=1) и ![](//evil.example/x.png)")
         #expect(!out.contains("<img") && !out.contains("evil.example"))
