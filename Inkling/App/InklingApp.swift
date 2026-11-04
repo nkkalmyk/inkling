@@ -14,6 +14,7 @@ struct InklingApp: App {
     @State private var study: StudyCenter
     @State private var literature: LiteratureCenter
     @State private var konspektCheck: KonspektCheckCenter
+    @State private var konspektSearch = KonspektSearchCenter()
 
     init() {
         let settings = AppSettings()
@@ -56,6 +57,7 @@ struct InklingApp: App {
                 .environment(study)
                 .environment(literature)
                 .environment(konspektCheck)
+                .environment(konspektSearch)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
                 .task {
                     appDelegate.library = library
