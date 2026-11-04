@@ -9,6 +9,7 @@ final class AppSettings {
     enum Engine: String, CaseIterable, Identifiable {
         case claude
         case codex
+        case gemini
         case ollama
         case none
 
@@ -18,6 +19,7 @@ final class AppSettings {
             switch self {
             case .claude: EngineID.claude.title
             case .codex: EngineID.codex.title
+            case .gemini: EngineID.gemini.title
             case .ollama: EngineID.ollama.title
             case .none: "Нет"
             }
@@ -32,6 +34,7 @@ final class AppSettings {
             switch self {
             case .claude: .claude
             case .codex: .codex
+            case .gemini: .gemini
             case .ollama: .ollama
             case .none: nil
             }
@@ -44,6 +47,7 @@ final class AppSettings {
         case auto
         case claudeOnly
         case codexOnly
+        case geminiOnly
         case localOnly
 
         var id: String { rawValue }
@@ -53,10 +57,17 @@ final class AppSettings {
             case .auto: "Авто"
             case .claudeOnly: "Только Claude"
             case .codexOnly: "Только Codex"
+            case .geminiOnly: "Только Gemini"
             case .localOnly: "Только локальная"
             }
         }
     }
+
+    /// Модели Gemini в списке настроек; любую другую можно вписать вручную. Порядок — по результатам прогона (docs/cli-notes.md).
+    static let geminiModels: [(id: String, title: String)] = [
+        ("gemini-3.5-flash", "Gemini 3.5 Flash"), ("gemini-3-flash-preview", "Gemini 3 Flash (preview)"),
+        ("gemini-flash-lite-latest", "Gemini Flash-Lite"), ("gemini-flash-latest", "Gemini Flash (последняя)"),
+    ]
 
     /// Модели Claude Code в списке настроек (алиасы CLI). Любую другую можно вписать вручную.
     static let claudeModels: [(id: String, title: String)] = [("sonnet", "Sonnet"), ("opus", "Opus"), ("haiku", "Haiku")]
@@ -92,6 +103,8 @@ final class AppSettings {
     var codexPathOverride: String { didSet { defaults.set(codexPathOverride, forKey: Keys.codexPathOverride) } }
     /// Пусто — модель выбирает сам Codex.
     var codexModel: String { didSet { defaults.set(codexModel, forKey: Keys.codexModel) } }
+    /// Модель Gemini; пусто — `GeminiEngine.Config.defaultModel`. Ключ лежит в связке ключей, не здесь.
+    var geminiModel: String { didSet { defaults.set(geminiModel, forKey: Keys.geminiModel) } }
     var ollamaPathOverride: String { didSet { defaults.set(ollamaPathOverride, forKey: Keys.ollamaPathOverride) } }
     var ollamaModel: String { didSet { defaults.set(ollamaModel, forKey: Keys.ollamaModel) } }
     var pageTimeoutSeconds: Int { didSet { defaults.set(pageTimeoutSeconds, forKey: Keys.pageTimeoutSeconds) } }
@@ -120,6 +133,7 @@ final class AppSettings {
             .flatMap { try? JSONDecoder().decode([String: String].self, from: $0) } ?? [:]
         codexPathOverride = defaults.string(forKey: Keys.codexPathOverride) ?? ""
         codexModel = defaults.string(forKey: Keys.codexModel) ?? ""
+        geminiModel = defaults.string(forKey: Keys.geminiModel) ?? GeminiEngine.Config.defaultModel
         ollamaPathOverride = defaults.string(forKey: Keys.ollamaPathOverride) ?? ""
         ollamaModel = defaults.string(forKey: Keys.ollamaModel) ?? OllamaEngine.Config.defaultModel
         pageTimeoutSeconds = defaults.object(forKey: Keys.pageTimeoutSeconds) as? Int ?? 120
@@ -144,6 +158,7 @@ final class AppSettings {
         static let literatureSubjectCollections = "literatureSubjectCollections"
         static let codexPathOverride = "codexPathOverride"
         static let codexModel = "codexModel"
+        static let geminiModel = "geminiModel"
         static let ollamaPathOverride = "ollamaPathOverride"
         static let ollamaModel = "ollamaModel"
         static let pageTimeoutSeconds = "pageTimeoutSeconds"

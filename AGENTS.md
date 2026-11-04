@@ -5,7 +5,7 @@
 
 ## Что это
 
-**Inkling** — нативное macOS-приложение (Swift 6, SwiftUI, macOS 26+, XcodeGen): фото рукописных конспектов и PDF слайдов → Markdown-конспект с формулами → вопросы, тест, флеш-карточки. Своих API-ключей нет: приложение запускает установленные CLI (`claude`, `codex`) или локальную Ollama. Данные — обычные файлы в `~/Documents/Inkling/`, базы нет.
+**Inkling** — нативное macOS-приложение (Swift 6, SwiftUI, macOS 26+, XcodeGen): фото рукописных конспектов и PDF слайдов → Markdown-конспект с формулами → вопросы, тест, флеш-карточки. Своих API-ключей нет: приложение запускает установленные CLI (`claude`, `codex`) или локальную Ollama. Исключение — Gemini: ключ AI Studio пользователя хранится в связке ключей (`GeminiEngine`, `SPEC.md` раздел 13). Данные — обычные файлы в `~/Documents/Inkling/`, базы нет.
 Полное ТЗ — `SPEC.md`; **раздел 13 главнее остальных**, решения оттуда согласованы с владельцем, не пересматривай их без вопроса.
 
 ## Архитектура и ключевые файлы
@@ -13,7 +13,7 @@
 | Папка | Что внутри |
 |---|---|
 | `Inkling/App` | `InklingApp`, `AppDelegate`, `AppSettings`, `EngineCenter` (выбор и состояние движков) |
-| `Inkling/Engine` | `AIEngine` (протокол), `ClaudeCodeEngine`, `CodexEngine`, `OllamaEngine`, `EngineRouter` (основной → запасной), `ProcessRunner` (`posix_spawn`), `BinaryLocator`, `RateLimitDetector` |
+| `Inkling/Engine` | `AIEngine` (протокол), `ClaudeCodeEngine`, `CodexEngine`, `GeminiEngine` (HTTPS, ключ из `SecretStore`), `OllamaEngine`, `EngineRouter` (основной → запасной), `ProcessRunner` (`posix_spawn`), `BinaryLocator`, `RateLimitDetector` |
 | `Inkling/Pipeline` | `Recognition` (страница → Markdown, режим «Подробно»), `Assembly` (сборка `konspekt.md`: «Учебный конспект» по фото страниц — `StudyAssembly`, «Точная сборка» по тексту), `Study` (вопросы, тест, карточки), `Enrichment` (разбор блоков прежней функции «Дополнить» в старых конспектах), `Check` (локальная проверка конспекта и «Исправить формулы»), `Prompts/PromptLibrary` |
 | `Inkling/Literature` | индекс учебников: `LiteratureIndexer` (PDFKit-слой или Vision OCR сканов), `LiteratureStore` (SQLite FTS5 в Application Support), `RussianNormalizer`, `LiteratureRetrieval` (выдержки по словам лекции), `LiteratureCenter` (состояние для UI) |
 | `Inkling/Library`, `Inkling/Storage` | состояние библиотеки для UI; файловое хранилище (`AtomicFile`, `LectureMeta`, `KonspektStore`, `HistoryStore`, iCloud) |
@@ -50,6 +50,13 @@ TEST_RUNNER_INKLING_LIVE_OLLAMA=1 xcodebuild -scheme Inkling -destination 'platf
   -only-testing:InklingTests/OllamaLiveTests -only-testing:InklingTests/EndToEndTests   # ~9 ГБ памяти; потом pkill -f "ollama serve"
 ```
 
+Gemini (тратит квоту ключа, отправляет синтетические страницы в Google; ключ только в окружении запуска, в файлы и вывод его не пиши):
+
+```bash
+TEST_RUNNER_INKLING_LIVE_GEMINI=1 TEST_RUNNER_INKLING_LIVE_GEMINI_KEY=<ключ> xcodebuild -scheme Inkling -destination 'platform=macOS' test \
+  -only-testing:InklingTests/GeminiLiveTests   # ~3,5 мин; модель — INKLING_LIVE_GEMINI_MODEL
+```
+
 Учебная сборка на копии реальной лекции: `TEST_RUNNER_INKLING_LIVE_CLAUDE=1 TEST_RUNNER_INKLING_LIVE_LECTURE=<папка лекции> TEST_RUNNER_INKLING_LIVE_OUT=<файл> xcodebuild -scheme Inkling -destination 'platform=macOS' test -only-testing:InklingTests/StudyAssemblyLiveTests` (модель — `INKLING_LIVE_MODEL`, по умолчанию opus). Индексация реальных учебников (долго, греет процессор): `TEST_RUNNER_INKLING_LIVE_INDEX=1 TEST_RUNNER_INKLING_LIVE_BOOKS=<файл строк «коллекция|путь к PDF»> TEST_RUNNER_INKLING_LIVE_LOG=<лог> xcodebuild … test -only-testing:InklingTests/LiteratureIndexLiveTests`; пишет в настоящий индекс приложения. Сравнение обычного и подробного распознавания: `INKLING_LIVE_PAGE`, `INKLING_LIVE_OUT_DIR`, `INKLING_LIVE_VARIANTS` (`DetailedRecognitionLiveTests`).
 
 ## Конвенции кода
@@ -57,7 +64,7 @@ TEST_RUNNER_INKLING_LIVE_OLLAMA=1 xcodebuild -scheme Inkling -destination 'platf
 - Swift 6 со строгой конкурентностью. Тяжёлое и чтение файлов лекций — вне главного потока (в iCloud файл может быть выгружен). Файлы данных пишутся атомарно (`AtomicFile`).
 - Пиши по правилам скилла `write-swift`: value types, `actor`/`@MainActor` по назначению, без `print`/`NSLog`, без принудительных разворачиваний там, где можно обойтись.
 - Идентификаторы в коде на английском; интерфейс, сообщения об ошибках, комментарии, коммиты — на русском. Комментарий только там, где неочевидно «почему».
-- Сторонний код — только JS-ассеты в бандле с зафиксированными версиями (`Inkling/Resources/Web/vendor/VERSIONS.md`). Никаких SPM/CocoaPods и сетевых вызовов приложения (кроме loopback Ollama).
+- Сторонний код — только JS-ассеты в бандле с зафиксированными версиями (`Inkling/Resources/Web/vendor/VERSIONS.md`). Никаких SPM/CocoaPods и сетевых вызовов приложения (кроме loopback Ollama и `GeminiEngine`, который ходит только в `generativelanguage.googleapis.com`).
 - Флаги внешних CLI бери только из `docs/cli-notes.md`; нужен новый — сначала `--help` и пробный запуск, результат запиши туда же.
 - Новая функция — тест рядом (`InklingTests`). Меняешь интерфейс — запусти приложение и посмотри экран, а не только сборку.
 
@@ -129,7 +136,7 @@ sqlite3 "$DB" "select method, count(*) from pages group by method;"           # 
 ## Жёсткие запреты
 
 - **Не вводи учётные данные.** Вход в `claude`, `codex`, GitHub делает сам пользователь (`claude`, `codex login`, `gh auth login`).
-  Не проси у пользователя токены и ключи, не записывай их в файлы и вывод.
+  Не проси у пользователя токены и ключи, не записывай их в файлы и вывод. Ключ Gemini вводит сам пользователь в «Настройки → Движок»; в тестах только фикстуры, без настоящего ключа.
 - **Не коммить данные пользователя:** `TestData/real/`, `~/Documents/Inkling/`, фото конспектов, `docs/cli-experiments/tmp/`.
 - **Не снимай карантин и не обходи Gatekeeper молча.** Команду `xattr -dr com.apple.quarantine` выполняй только после явного согласия пользователя и только для `/Applications/Inkling.app`.
 - Не запускай живые тесты (`TEST_RUNNER_INKLING_LIVE_*`) без просьбы: они тратят лимит подписки и память (Ollama ~9 ГБ).

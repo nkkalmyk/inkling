@@ -80,6 +80,26 @@ claude -p "<промпт>" \
 ### Модели
 `--model` принимает алиасы (`sonnet`, `opus`, `fable`) и полные имена. С `sonnet` фактически отвечает `claude-sonnet-5-5` (видно в `modelUsage`). По умолчанию для распознавания берём `sonnet`.
 
+## Gemini по ключу AI Studio (REST, `GeminiEngine`) — 2026-11-04
+
+Вход по подписке (Gemini CLI, Antigravity) недоступен (разделы ниже), поэтому движок ходит в API напрямую: `POST https://generativelanguage.googleapis.com/v1beta/models/<модель>:generateContent`, ключ в заголовке `x-goog-api-key`. Тело: `systemInstruction`, `contents[].parts` (текст и `inline_data` JPEG), `generationConfig.temperature = 0`; для JSON `responseMimeType: application/json`, схема текстом в системном промпте (`responseSchema` понимает не всю JSON Schema).
+
+**Ошибки (проверено на бесплатном ключе):** `429 RESOURCE_EXHAUSTED` — квота (в `error.details[].retryDelay` секунды до повтора, если есть); `503 UNAVAILABLE` — «high demand», временная перегрузка модели; `404` — модели нет (`gemini-2.5-flash` закрыта для новых ключей); `400 API key not valid` и 403 — ключ. `gemini` CLI на 429 молча повторяет запросы минутами, поэтому CLI не используется.
+
+**Список моделей** ключа: `GET /v1beta/models` (фильтр `generateContent`). Квоты у моделей разные: на бесплатном ключе `gemini-pro-latest` дала 429, `gemini-3.7-flash` и `gemini-3.8-flash` — 429 и 503 на всех страницах.
+
+**Замер на 10 отложенных страницах** (`~/inkling-lora/data/test.jsonl`, эталон — сохранённый текст Claude, промпт переписчика как у Ollama, `temperature 0`). Первая цифра — CER по формуле `docs/local-models.md`; вторая — с нормализацией LaTeX (`\,`, `\text{}`, `\quad`, `\rightarrow`…), потому что Gemini и Claude одинаково читают страницу, но оформляют формулы по-разному.
+
+| Модель | Получено страниц | CER | CER с нормализацией LaTeX | На 7 общих страницах |
+|---|---|---|---|---|
+| `gemini-3-flash-preview` | 9/10 | 20,3 % | 16,7 % | 12,2 % |
+| `gemini-3.5-flash` | 8/10 | 19,3 % | 14,7 % | 14,5 % |
+| `gemini-3.6-flash` | 8/10 | 22,1 % | 19,3 % | 14,8 % |
+| `gemini-flash-lite-latest` | 10/10 | 25,9 % | 22,7 % | 16,5 % |
+| `gemini-3.7-flash`, `gemini-3.8-flash` | 0/10 | 429/503 | | |
+
+Для сравнения, локальная Qwen на тех же страницах: 28 % (с LoRA) и 38 % (без) по формуле без нормализации. Страницы шли параллельно шестью процессами, поэтому часть 429 — от этой нагрузки. Выборка маленькая, разница между 3.5, 3.6 и 3-preview в пределах шума; эталон — Claude, а не истина. Выбрано: основная `gemini-3.5-flash` (не preview), запасная `gemini-flash-lite-latest` (единственная ответила на все 10). Живой прогон `GeminiLiveTests` (синтетические страницы, 2026-11-04): подключение, распознавание, «Подробно» (~100 с), точная сборка, учебная сборка по фото и учебные материалы (10 вопросов, 10 карточек) прошли. Слайды из PDF с текстовым слоем читаются без модели. Не проверено: лимиты бесплатного ключа и пакетная нагрузка.
+
 ## Gemini CLI (`gemini`), версия 0.64.0 — не используется
 
 Установлен через `npm install -g @google/gemini-cli` (node 26 из Homebrew). Итог: **с подпиской Google AI Pro не работает**, в v1 не используется.
