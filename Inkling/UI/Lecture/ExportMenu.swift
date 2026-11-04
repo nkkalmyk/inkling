@@ -42,6 +42,32 @@ final class ExportController {
                                         date: lecture.meta.date), to: url)
     }
 
+    /// «Скопировать для чата»: шаблон `chat-handoff.md` и весь конспект — в буфер обмена, чтобы вставить в любой чат
+    /// в браузере (когда движки упёрлись в лимит). Сети нет: только буфер.
+    func copyForChat() {
+        guard let konspekt else { return }
+        let template: String
+        do {
+            template = try library.prompts.template(Self.chatTemplate)
+        } catch {
+            library.errorMessage = error.localizedDescription
+            return
+        }
+        let text = Self.chatPrompt(template: template, konspekt: konspekt, subject: lecture.meta.subject, topic: lecture.meta.topic)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        // Как у «Скопировать» в системе — без уведомления на экране; VoiceOver сообщает, что получилось.
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: "Конспект скопирован для чата", .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
+
+    nonisolated static let chatTemplate = "chat-handoff.md"
+
+    nonisolated static func chatPrompt(template: String, konspekt: String, subject: String, topic: String) -> String {
+        PromptLibrary.render(template, values: ["предмет": subject, "тема": topic,
+                                                "конспект": konspekt.trimmingCharacters(in: .whitespacesAndNewlines)])
+    }
+
     func exportPDF() {
         guard exportingPDFSince == nil, let konspekt else { return }
         exportPDF(markdown: konspekt, baseName: ExportLocation.pdfBaseName(
@@ -116,6 +142,9 @@ struct ExportMenuItems: View {
     var body: some View {
         Button("Конспект в Markdown…") { export.exportMarkdown() }
             .disabled(!export.hasKonspekt)
+        Button("Скопировать для чата") { export.copyForChat() }
+            .disabled(!export.hasKonspekt)
+            .help("Конспект с короткой просьбой к репетитору — в буфер обмена, для ChatGPT, Claude или другого чата в браузере")
         Button("Шпаргалка в PDF") { export.exportCheatSheet() }
             .disabled(!export.hasKonspekt || export.exportingPDFSince != nil)
             .help("Определения, законы, теоремы и формулы конспекта подряд на одном листе")

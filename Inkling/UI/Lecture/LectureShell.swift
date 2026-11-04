@@ -176,6 +176,7 @@ struct LectureCommands {
     var exportPDF: (() -> Void)?
     var exportCheatSheet: (() -> Void)?
     var exportAnki: (() -> Void)?
+    var copyForChat: (() -> Void)?
     var previousLecture: (() -> Void)?
     var nextLecture: (() -> Void)?
     var edit: () -> Void
@@ -249,6 +250,8 @@ struct LectureMenuCommands: View {
                 .disabled(commands?.exportAnki == nil)
         }
         .disabled(commands == nil)
+        Button("Скопировать для чата") { commands?.copyForChat?() }
+            .disabled(commands?.copyForChat == nil)
         Divider()
         Button("Изменить лекцию…") { commands?.edit() }
             .keyboardShortcut("i", modifiers: .command)
