@@ -254,6 +254,7 @@ struct LectureView: View {
             exportPDF: pdfAvailable && export?.exportingPDFSince == nil ? { export?.exportPDF() } : nil,
             exportCheatSheet: pdfAvailable && export?.exportingPDFSince == nil ? { export?.exportCheatSheet() } : nil,
             exportAnki: export?.hasStudy == true ? { export?.askAnki = true } : nil,
+            copyForChat: export?.hasKonspekt == true ? { export?.copyForChat() } : nil,
             previousLecture: neighbors.previous.map { link in { library.openLecture(link.id, tab: tab) } },
             nextLecture: neighbors.next.map { link in { library.openLecture(link.id, tab: tab) } },
             edit: { library.sheet = .editLecture(lecture.id) },
