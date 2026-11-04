@@ -78,6 +78,7 @@ struct InklingApp: App {
             }
             // «Файл» → «Импорт с iPhone»: снимок получает экран с .importsItemProviders («Источники»).
             ImportFromDevicesCommands()
+            CommandGroup(replacing: .printItem) { ExportPDFCommand() }
             CommandGroup(before: .sidebar) { LectureViewCommands() }
             CommandGroup(after: .toolbar) { ReadingScaleCommands() }
             CommandGroup(after: .textEditing) { FindLectureCommand() }
