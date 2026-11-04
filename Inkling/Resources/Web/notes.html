@@ -15,6 +15,7 @@
 <body>
 <header id="print-heading" hidden></header>
 <main id="content"></main>
+<section id="related-lectures" class="related-lectures" aria-label="Связанные лекции" hidden></section>
 <nav id="lecture-neighbors" class="lecture-neighbors" aria-label="Соседние лекции" hidden></nav>
 <script>
   // Вызывается из приложения. Сигнал «готово» уходит после загрузки шрифтов KaTeX: по нему можно печатать в PDF.
@@ -61,9 +62,62 @@
     });
     nav.hidden = !links.previous && !links.next;
   };
+  // Ссылки по понятиям (первое упоминание понятия из другой лекции) и «Связанные лекции». Приходят из приложения
+  // отдельно от текста и накладываются после каждой отрисовки.
+  var concepts = { links: [], related: [] };
+  var lastMarkdown = null;
+  function lectureHref(id, anchor) { return 'inkling-lecture://' + id + (anchor ? '#' + anchor : ''); }
+  function showRelated() {
+    var box = document.getElementById('related-lectures');
+    box.innerHTML = '';
+    if (!concepts.related.length) { box.hidden = true; return; }
+    var title = document.createElement('h4');
+    title.textContent = 'Связанные лекции';
+    var list = document.createElement('ul');
+    concepts.related.forEach(function (item) {
+      var li = document.createElement('li');
+      var a = document.createElement('a');
+      a.href = lectureHref(item.lecture);
+      a.textContent = item.title;
+      li.appendChild(a);
+      var parts = [];
+      if (item.definedThere.length) parts.push('определены там: ' + item.definedThere.join(', '));
+      if (item.definedHere.length) parts.push('определены здесь: ' + item.definedHere.join(', '));
+      var note = document.createElement('span');
+      note.className = 'note';
+      note.textContent = parts.join(' · ');
+      li.appendChild(note);
+      list.appendChild(li);
+    });
+    box.appendChild(title);
+    box.appendChild(list);
+    box.hidden = false;
+  }
+  window.inklingSetConcepts = function (value) {
+    concepts = { links: value.links || [], related: value.related || [] };
+    if (lastMarkdown !== null) window.inklingShow(lastMarkdown); else showRelated();
+  };
+  // Прокрутка к разделу после перехода по ссылке на понятие. Только что созданная страница ещё не разложена,
+  // поэтому прокручиваем после отрисовки (шрифты KaTeX загружены) или с небольшой задержкой, если она уже была.
+  var pendingAnchor = null;
+  function applyScroll() {
+    var target = pendingAnchor && document.getElementById(pendingAnchor);
+    if (target) { target.scrollIntoView({ block: 'start' }); pendingAnchor = null; }
+  }
+  window.inklingScrollTo = function (id) {
+    pendingAnchor = id;
+    setTimeout(applyScroll, 200);
+  };
   window.inklingShow = function (markdown) {
-    document.getElementById('content').innerHTML = InklingRender.toHTML(markdown);
+    lastMarkdown = markdown;
+    var content = document.getElementById('content');
+    content.innerHTML = InklingRender.toHTML(markdown);
+    InklingRender.linkConcepts(content, concepts.links.map(function (link) {
+      return { stems: link.stems, href: lectureHref(link.lecture, link.anchor), title: link.title };
+    }));
+    showRelated();
     katexFontsLoaded().then(nextFrames).then(function () {
+      applyScroll();
       var errors = document.querySelectorAll('.katex-error').length;
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.rendered) {
         window.webkit.messageHandlers.rendered.postMessage({ errors: errors });

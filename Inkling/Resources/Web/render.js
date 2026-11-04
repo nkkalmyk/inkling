@@ -271,5 +271,43 @@
     return JSON.stringify({ broken: broken, diagramErrors: diagramErrors });
   }
 
-  global.InklingRender = { toHTML: toHTML, extractMath: extractMath, options: options, check: check };
+  // ---- Ссылки по понятиям из других лекций (данные — из приложения, ConceptLinks) ----
+
+  // Слово текста в той же форме, что и в приложении (KonspektSearchText.normalized): основа понятия — его начало.
+  function normalizeWord(word) { return word.toLowerCase().replace(/ё/g, 'е'); }
+
+  // Не трогаем заголовки, ссылки, формулы, код, оглавление, пометки и само жирное начало определения.
+  var NO_LINKS = 'h1,h2,h3,h4,h5,h6,a,code,pre,.katex,.math-display,mark,nav,summary,p.definition > strong,svg';
+
+  // Первое упоминание каждого понятия становится ссылкой. Совпадение ищется внутри одного текстового узла.
+  function linkConcepts(root, links) {
+    links.forEach(function (link) {
+      var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+      var node;
+      while ((node = walker.nextNode())) {
+        if (!node.parentElement || node.parentElement.closest(NO_LINKS)) continue;
+        var words = [], re = /[\p{L}\p{N}]+/gu, m;
+        while ((m = re.exec(node.data)) !== null) words.push({ word: normalizeWord(m[0]), start: m.index, end: m.index + m[0].length });
+        var n = link.stems.length, found = -1;
+        for (var i = 0; i + n <= words.length && found < 0; i++) {
+          var ok = true;
+          for (var k = 0; k < n && ok; k++) ok = words[i + k].word.indexOf(link.stems[k]) === 0;
+          if (ok) found = i;
+        }
+        if (found < 0) continue;
+        var match = node.splitText(words[found].start);
+        match.splitText(words[found + n - 1].end - words[found].start);
+        var a = document.createElement('a');
+        a.className = 'concept';
+        a.href = link.href;
+        a.title = link.title;
+        match.parentNode.replaceChild(a, match);
+        a.appendChild(match);
+        break;
+      }
+    });
+  }
+
+  global.InklingRender = { toHTML: toHTML, extractMath: extractMath, options: options, check: check,
+                           linkConcepts: linkConcepts, normalizeWord: normalizeWord };
 })(this);

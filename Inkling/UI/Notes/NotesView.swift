@@ -18,6 +18,9 @@ struct NotesView: View {
     @State private var katexErrors = 0
     @Environment(\.lectureRequests) private var requests
     @Environment(\.notesFlush) private var notesFlush
+    @Environment(KonspektSearchCenter.self) private var search
+    /// Раздел, к которому прокрутить: пришли сюда по ссылке на понятие из другой лекции.
+    @State private var anchor: String?
     @Environment(\.isActiveTab) private var isActive
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -64,7 +67,10 @@ struct NotesView: View {
                             .transition(.opacity)
                     } else {
                         NotesWebView(markdown: text, neighbors: library.neighbors(of: lecture.id),
-                                     openLecture: { library.openLecture($0, tab: .notes) }) { katexErrors = $0 }
+                                     concepts: search.conceptLinks(for: lecture.id,
+                                                                   among: library.subjectLectures(containing: lecture.id)),
+                                     anchor: anchor,
+                                     openLecture: { library.openLecture($0, tab: .notes, anchor: $1) }) { katexErrors = $0 }
                             .transition(.opacity)
                     }
                 }
@@ -82,7 +88,13 @@ struct NotesView: View {
         }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { await load() }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { checker.refresh(lecture) }
-        .onAppear { notesFlush?.action = flushSave }
+        .onAppear {
+            notesFlush?.action = flushSave
+            if let requested = library.requestedAnchor {
+                anchor = requested
+                library.requestedAnchor = nil
+            }
+        }
         .onDisappear(perform: flushSave)
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
                             presenting: confirm) { _ in

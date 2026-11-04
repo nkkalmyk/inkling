@@ -50,6 +50,8 @@ final class Library {
     var selection: UUID?
     /// Вкладка, на которой открыть следующую выбранную лекцию (`openLecture`); `LectureView` забирает её при появлении.
     var requestedTab: LectureTab?
+    /// Раздел конспекта, к которому прокрутить при открытии (`openLecture`); `NotesView` забирает его при появлении.
+    var requestedAnchor: String?
     var sheet: Sheet?
     var pendingDeletion: Deletion?
     var errorMessage: String?

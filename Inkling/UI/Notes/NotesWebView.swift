@@ -8,7 +8,11 @@ struct NotesWebView: NSViewRepresentable {
     var markdown: String
     /// Ссылки на соседние лекции под конспектом; в текст конспекта они не попадают.
     var neighbors = LectureNeighbors()
-    var openLecture: (UUID) -> Void = { _ in }
+    /// Ссылки по понятиям на другие лекции и «Связанные лекции»; тоже не часть текста конспекта.
+    var concepts = ConceptLinks()
+    /// Раздел, к которому прокрутить после первого показа.
+    var anchor: String?
+    var openLecture: (_ id: UUID, _ anchor: String?) -> Void = { _, _ in }
     @Environment(\.readingScale) private var readingScale
     var onRendered: (_ katexErrors: Int) -> Void = { _ in }
 
@@ -34,6 +38,8 @@ struct NotesWebView: NSViewRepresentable {
         if view.pageZoom != readingScale { view.pageZoom = readingScale }
         context.coordinator.show(markdown, in: view)
         context.coordinator.showNeighbors(neighbors, in: view)
+        context.coordinator.showConcepts(concepts, in: view)
+        context.coordinator.scroll(to: anchor, in: view)
     }
 
     static func dismantleNSView(_ view: WKWebView, coordinator: Coordinator) {
@@ -46,6 +52,8 @@ struct NotesWebView: NSViewRepresentable {
         private var loaded = false
         private var shown: String?
         private var shownNeighbors: LectureNeighbors?
+        private var shownConcepts: ConceptLinks?
+        private var scrolled = false
 
         init(_ parent: NotesWebView) { self.parent = parent }
 
@@ -65,10 +73,27 @@ struct NotesWebView: NSViewRepresentable {
             view.evaluateJavaScript("window.inklingSetNeighbors(\(json))")
         }
 
+        func showConcepts(_ concepts: ConceptLinks, in view: WKWebView) {
+            guard loaded, concepts != shownConcepts else { return }
+            shownConcepts = concepts
+            let json = (try? JSONEncoder().encode(concepts)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+            view.evaluateJavaScript("window.inklingSetConcepts(\(json))")
+        }
+
+        /// Один раз, когда конспект уже показан: потом пользователь листает сам.
+        func scroll(to anchor: String?, in view: WKWebView) {
+            guard loaded, !scrolled, let anchor, shown?.isEmpty == false else { return }
+            scrolled = true
+            let json = (try? JSONEncoder().encode(anchor)).map { String(decoding: $0, as: UTF8.self) } ?? "\"\""
+            view.evaluateJavaScript("window.inklingScrollTo(\(json))")
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             loaded = true
             show(parent.markdown, in: webView)
             showNeighbors(parent.neighbors, in: webView)
+            showConcepts(parent.concepts, in: webView)
+            scroll(to: parent.anchor, in: webView)
         }
 
         /// Ссылки из конспекта открываются в браузере, а не внутри приложения; `inkling-lecture://<id>` — другая лекция.
@@ -76,7 +101,7 @@ struct NotesWebView: NSViewRepresentable {
                      decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
             if action.navigationType == .linkActivated, let url = action.request.url, url.scheme != "file" {
                 if let id = Self.lectureID(url) {
-                    parent.openLecture(id)
+                    parent.openLecture(id, Self.anchor(url))
                 } else if Self.opensExternally(url) {
                     NSWorkspace.shared.open(url)
                 }
@@ -96,6 +121,12 @@ struct NotesWebView: NSViewRepresentable {
         nonisolated static func lectureID(_ url: URL) -> UUID? {
             guard url.scheme?.lowercased() == lectureScheme, let host = url.host() else { return nil }
             return UUID(uuidString: host)
+        }
+
+        /// Раздел из ссылки на понятие: только якоря вида `sec-N`, как их ставит `render.js`.
+        nonisolated static func anchor(_ url: URL) -> String? {
+            guard let fragment = url.fragment(), fragment.wholeMatch(of: /sec-\d+/) != nil else { return nil }
+            return fragment
         }
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
