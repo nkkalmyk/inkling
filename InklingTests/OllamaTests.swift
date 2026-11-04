@@ -187,6 +187,38 @@ struct OllamaRuntimeTests {
         #expect(image.starts(with: [0xFF, 0xD8]), "JPEG")
     }
 
+    @Test func loopedRecognitionIsRetriedWithTemperature() async throws {
+        let dir = try TempDir()
+        let url = Fixtures.write(Fixtures.halfRed(), to: dir.url.appendingPathComponent("p.jpg"))
+        let fake = FakeOllama()
+        fake.chatSequence = [(FakeOllama.chatReply(". . . . .", doneReason: "length"), 200),
+                             (FakeOllama.chatReply("# страница"), 200)]
+        let response = try await engine(fake).run(AIRequest(prompt: "p", systemPrompt: "s", images: [url], timeout: 5))
+        #expect(response.text == "# страница")
+        let temperatures = fake.requests.map { ($0["options"] as? [String: Any])?["temperature"] as? Double }
+        #expect(temperatures == [0, OllamaEngine.loopRetryTemperatures[0]])
+    }
+
+    @Test func persistentLoopFailsAfterAllRetries() async throws {
+        let dir = try TempDir()
+        let url = Fixtures.write(Fixtures.halfRed(), to: dir.url.appendingPathComponent("p.jpg"))
+        let fake = FakeOllama()
+        fake.chat = (FakeOllama.chatReply("& & &", doneReason: "length"), 200)
+        await #expect(throws: AIError.self) {
+            try await engine(fake).run(AIRequest(prompt: "p", systemPrompt: "s", images: [url], timeout: 5))
+        }
+        #expect(fake.requests.count == 1 + OllamaEngine.loopRetryTemperatures.count)
+    }
+
+    @Test func textRequestIsNotRetriedOnLimit() async {
+        let fake = FakeOllama()
+        fake.chat = (FakeOllama.chatReply("длинный текст", doneReason: "length"), 200)
+        await #expect(throws: AIError.self) {
+            try await engine(fake).run(AIRequest(prompt: "собери", systemPrompt: "s", timeout: 5))
+        }
+        #expect(fake.requests.count == 1)
+    }
+
     @Test func structuredOutputFallsBackToSchemaInPrompt() async throws {
         let fake = FakeOllama()
         let schema = #"{"type":"object","properties":{"answer":{"type":"integer"}}}"#
