@@ -176,6 +176,8 @@ struct LectureCommands {
     var exportPDF: (() -> Void)?
     var exportCheatSheet: (() -> Void)?
     var exportAnki: (() -> Void)?
+    var previousLecture: (() -> Void)?
+    var nextLecture: (() -> Void)?
     var edit: () -> Void
     var reveal: () -> Void
 }
@@ -228,6 +230,13 @@ struct LectureMenuCommands: View {
         Button("Повторить карточки") { commands?.reviewCards?() }
             .keyboardShortcut("r", modifiers: .command)
             .disabled(commands?.reviewCards == nil)
+        Divider()
+        Button("Предыдущая лекция") { commands?.previousLecture?() }
+            .keyboardShortcut("[", modifiers: .command)
+            .disabled(commands?.previousLecture == nil)
+        Button("Следующая лекция") { commands?.nextLecture?() }
+            .keyboardShortcut("]", modifiers: .command)
+            .disabled(commands?.nextLecture == nil)
         Divider()
         Menu("Экспорт") {
             Button("Конспект в Markdown…") { commands?.exportMarkdown?() }

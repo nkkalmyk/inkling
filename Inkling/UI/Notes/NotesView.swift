@@ -63,7 +63,8 @@ struct NotesView: View {
                         PageTextEditor(text: Binding(get: { text }, set: { text = $0; scheduleSave() }))
                             .transition(.opacity)
                     } else {
-                        NotesWebView(markdown: text) { katexErrors = $0 }
+                        NotesWebView(markdown: text, neighbors: library.neighbors(of: lecture.id),
+                                     openLecture: { library.openLecture($0, tab: .notes) }) { katexErrors = $0 }
                             .transition(.opacity)
                     }
                 }

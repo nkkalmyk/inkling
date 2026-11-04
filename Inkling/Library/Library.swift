@@ -48,6 +48,8 @@ final class Library {
     /// Идёт повторение карточек: слой на всё окно (`FlashcardReviewView`), тулбар скрыт.
     var review: FlashcardReview?
     var selection: UUID?
+    /// Вкладка, на которой открыть следующую выбранную лекцию (`openLecture`); `LectureView` забирает её при появлении.
+    var requestedTab: LectureTab?
     var sheet: Sheet?
     var pendingDeletion: Deletion?
     var errorMessage: String?

@@ -16,7 +16,7 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 400)
         } detail: {
             if let lecture = library.selectedLecture {
-                LectureView(lecture: lecture)
+                LectureView(lecture: lecture, tab: library.requestedTab ?? .sources)
                     .id(lecture.id)
             } else {
                 ContentUnavailableView {
