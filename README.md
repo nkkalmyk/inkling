@@ -1,32 +1,36 @@
 <div align="center">
 
-<img src="docs/assets/icon.svg" width="160" alt="Иконка Inkling: строчная «i», точка которой — янтарная капля чернил">
+<img src="docs/assets/icon.svg" width="140" alt="Иконка Inkling: строчная «i», точка которой — янтарная капля чернил">
 
 # Inkling
 
-**Фото конспекта на входе, чистый конспект и карточки для самопроверки на выходе.**
+**Фото конспекта на входе — чистый конспект, связанный с другими лекциями, и карточки для самопроверки на выходе.**
 
 Нативное приложение для macOS. Распознаёт рукописные конспекты и слайды преподавателя
-по химии, математике и физике, собирает из них аккуратный конспект с формулами
-и готовит вопросы, тест и флеш-карточки.
+по химии, математике и физике, собирает из них учебный конспект с формулами,
+связывает лекции между собой и готовит вопросы, тест и флеш-карточки.
+
+[![Скачать Inkling 1.0.0](https://img.shields.io/badge/Скачать-Inkling_1.0.0-F5B83D?style=for-the-badge&logo=apple&logoColor=black&labelColor=1C1C1E)](https://github.com/nkkalmyk/inkling/releases/latest)
 
 ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-111111?logo=apple&logoColor=white)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF)
-![Claude Code](https://img.shields.io/badge/движок-Claude_Code-D97757)
-![Codex](https://img.shields.io/badge/движок-Codex_(не_проверен)-10A37F)
-![Ollama](https://img.shields.io/badge/запасной-Ollama-555555)
 ![Version](https://img.shields.io/badge/версия-1.0.0-F5B83D)
+[![License: MIT](https://img.shields.io/badge/лицензия-MIT-555555)](LICENSE)
+<br>
+![Claude Code](https://img.shields.io/badge/движок-Claude_Code-D97757)
+![Codex](https://img.shields.io/badge/движок-Codex-10A37F)
+![Gemini](https://img.shields.io/badge/движок-Gemini_по_ключу-4285F4)
+![Ollama](https://img.shields.io/badge/запасной-Ollama-555555)
+
+[Установка](#установка) · [Что умеет](#что-умеет) · [Что нового в 1.0](CHANGELOG.md) · [English](README.en.md)
 
 </div>
 
----
-
-[English summary](README.en.md)
+<br>
 
 <p align="center">
-  <img src="docs/assets/screenshot-1.svg" width="46%" alt="Источники и конспект (заглушка)">
-  <img src="docs/assets/screenshot-2.svg" width="46%" alt="Самопроверка (заглушка)">
+  <img src="docs/assets/screen-konspekt.png" width="92%" alt="Окно Inkling: список лекций и учебный конспект с формулами; понятия из других лекций подчёркнуты, в тулбаре — кнопка PDF">
 </p>
 
 ## Что умеет
@@ -46,6 +50,17 @@
 | 📤 **Экспорт** | Кнопка «PDF» в тулбаре (⌘P), HTML одним офлайн-файлом для телефона и Windows, предмет целиком в PDF или HTML, Markdown, CSV для Anki с тегами `предмет::тема`, «Скопировать для чата» — конспект с просьбой к репетитору для чата в браузере. |
 | 🕰️ **История и «Устарело»** | Перед перезаписью версия уходит в историю, восстановление в один клик. Если поменялись исходные страницы, конспект помечается устаревшим. |
 
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screen-search.png" alt="Поиск по тексту конспектов: фрагменты с найденным словом, ссылки на понятия и связанные лекции"></td>
+    <td width="50%"><img src="docs/assets/screen-quiz.png" alt="Тест для самопроверки: неверный ответ красным, верный зелёным, ниже объяснение с формулой"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Поиск по тексту, связанные лекции и соседние по дате</sub></td>
+    <td align="center"><sub>Тест с объяснениями: ответы клавишами 1–4</sub></td>
+  </tr>
+</table>
+
 ## Как это работает
 
 ```mermaid
@@ -57,8 +72,9 @@ flowchart LR
     P --> R["1 · Распознавание<br/>страница → Markdown"]
     R --> K["2 · Сборка<br/>konspekt.md"]
     S --> K
+    K --> L["🔗 Поиск и связи<br/>понятия · соседние лекции"]
     K --> Q["3 · Самопроверка<br/>study.json"]
-    K --> E["Экспорт<br/>MD · PDF"]
+    K --> E["📤 Экспорт<br/>PDF · HTML · предмет целиком"]
     Q --> X["Anki CSV"]
 ```
 
@@ -122,7 +138,7 @@ xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' bu
 | Папка | Что внутри |
 |---|---|
 | `Inkling/App` | точка входа, `AppDelegate`, настройки, центр движков |
-| `Inkling/Library` | состояние библиотеки для интерфейса, импорт и правка источников |
+| `Inkling/Library` | состояние библиотеки для интерфейса, импорт и правка источников, поиск по тексту, понятия и соседние лекции |
 | `Inkling/Pipeline` | конвейер: `Recognition` (страницы), `Assembly` (конспект: учебный и точный), `Study` (учебные материалы), `Enrichment` («Дополнить»), `Prompts` (шаблоны запросов) |
 | `Inkling/Literature` | индекс учебников: распознавание сканов (Vision), SQLite FTS5, выдержки для сборки |
 | `Inkling/Engine` | `AIEngine`, Claude Code, Codex, Ollama, поиск бинарников, запуск процессов, распознавание лимитов |
@@ -130,7 +146,7 @@ xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' bu
 | `Inkling/Processing` | обработка фото и PDF, загрузка картинок страниц |
 | `Inkling/Storage` | файловое хранилище, атомарная запись, iCloud, история, `konspekt.md` |
 | `Inkling/UI` | экраны по папкам: `Sidebar`, `Lecture`, `Sources`, `Notes`, `Study`, `Settings` |
-| `Inkling/Export` | Markdown, PDF, Anki |
+| `Inkling/Export` | Markdown, PDF, HTML, предмет целиком, шпаргалка, Anki |
 | `Inkling/DesignSystem` | токены и компоненты интерфейса |
 | `Inkling/Resources/Web` | рендер конспекта: KaTeX, mhchem, markdown-it |
 
