@@ -151,10 +151,8 @@ struct CodexEngineTests {
         #expect(auto.fallback == .claude)
     }
 
-    @Test func codexIsFlaggedAsUnverifiedCloudEngine() {
-        #expect(EngineID.codex.isUnverified)
+    @Test func codexIsCloudEngine() {
         #expect(EngineID.codex.isCloud)
-        #expect(!EngineID.claude.isUnverified)
         #expect(!EngineID.ollama.isCloud)
         #expect(EngineID.codex.needsReview == false)
     }

@@ -3,8 +3,7 @@ import Foundation
 /// Codex CLI в неинтерактивном режиме (`codex exec`), вход через подписку ChatGPT.
 /// Команда и формат событий — docs/cli-notes.md, раздел «Codex CLI».
 ///
-/// **Не проверен вживую**: у автора нет подписки ChatGPT. Флаги сверены по `codex exec --help` и пробному запуску без входа,
-/// формат успешного ответа (`agent_message`) взят из документации OpenAI. Движок отмечен в интерфейсе как непроверенный.
+/// Проверен вживую владельцем на подписке ChatGPT (2026-11).
 struct CodexEngine: AIEngine {
     struct Config: Sendable {
         var manualPath: String?

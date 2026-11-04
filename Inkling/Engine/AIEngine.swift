@@ -19,9 +19,6 @@ enum EngineID: String, Codable, Sendable, CaseIterable {
     /// Облачная модель по подписке: годится для действий, которые нельзя отдавать слабой локальной модели.
     var isCloud: Bool { self != .ollama }
 
-    /// Движок написан по документации, но не проверен вживую (нет подписки у автора).
-    var isUnverified: Bool { self == .codex }
-
     /// Результат локальной модели нужно проверить: на плотной рукописи она ошибается заметно чаще Claude.
     var needsReview: Bool { self == .ollama }
 }

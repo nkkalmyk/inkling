@@ -25,11 +25,6 @@ final class AppSettings {
             }
         }
 
-        /// Название в списках выбора; непроверенный движок помечен.
-        var pickerTitle: String {
-            engineID?.isUnverified == true ? "\(title) — не проверен вживую" : title
-        }
-
         var engineID: EngineID? {
             switch self {
             case .claude: .claude

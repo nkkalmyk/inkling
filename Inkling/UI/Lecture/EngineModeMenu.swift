@@ -22,7 +22,7 @@ struct EngineModeMenu: View {
     }
 
     private var claude: String { "Claude (\(settings.claudeModel.isEmpty ? "sonnet" : settings.claudeModel))" }
-    private var codex: String { "Codex (не проверен вживую)" }
+    private var codex: String { "Codex" }
     private var gemini: String { "Gemini (\(settings.geminiModel.isEmpty ? GeminiEngine.Config.defaultModel : settings.geminiModel))" }
     private var local: String { "локальная (\(settings.ollamaModel))" }
 
