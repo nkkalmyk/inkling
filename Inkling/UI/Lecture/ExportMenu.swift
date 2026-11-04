@@ -14,6 +14,8 @@ final class ExportController {
     var includeQuestions = false
     /// Когда начался экспорт PDF; `nil` — не идёт.
     private(set) var exportingPDFSince: Date?
+    /// Дописывает отложенную правку конспекта в файл до чтения (`NotesFlush`).
+    var flushEdits: (() -> Void)?
 
     init(library: Library, lecture: LectureRecord) {
         self.library = library
@@ -26,7 +28,10 @@ final class ExportController {
     var hasKonspekt: Bool { lecture.meta.konspekt != nil }
     var hasStudy: Bool { lecture.meta.study != nil }
 
-    private var konspekt: String? { KonspektStore(folder: lecture.folder).read() }
+    private var konspekt: String? {
+        flushEdits?()
+        return KonspektStore(folder: lecture.folder).read()
+    }
     private var study: StudyMaterials? { StudyStore(folder: lecture.folder).readStudy() }
     private var baseName: String { FolderNaming.lectureFolderName(date: lecture.meta.date, topic: lecture.meta.topic) }
 
@@ -104,20 +109,39 @@ final class ExportController {
     }
 }
 
-/// Пункты экспорта для меню «…».
+/// Пункты экспорта для меню «…». Конспект в PDF — отдельной кнопкой «PDF» в тулбаре.
 struct ExportMenuItems: View {
     let export: ExportController
 
     var body: some View {
         Button("Конспект в Markdown…") { export.exportMarkdown() }
             .disabled(!export.hasKonspekt)
-        Button("Конспект в PDF") { export.exportPDF() }
-            .disabled(!export.hasKonspekt || export.exportingPDFSince != nil)
         Button("Шпаргалка в PDF") { export.exportCheatSheet() }
             .disabled(!export.hasKonspekt || export.exportingPDFSince != nil)
             .help("Определения, законы, теоремы и формулы конспекта подряд на одном листе")
         Button("Карточки для Anki…") { export.askAnki = true }
             .disabled(!export.hasStudy)
+    }
+}
+
+/// Кнопка «PDF» в тулбаре — самый частый экспорт: конспект сразу уходит в PDF. Видна, когда конспект собран.
+/// Кнопка, а не `Menu` с вариантами: меню в тулбаре macOS 26 акцентную заливку не принимает (проверено),
+/// а яркой «PDF» бывает часто. Шпаргалка и Markdown — в «…».
+struct PDFExportButton: View {
+    let export: ExportController
+    var prominent: Bool
+    /// Пока конспект пересобирается, экспортировать нечего.
+    var available: Bool
+
+    var body: some View {
+        Button { export.exportPDF() } label: {
+            Label("PDF", systemImage: "doc.richtext")
+                .labelStyle(.titleAndIcon)
+        }
+        .prominentAction(prominent)
+        .disabled(!available || export.exportingPDFSince != nil)
+        .help("Конспект в PDF (⌘P)")
+        .accessibilityLabel("Конспект в PDF")
     }
 }
 

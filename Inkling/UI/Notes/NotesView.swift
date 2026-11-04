@@ -17,6 +17,7 @@ struct NotesView: View {
     @State private var showHistory = false
     @State private var katexErrors = 0
     @Environment(\.lectureRequests) private var requests
+    @Environment(\.notesFlush) private var notesFlush
     @Environment(\.isActiveTab) private var isActive
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -80,6 +81,7 @@ struct NotesView: View {
         }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { await load() }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { checker.refresh(lecture) }
+        .onAppear { notesFlush?.action = flushSave }
         .onDisappear(perform: flushSave)
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
                             presenting: confirm) { _ in

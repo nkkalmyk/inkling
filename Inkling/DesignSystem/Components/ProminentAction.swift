@@ -7,6 +7,13 @@ extension View {
     func prominentAction() -> some View {
         modifier(ProminentAction())
     }
+
+    /// Акцентная кнопка, только пока `isProminent`; иначе стиль по месту (в тулбаре — обычная кнопка).
+    /// Для пары кнопок, между которыми переходит роль главной: на экране яркая всегда одна.
+    @ViewBuilder
+    func prominentAction(_ isProminent: Bool) -> some View {
+        if isProminent { prominentAction() } else { self }
+    }
 }
 
 private struct ProminentAction: ViewModifier {
@@ -29,6 +36,7 @@ private struct ProminentAction: ViewModifier {
             Button("Собрать конспект") {}.prominentAction()
             Button("Собрать конспект") {}.prominentAction().controlSize(.large)
             Button("Недоступно") {}.prominentAction().disabled(true)
+            Button("Уступила роль") {}.prominentAction(false)
             Button("Отмена") {}
         }
     }
