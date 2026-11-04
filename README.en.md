@@ -2,12 +2,14 @@
 
 **Photos of handwritten notes in, clean notes and flashcards out.** A native macOS app (Swift, SwiftUI) that recognises handwritten lecture notes and teacher slides (chemistry, maths, physics), assembles them into a tidy Markdown note with formulas, and builds questions, a quiz and flashcards for self-testing. The interface is in Russian.
 
-> Status: v0.5.x. Russian is the primary language of the docs; this page is a short summary.
+> Status: v1.0. Russian is the primary language of the docs; this page is a short summary.
+
+Also: full-text search across notes, links between lectures by shared concepts, one-click PDF, offline single-file HTML export (a lecture or a whole subject) and "copy for chat" to continue in any browser chat.
 
 ## Requirements
 
 - Mac with Apple Silicon, macOS 26 or newer.
-- One AI engine, already installed and signed in (Inkling has no API keys of its own): [Claude Code](https://claude.com/claude-code) (main), Codex (not tested with a live subscription), or a local [Ollama](https://ollama.com) model (fallback).
+- One AI engine, already installed and signed in (Inkling has no API keys of its own): [Claude Code](https://claude.com/claude-code) (main), Codex, Gemini with your own AI Studio key, or a local [Ollama](https://ollama.com) model (fallback).
 
 ## Install
 
