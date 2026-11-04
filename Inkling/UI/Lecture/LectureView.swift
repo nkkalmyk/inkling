@@ -174,7 +174,8 @@ struct LectureView: View {
             .labelsHidden()
         }
         ToolbarItem {
-            LectureActivityIndicator(lecture: lecture, exportingPDFSince: export?.exportingPDFSince)
+            LectureActivityIndicator(lecture: lecture, exportingPDFSince: export?.exportingPDFSince,
+                                     exportingHTMLSince: export?.exportingHTMLSince)
         }
         if let primary {
             ToolbarItem {
@@ -253,6 +254,7 @@ struct LectureView: View {
             exportMarkdown: export?.hasKonspekt == true ? { export?.exportMarkdown() } : nil,
             exportPDF: pdfAvailable && export?.exportingPDFSince == nil ? { export?.exportPDF() } : nil,
             exportCheatSheet: pdfAvailable && export?.exportingPDFSince == nil ? { export?.exportCheatSheet() } : nil,
+            exportHTML: pdfAvailable && export?.exportingHTMLSince == nil ? { export?.exportHTML() } : nil,
             exportAnki: export?.hasStudy == true ? { export?.askAnki = true } : nil,
             copyForChat: export?.hasKonspekt == true ? { export?.copyForChat() } : nil,
             previousLecture: neighbors.previous.map { link in { library.openLecture(link.id, tab: tab) } },

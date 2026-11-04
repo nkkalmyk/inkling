@@ -14,6 +14,8 @@ final class ExportController {
     var includeQuestions = false
     /// Когда начался экспорт PDF; `nil` — не идёт.
     private(set) var exportingPDFSince: Date?
+    /// Когда начался экспорт HTML; `nil` — не идёт.
+    private(set) var exportingHTMLSince: Date?
     /// Дописывает отложенную правку конспекта в файл до чтения (`NotesFlush`).
     var flushEdits: (() -> Void)?
 
@@ -72,6 +74,34 @@ final class ExportController {
         guard exportingPDFSince == nil, let konspekt else { return }
         exportPDF(markdown: konspekt, baseName: ExportLocation.pdfBaseName(
             subject: lecture.meta.subject, topic: lecture.meta.topic, date: lecture.meta.date))
+    }
+
+    /// Конспект одним HTML-файлом рядом с PDF: открывается офлайн в любом браузере (`HTMLExporter`).
+    func exportHTML() {
+        guard exportingHTMLSince == nil, let konspekt else { return }
+        let meta = lecture.meta
+        let url: URL
+        do {
+            url = try ExportLocation.htmlURL(baseName: ExportLocation.pdfBaseName(subject: meta.subject, topic: meta.topic,
+                                                                                    date: meta.date), subject: meta.subject)
+        } catch {
+            library.errorMessage = "Не удалось создать папку «\(ExportLocation.pdfFolderName)/"
+                + "\(ExportLocation.subjectFolderName(meta.subject))»: \(error.localizedDescription)"
+            return
+        }
+        exportingHTMLSince = .now
+        let heading = PrintHeading(subject: meta.subject, topic: meta.topic, date: meta.date.formatted)
+        Task {
+            defer { exportingHTMLSince = nil }
+            do {
+                let rendered = try await NotesRenderer().render(markdown: konspekt, heading: heading)
+                try HTMLExporter.write(title: "\(meta.topic) — \(meta.subject)",
+                                       sections: [.init(id: "lecture", title: meta.topic, rendered: rendered)], to: url)
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } catch {
+                library.errorMessage = error.localizedDescription
+            }
+        }
     }
 
     /// Шпаргалка по конспекту: определения, законы и формулы подряд (без вызовов модели).
@@ -142,6 +172,9 @@ struct ExportMenuItems: View {
     var body: some View {
         Button("Конспект в Markdown…") { export.exportMarkdown() }
             .disabled(!export.hasKonspekt)
+        Button("Конспект в HTML") { export.exportHTML() }
+            .disabled(!export.hasKonspekt || export.exportingHTMLSince != nil)
+            .help("Один файл со стилями и формулами: открывается без интернета в любом браузере, на телефоне и в Windows")
         Button("Скопировать для чата") { export.copyForChat() }
             .disabled(!export.hasKonspekt)
             .help("Конспект с короткой просьбой к репетитору — в буфер обмена, для ChatGPT, Claude или другого чата в браузере")

@@ -180,4 +180,7 @@
   Места ищутся по тексту в напечатанном файле, ставятся средствами CoreGraphics при перерисовке с колонтитулами.
 - PDF (`Export/PDFExporter.swift`): печать `notes.html` со стилями `@media print` из `notes.css`,
   титул `PrintHeading`, колонтитулы `PDFFooter`. Печатается всегда светлая тема.
+- HTML (`Export/HTMLExporter.swift`): тот же `notes.html` отрисовывается в невидимом `WKWebView` (`NotesRenderer`),
+  в файл идёт готовая разметка с титулом, `katex.min.css` со шрифтами `.woff2` в `data:` и `notes.css`; скриптов нет,
+  CSP `default-src 'none'`. Рядом с PDF, то же имя с `.html`. Ссылки на соседей и понятия в файл не попадают.
 - Markdown (`Export/MarkdownExporter.swift`): YAML-шапка и заголовок лекции; текст конспекта не переписывается.
