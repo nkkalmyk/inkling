@@ -37,6 +37,13 @@ struct OllamaEngine: AIEngine {
     /// (`done_reason: length`): лучше повтор и сообщение, чем выдуманный текст в конспекте.
     static let recognitionTokenLimit = 4_096
 
+    /// Температуры повторных попыток распознавания, если ответ упёрся в потолок. При `temperature 0` модель
+    /// иногда зацикливается (строки точек `. . .`, пустые ячейки `& & &`), и повтор с теми же параметрами
+    /// даёт ту же петлю. Штраф за повторы не помогает: при 1,1 петля та же, при 1,5 текст рассыпается.
+    /// Температура 0,3 вытащила `qwen3.5:9b` из обеих петель в прогоне (CER 0,23 и 0,53, как без петли);
+    /// 0,6 — запас для упорных петель, текст хуже, но конечен.
+    static let loopRetryTemperatures: [Double] = [0.3, 0.6]
+
     /// Промпт распознавания для локальной модели: без ссылки «Изображение: ./файл» (картинка уходит в запрос сама)
     /// и без названия предмета. С названием модель изредка не переписывает страницу, а начинает с заголовка-предмета
     /// и сочиняет учебник по нему (воспроизводится на странице алгебры в лекции по химии, docs/local-models.md).
@@ -52,7 +59,8 @@ struct OllamaEngine: AIEngine {
     /// Параметры выборки задаются явно, чтобы и «голая» модель без Modelfile работала как `inkling-ocr`.
     /// `structured: false` — без поля `format`: сборка MLX не умеет ограничивать вывод схемой (ответ 501),
     /// тогда схема уходит текстом в системный промпт, а JSON извлекается и проверяется после ответа.
-    static func chatBody(_ request: AIRequest, model: String, images: [Data], structured: Bool = true) -> Data {
+    static func chatBody(_ request: AIRequest, model: String, images: [Data], structured: Bool = true,
+                         temperature: Double = 0) -> Data {
         var user: [String: Any] = ["role": "user", "content": request.prompt]
         var system = request.systemPrompt
         if !images.isEmpty {
@@ -68,7 +76,7 @@ struct OllamaEngine: AIEngine {
             "keep_alive": "10m",
             "messages": [["role": "system", "content": system], user],
             "options": [
-                "temperature": 0,
+                "temperature": temperature,
                 // Штраф за повторы искажает матрицы и индексы, где одни и те же токены идут подряд.
                 "presence_penalty": 0,
                 "repeat_penalty": 1,
@@ -105,6 +113,12 @@ struct OllamaEngine: AIEngine {
     /// Сборка модели не поддерживает `format` (MLX в Ollama 0.40: 501 «structured output is unavailable»).
     static func structuredOutputUnavailable(data: Data, status: Int) -> Bool {
         status == 501 && String(decoding: data, as: UTF8.self).lowercased().contains("structured output")
+    }
+
+    /// Ответ упёрся в потолок длины (`done_reason: length`) — у распознавания почти всегда петля.
+    static func hitTokenLimit(data: Data, status: Int) -> Bool {
+        guard status == 200, let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+        return json["done_reason"] as? String == "length"
     }
 
     static func parse(data: Data, status: Int, format: AIRequest.Format, requestedModel: String,
@@ -157,11 +171,19 @@ struct OllamaEngine: AIEngine {
         var unstructured = prepared
         unstructured.httpBody = Self.chatBody(request, model: model, images: images, structured: false)
         let fallbackRequest = unstructured
+        let retries: [URLRequest] = images.isEmpty ? [] : Self.loopRetryTemperatures.map { temperature in
+            var retry = prepared
+            retry.httpBody = Self.chatBody(request, model: model, images: images, temperature: temperature)
+            return retry
+        }
         return try await server.exclusively { () async throws(AIError) -> AIResponse in
             let started = Date()
             var (data, status) = try await Self.send(prepared, timeout: timeout, transport: transport)
             if Self.structuredOutputUnavailable(data: data, status: status) {
                 (data, status) = try await Self.send(fallbackRequest, timeout: timeout, transport: transport)
+            }
+            for retry in retries where Self.hitTokenLimit(data: data, status: status) {
+                (data, status) = try await Self.send(retry, timeout: timeout, transport: transport)
             }
             return try Self.parse(data: data, status: status, format: request.format, requestedModel: model,
                                   duration: Date().timeIntervalSince(started)).get()
