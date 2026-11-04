@@ -99,13 +99,13 @@ private struct EngineSettings: View {
         @Bindable var settings = settings
         Form {
             Picker("Основной движок", selection: $settings.primaryEngine) {
-                Text(AppSettings.Engine.claude.pickerTitle).tag(AppSettings.Engine.claude)
-                Text(AppSettings.Engine.codex.pickerTitle).tag(AppSettings.Engine.codex)
-                Text(AppSettings.Engine.gemini.pickerTitle).tag(AppSettings.Engine.gemini)
-                Text(AppSettings.Engine.ollama.pickerTitle).tag(AppSettings.Engine.ollama)
+                Text(AppSettings.Engine.claude.title).tag(AppSettings.Engine.claude)
+                Text(AppSettings.Engine.codex.title).tag(AppSettings.Engine.codex)
+                Text(AppSettings.Engine.gemini.title).tag(AppSettings.Engine.gemini)
+                Text(AppSettings.Engine.ollama.title).tag(AppSettings.Engine.ollama)
             }
             Picker("Запасной движок", selection: $settings.fallbackEngine) {
-                ForEach(AppSettings.Engine.allCases) { Text($0.pickerTitle).tag($0) }
+                ForEach(AppSettings.Engine.allCases) { Text($0.title).tag($0) }
             }
             Toggle("Переключаться на запасной при лимите", isOn: $settings.autoFallback)
                 .disabled(settings.fallbackEngine == .none || settings.fallbackEngine == settings.primaryEngine)
@@ -141,16 +141,10 @@ private struct EngineSettings: View {
                 TextField("Модель", text: $settings.codexModel, prompt: Text("По умолчанию Codex"))
                 ConnectionCheckRow(engine: .codex)
             } header: {
-                HStack(spacing: Spacing.s) {
-                    Text("Codex (ChatGPT)")
-                    Label("Не проверен вживую", systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Codex (ChatGPT)")
             } footer: {
                 Text("Работает по подписке ChatGPT через Codex CLI: установите его (brew install codex) и один раз выполните в Терминале "
-                     + "«codex login». Движок написан по документации OpenAI и пробным запускам без входа, но ни разу не проверялся "
-                     + "с живой подпиской: если что-то не работает, откройте «Подробности» в проверке подключения и сообщите об ошибке.")
+                     + "«codex login». Если что-то не работает, откройте «Подробности» в проверке подключения.")
                     .foregroundStyle(.secondary)
             }
             Section {
@@ -174,8 +168,9 @@ private struct EngineSettings: View {
                 Text("Ollama (локально)")
             } footer: {
                 Text("Приложение само запускает сервер Ollama, когда он нужен, и закрывает его при выходе. "
-                     + "Модель inkling-ocr создаётся по инструкции в docs/ollama. Локальная модель медленнее Claude "
-                     + "и чаще ошибается на плотном почерке: её результаты помечаются «проверьте».")
+                     + "Подойдёт штатная qwen3.5:9b, модель inkling-ocr из docs/ollama или своя дообученная. "
+                     + "Локальная модель медленнее облачных и чаще ошибается на плотном почерке: её результаты помечаются «проверьте». "
+                     + "Если она зациклилась на странице, Inkling сам повторит распознавание.")
                     .foregroundStyle(.secondary)
             }
         }

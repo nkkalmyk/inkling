@@ -127,7 +127,7 @@ claude -p "<промпт>" \
 
 ## Codex CLI (`codex`, вход через ChatGPT), версия 0.163.0
 
-Дата разведки: 2026-10-17. Установлен `brew install codex` (cask, `/opt/homebrew/bin/codex`). **Подписки ChatGPT у автора нет, поэтому живых ответов модели нет**: проверены `--help`, разбор аргументов и поведение без входа (`codex-noauth` в `raw/`). Движок помечен в интерфейсе «не проверен вживую», формат успешного ответа взят из документации OpenAI ([non-interactive mode](https://developers.openai.com/codex/noninteractive)).
+Дата разведки: 2026-10-17. Установлен `brew install codex` (cask, `/opt/homebrew/bin/codex`). **Подписки ChatGPT у автора нет, поэтому живых ответов модели нет**: проверены `--help`, разбор аргументов и поведение без входа (`codex-noauth` в `raw/`). Позже (2026-11-04) движок проверен владельцем вживую на подписке, пометка в интерфейсе снята. Формат успешного ответа взят из документации OpenAI ([non-interactive mode](https://developers.openai.com/codex/noninteractive)).
 
 ### Команда (по `codex exec --help` и проверке разбора аргументов)
 ```
