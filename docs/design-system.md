@@ -183,4 +183,8 @@
 - HTML (`Export/HTMLExporter.swift`): тот же `notes.html` отрисовывается в невидимом `WKWebView` (`NotesRenderer`),
   в файл идёт готовая разметка с титулом, `katex.min.css` со шрифтами `.woff2` в `data:` и `notes.css`; скриптов нет,
   CSP `default-src 'none'`. Рядом с PDF, то же имя с `.html`. Ссылки на соседей и понятия в файл не попадают.
+- Предмет целиком (`Export/SubjectExport.swift`, `SubjectExportCenter`): пункты в контекстном меню предмета и «Файл»;
+  прогресс — `ActivityIndicator` в тулбаре списка лекций (у предмета нет тулбара лекции), с «Отменить»; лекции, которые
+  не вошли, — `InlineNotice(.info)` над списком. PDF — склейка PDF лекций (`PDFMerger`): переходы и закладки
+  перенаправляются на страницы общего файла, у каждой лекции — свой пункт закладок. HTML — `HTMLExporter` с оглавлением.
 - Markdown (`Export/MarkdownExporter.swift`): YAML-шапка и заголовок лекции; текст конспекта не переписывается.

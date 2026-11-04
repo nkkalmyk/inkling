@@ -15,6 +15,7 @@ struct InklingApp: App {
     @State private var literature: LiteratureCenter
     @State private var konspektCheck: KonspektCheckCenter
     @State private var konspektSearch = KonspektSearchCenter()
+    @State private var subjectExport: SubjectExportCenter
 
     init() {
         let settings = AppSettings()
@@ -44,6 +45,7 @@ struct InklingApp: App {
         _assembly = State(initialValue: assembly)
         _study = State(initialValue: study)
         _konspektCheck = State(initialValue: KonspektCheckCenter(library: library, router: { engines.router }))
+        _subjectExport = State(initialValue: SubjectExportCenter(library: library))
     }
 
     var body: some Scene {
@@ -58,6 +60,7 @@ struct InklingApp: App {
                 .environment(literature)
                 .environment(konspektCheck)
                 .environment(konspektSearch)
+                .environment(subjectExport)
                 .environment(\.locale, Locale(identifier: "ru_RU"))
                 .task {
                     appDelegate.library = library
@@ -78,7 +81,10 @@ struct InklingApp: App {
             }
             // «Файл» → «Импорт с iPhone»: снимок получает экран с .importsItemProviders («Источники»).
             ImportFromDevicesCommands()
-            CommandGroup(replacing: .printItem) { ExportPDFCommand() }
+            CommandGroup(replacing: .printItem) {
+                ExportPDFCommand()
+                SubjectExportCommands(library: library, export: subjectExport)
+            }
             CommandGroup(before: .sidebar) { LectureViewCommands() }
             CommandGroup(after: .toolbar) { ReadingScaleCommands() }
             CommandGroup(after: .textEditing) { FindLectureCommand() }

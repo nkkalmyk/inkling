@@ -3,6 +3,7 @@ import SwiftUI
 /// Первая колонка: «Все лекции» и предметы. Лекции выбранного — в средней колонке (`LectureListView`).
 struct SidebarView: View {
     @Environment(Library.self) private var library
+    @Environment(SubjectExportCenter.self) private var subjectExport
 
     var body: some View {
         List(selection: Binding<LibraryScope?>(get: { library.scope }, set: { if let scope = $0 { library.scope = scope } })) {
@@ -56,6 +57,11 @@ struct SidebarView: View {
         Button("Новая лекция…") { library.sheet = .newLecture(subject: subject.name) }
         Button("Переименовать…") { library.sheet = .renameSubject(subject.name) }
         Button("Показать в Finder") { library.revealInFinder(subject.folder) }
+        Divider()
+        Button("Экспорт предмета в PDF") { subjectExport.export(subject, as: .pdf) }
+            .disabled(subjectExport.run != nil)
+        Button("Экспорт предмета в HTML") { subjectExport.export(subject, as: .html) }
+            .disabled(subjectExport.run != nil)
         Divider()
         Button("Удалить…", role: .destructive) { library.requestDeleteSubject(subject.name) }
     }
