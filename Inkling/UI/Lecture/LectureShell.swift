@@ -281,6 +281,20 @@ struct ExportPDFCommand: View {
     }
 }
 
+/// «Файл → Экспорт предмета в PDF / HTML»: предмет выбранной лекции или открытого в сайдбаре.
+struct SubjectExportCommands: View {
+    let library: Library
+    let export: SubjectExportCenter
+
+    var body: some View {
+        let subject = library.currentSubject.flatMap { name in library.subjects.first { $0.name == name } }
+        Button("Экспорт предмета в PDF") { if let subject { export.export(subject, as: .pdf) } }
+            .disabled(subject == nil || export.run != nil)
+        Button("Экспорт предмета в HTML") { if let subject { export.export(subject, as: .html) } }
+            .disabled(subject == nil || export.run != nil)
+    }
+}
+
 /// «Правка → Найти лекцию» (⌘F): фокус в поиск списка лекций.
 struct FindLectureCommand: View {
     @FocusedValue(\.focusLectureSearch) private var focusSearch

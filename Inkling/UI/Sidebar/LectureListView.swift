@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Средняя колонка: лекции выбранного предмета (или все) с поиском по теме, предмету и тексту конспекта.
@@ -6,6 +7,8 @@ import SwiftUI
 struct LectureListView: View {
     @Environment(Library.self) private var library
     @Environment(KonspektSearchCenter.self) private var search
+    @Environment(SubjectExportCenter.self) private var subjectExport
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var query = ""
     @FocusState private var searchFocused: Bool
     /// Запрос «Найти лекцию» (⌘F) из строки меню: флаг, а не замыкание — значения `FocusedValues` сравниваются.
@@ -25,6 +28,7 @@ struct LectureListView: View {
             }
         }
         .overlay { emptyState(sections) }
+        .safeAreaInset(edge: .top, spacing: 0) { exportNotice }
         // ⌫ в списке — «Удалить…» выбранной лекции, с тем же подтверждением, что и в контекстном меню.
         .onDeleteCommand { if let id = library.selection { library.requestDeleteLecture(id) } }
         .searchable(text: $query, placement: .toolbar, prompt: "Поиск лекций")
@@ -37,6 +41,15 @@ struct LectureListView: View {
         .navigationTitle(title)
         .navigationSubtitle(subtitle(sections))
         .toolbar {
+            if let run = subjectExport.run {
+                ToolbarItem {
+                    ActivityIndicator(activities: [Activity(
+                        id: "subject-export", title: "Экспорт предмета в \(run.kind.rawValue)",
+                        detail: "\(run.subject) · \(run.done) из \(run.total)",
+                        fraction: run.total > 0 ? Double(run.done) / Double(run.total) : nil,
+                        startedAt: run.startedAt, cancel: { subjectExport.cancel() })])
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button("Новая лекция", systemImage: "square.and.pencil") {
                     library.sheet = .newLecture(subject: library.currentSubject)
@@ -44,6 +57,22 @@ struct LectureListView: View {
                 .help("Новая лекция (⌘T)")
                 .disabled(library.subjects.isEmpty)
             }
+        }
+    }
+
+    /// После экспорта предмета — какие лекции не вошли (нет конспекта или он ещё в iCloud).
+    @ViewBuilder
+    private var exportNotice: some View {
+        if let result = subjectExport.result, !result.skipped.isEmpty {
+            VStack(spacing: 0) {
+                InlineNotice(.info, "Не вошли в файл «\(result.subject)» — нет конспекта: \(result.skipped.joined(separator: ", ")).",
+                             systemImage: "doc.badge.ellipsis", dismiss: { subjectExport.result = nil }) {
+                    Button("Показать в Finder") { NSWorkspace.shared.activateFileViewerSelecting([result.url]) }
+                }
+                .transition(.notice(reduceMotion: reduceMotion))
+                Divider()
+            }
+            .background(.bar)
         }
     }
 
