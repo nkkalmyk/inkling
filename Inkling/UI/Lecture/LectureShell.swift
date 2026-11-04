@@ -174,9 +174,39 @@ struct LectureCommands {
     var reviewCards: (() -> Void)?
     var exportMarkdown: (() -> Void)?
     var exportPDF: (() -> Void)?
+    var exportCheatSheet: (() -> Void)?
     var exportAnki: (() -> Void)?
     var edit: () -> Void
     var reveal: () -> Void
+}
+
+/// Какая кнопка тулбара лекции яркая: следующий шаг или «PDF» (SPEC, раздел 13). Яркая всегда одна.
+enum LectureProminentButton: Equatable {
+    case primary, pdf, none
+
+    /// Распознать и собрать важнее экспорта: иначе в PDF уйдёт неполный или устаревший конспект.
+    /// «Подготовить материалы» уступает «PDF» вне самопроверки. Пока фоновая сводка по текстам не готова,
+    /// «PDF» не выделяется: через мгновение главной может стать «Пересобрать», и кнопки мигнули бы.
+    static func choose(primary: LecturePrimaryAction?, pdfAvailable: Bool, summaryKnown: Bool,
+                       tab: LectureTab) -> Self {
+        switch primary {
+        case .recognize, .assemble: .primary
+        case .prepareStudy: pdfAvailable && !tab.isStudy ? .pdf : .primary
+        case nil: pdfAvailable && summaryKnown ? .pdf : .none
+        }
+    }
+}
+
+/// Отложенное сохранение правки конспекта (`NotesView` пишет файл через 0,8 с после ввода). Экспорт
+/// читает файл, поэтому сначала дописывает правку: иначе в PDF ушёл бы текст без последних слов.
+@MainActor
+final class NotesFlush {
+    var action: (() -> Void)?
+    func callAsFunction() { action?() }
+}
+
+extension EnvironmentValues {
+    @Entry var notesFlush: NotesFlush?
 }
 
 extension FocusedValues {
@@ -204,6 +234,8 @@ struct LectureMenuCommands: View {
                 .disabled(commands?.exportMarkdown == nil)
             Button("Конспект в PDF") { commands?.exportPDF?() }
                 .disabled(commands?.exportPDF == nil)
+            Button("Шпаргалка в PDF") { commands?.exportCheatSheet?() }
+                .disabled(commands?.exportCheatSheet == nil)
             Button("Карточки для Anki…") { commands?.exportAnki?() }
                 .disabled(commands?.exportAnki == nil)
         }
@@ -215,6 +247,18 @@ struct LectureMenuCommands: View {
         Button("Показать в Finder") { commands?.reveal() }
             .keyboardShortcut("r", modifiers: [.command, .shift])
             .disabled(commands == nil)
+    }
+}
+
+/// «Файл → Конспект в PDF» (⌘P) на месте системного «Напечатать»: печати в приложении нет,
+/// а PDF — самый частый экспорт.
+struct ExportPDFCommand: View {
+    @FocusedValue(\.lectureCommands) private var commands
+
+    var body: some View {
+        Button("Конспект в PDF") { commands?.exportPDF?() }
+            .keyboardShortcut("p", modifiers: .command)
+            .disabled(commands?.exportPDF == nil)
     }
 }
 

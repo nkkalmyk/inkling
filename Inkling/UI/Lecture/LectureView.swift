@@ -16,6 +16,7 @@ struct LectureView: View {
     @State private var lastStudyTab: LectureTab = .questions
     @State private var requests = LectureRequests()
     @State private var export: ExportController?
+    @State private var notesFlush = NotesFlush()
 
     init(lecture: LectureRecord, tab: LectureTab = .sources) {
         self.lecture = lecture
@@ -60,11 +61,16 @@ struct LectureView: View {
         .navigationSubtitle("\(lecture.meta.subject) · \(lecture.meta.date.formatted)")
         .toolbar { toolbar }
         .environment(\.lectureRequests, $requests)
+        .environment(\.notesFlush, notesFlush)
         .focusedSceneValue(\.lectureCommands, commands)
         .sheet(isPresented: Binding(get: { export?.askAnki ?? false }, set: { export?.askAnki = $0 })) {
             if let export { AnkiExportSheet(export: export) }
         }
-        .onAppear { export = ExportController(library: library, lecture: lecture) }
+        .onAppear {
+            let controller = ExportController(library: library, lecture: lecture)
+            controller.flushEdits = { [notesFlush] in notesFlush() }
+            export = controller
+        }
         .onChange(of: lecture) { export?.update(lecture) }
         .task(id: lecture.id) { await prewarm() }
         .onChange(of: tab) {
@@ -171,12 +177,22 @@ struct LectureView: View {
         }
         if let primary {
             ToolbarItem {
+                // Уступив роль главной кнопке «PDF», следующий шаг сжимается до значка: с двумя подписями
+                // тулбар окна по умолчанию переполняется и прячет «PDF» в меню ».
                 Button { perform(primary) } label: {
-                    Label(primary.title, systemImage: primary.systemImage)
-                        .labelStyle(.titleAndIcon)
+                    if prominentButton == .pdf {
+                        Label(primary.title, systemImage: primary.systemImage).labelStyle(.iconOnly)
+                    } else {
+                        Label(primary.title, systemImage: primary.systemImage).labelStyle(.titleAndIcon)
+                    }
                 }
-                .prominentAction()
-                .help("Следующий шаг (⌘↩)")
+                .prominentAction(prominentButton == .primary)
+                .help("\(primary.title) — следующий шаг (⌘↩)")
+            }
+        }
+        if let export, export.hasKonspekt {
+            ToolbarItem {
+                PDFExportButton(export: export, prominent: prominentButton == .pdf, available: pdfAvailable)
             }
         }
         ToolbarItem {
@@ -193,6 +209,14 @@ struct LectureView: View {
             }
             .help("Экспорт, изменение лекции")
         }
+    }
+
+    /// Пока конспект пересобирается, его не экспортируют.
+    private var pdfAvailable: Bool { export?.hasKonspekt == true && !assembly.isRunning(lecture.id) }
+
+    private var prominentButton: LectureProminentButton {
+        LectureProminentButton.choose(primary: primary, pdfAvailable: pdfAvailable,
+                                      summaryKnown: assembly.knownReadiness(lecture) != nil, tab: tab)
     }
 
     private var zoneBinding: Binding<LectureZoneItem> {
@@ -224,7 +248,8 @@ struct LectureView: View {
             reviewCards: lecture.meta.study != nil && !study.isRunning(lecture.id)
                 ? { tab = .flashcards; requests.reviewCards = true } : nil,
             exportMarkdown: export?.hasKonspekt == true ? { export?.exportMarkdown() } : nil,
-            exportPDF: export?.hasKonspekt == true && export?.exportingPDFSince == nil ? { export?.exportPDF() } : nil,
+            exportPDF: pdfAvailable && export?.exportingPDFSince == nil ? { export?.exportPDF() } : nil,
+            exportCheatSheet: pdfAvailable && export?.exportingPDFSince == nil ? { export?.exportCheatSheet() } : nil,
             exportAnki: export?.hasStudy == true ? { export?.askAnki = true } : nil,
             edit: { library.sheet = .editLecture(lecture.id) },
             reveal: { library.revealInFinder(lecture.folder) })
