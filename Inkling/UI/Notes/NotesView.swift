@@ -19,8 +19,8 @@ struct NotesView: View {
     @Environment(\.lectureRequests) private var requests
     @Environment(\.notesFlush) private var notesFlush
     @Environment(KonspektSearchCenter.self) private var search
-    /// Раздел, к которому прокрутить: пришли сюда по ссылке на понятие из другой лекции.
-    @State private var anchor: String?
+    /// Для какой лекции загружен `text`: при смене лекции вид может на миг показать прежний текст.
+    @State private var loadedFor: UUID?
     @Environment(\.isActiveTab) private var isActive
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -32,6 +32,13 @@ struct NotesView: View {
     private var store: KonspektStore { KonspektStore(folder: lecture.folder) }
     private var revision: Int { library.konspektRevision[lecture.id] ?? 0 }
     private var info: ArtifactInfo? { lecture.meta.konspekt }
+
+    /// Раздел, к которому прокрутить: пришли сюда по ссылке на понятие из другой лекции. Только когда показан
+    /// уже текст этой лекции.
+    private var anchor: String? {
+        guard loadedFor == lecture.id, let request = library.requestedAnchor, request.lecture == lecture.id else { return nil }
+        return request.anchor
+    }
 
     var body: some View {
         // Из кэша: тексты страниц читаются в фоне, `nil` — ещё читаются.
@@ -70,6 +77,7 @@ struct NotesView: View {
                                      concepts: search.conceptLinks(for: lecture.id,
                                                                    among: library.subjectLectures(containing: lecture.id)),
                                      anchor: anchor,
+                                     onScrolled: { library.requestedAnchor = nil },
                                      openLecture: { library.openLecture($0, tab: .notes, anchor: $1) }) { katexErrors = $0 }
                             .transition(.opacity)
                     }
@@ -88,13 +96,7 @@ struct NotesView: View {
         }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { await load() }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { checker.refresh(lecture) }
-        .onAppear {
-            notesFlush?.action = flushSave
-            if let requested = library.requestedAnchor {
-                anchor = requested
-                library.requestedAnchor = nil
-            }
-        }
+        .onAppear { notesFlush?.action = flushSave }
         .onDisappear(perform: flushSave)
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
                             presenting: confirm) { _ in
@@ -281,6 +283,7 @@ struct NotesView: View {
         guard !Task.isCancelled, loadedRevision != target || text.isEmpty || !editing else { return }
         loadedRevision = target
         text = loaded
+        loadedFor = lecture.id
     }
 
     @concurrent

@@ -10,8 +10,9 @@ struct NotesWebView: NSViewRepresentable {
     var neighbors = LectureNeighbors()
     /// Ссылки по понятиям на другие лекции и «Связанные лекции»; тоже не часть текста конспекта.
     var concepts = ConceptLinks()
-    /// Раздел, к которому прокрутить после первого показа.
+    /// Раздел, к которому прокрутить; после прокрутки вызывается `onScrolled`, и запрос снимается.
     var anchor: String?
+    var onScrolled: () -> Void = {}
     var openLecture: (_ id: UUID, _ anchor: String?) -> Void = { _, _ in }
     @Environment(\.readingScale) private var readingScale
     var onRendered: (_ katexErrors: Int) -> Void = { _ in }
@@ -53,7 +54,6 @@ struct NotesWebView: NSViewRepresentable {
         private var shown: String?
         private var shownNeighbors: LectureNeighbors?
         private var shownConcepts: ConceptLinks?
-        private var scrolled = false
 
         init(_ parent: NotesWebView) { self.parent = parent }
 
@@ -80,10 +80,12 @@ struct NotesWebView: NSViewRepresentable {
             view.evaluateJavaScript("window.inklingSetConcepts(\(json))")
         }
 
-        /// Один раз, когда конспект уже показан: потом пользователь листает сам.
+        /// Когда конспект уже показан; запрос одноразовый — дальше пользователь листает сам.
         func scroll(to anchor: String?, in view: WKWebView) {
-            guard loaded, !scrolled, let anchor, shown?.isEmpty == false else { return }
-            scrolled = true
+            guard loaded, let anchor, shown?.isEmpty == false else { return }
+            // Снимаем запрос после обновления вида: менять состояние внутри `updateNSView` нельзя.
+            let done = parent.onScrolled
+            Task { done() }
             let json = (try? JSONEncoder().encode(anchor)).map { String(decoding: $0, as: UTF8.self) } ?? "\"\""
             view.evaluateJavaScript("window.inklingScrollTo(\(json))")
         }

@@ -36,7 +36,7 @@ extension Library {
     /// `anchor` — раздел конспекта (`sec-N`), к которому прокрутить.
     func openLecture(_ id: UUID, tab: LectureTab, anchor: String? = nil) {
         requestedTab = tab
-        requestedAnchor = anchor
+        requestedAnchor = anchor.map { AnchorRequest(lecture: id, anchor: $0) }
         selection = id
     }
 }
