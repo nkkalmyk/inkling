@@ -15,6 +15,7 @@
 <body>
 <header id="print-heading" hidden></header>
 <main id="content"></main>
+<nav id="lecture-neighbors" class="lecture-neighbors" aria-label="Соседние лекции" hidden></nav>
 <script>
   // Вызывается из приложения. Сигнал «готово» уходит после загрузки шрифтов KaTeX: по нему можно печатать в PDF.
   // Шрифты KaTeX грузятся лениво: document.fonts.ready может сработать раньше, чем загрузка начнётся.
@@ -40,6 +41,25 @@
       el.appendChild(node);
     });
     el.hidden = false;
+  };
+  // Ссылки на соседние лекции предмета под конспектом: «← прошлая · следующая →». Приложение ловит inkling-lecture://.
+  window.inklingSetNeighbors = function (links) {
+    var nav = document.getElementById('lecture-neighbors');
+    nav.innerHTML = '';
+    [['previous', '← '], ['next', '']].forEach(function (part) {
+      var link = links[part[0]];
+      var slot = document.createElement('span');
+      slot.className = part[0];
+      if (link) {
+        var a = document.createElement('a');
+        a.href = 'inkling-lecture://' + link.id;
+        a.textContent = part[0] === 'previous' ? '← ' + link.title : link.title + ' →';
+        a.title = part[0] === 'previous' ? 'Предыдущая лекция (⌘[)' : 'Следующая лекция (⌘])';
+        slot.appendChild(a);
+      }
+      nav.appendChild(slot);
+    });
+    nav.hidden = !links.previous && !links.next;
   };
   window.inklingShow = function (markdown) {
     document.getElementById('content').innerHTML = InklingRender.toHTML(markdown);

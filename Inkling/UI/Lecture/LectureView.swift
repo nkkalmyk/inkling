@@ -67,6 +67,7 @@ struct LectureView: View {
             if let export { AnkiExportSheet(export: export) }
         }
         .onAppear {
+            library.requestedTab = nil
             let controller = ExportController(library: library, lecture: lecture)
             controller.flushEdits = { [notesFlush] in notesFlush() }
             export = controller
@@ -219,6 +220,8 @@ struct LectureView: View {
                                       summaryKnown: assembly.knownReadiness(lecture) != nil, tab: tab)
     }
 
+    private var neighbors: LectureNeighbors { library.neighbors(of: lecture.id) }
+
     private var zoneBinding: Binding<LectureZoneItem> {
         Binding(get: { LectureZoneItem(tab) }, set: { item in
             switch item {
@@ -251,6 +254,8 @@ struct LectureView: View {
             exportPDF: pdfAvailable && export?.exportingPDFSince == nil ? { export?.exportPDF() } : nil,
             exportCheatSheet: pdfAvailable && export?.exportingPDFSince == nil ? { export?.exportCheatSheet() } : nil,
             exportAnki: export?.hasStudy == true ? { export?.askAnki = true } : nil,
+            previousLecture: neighbors.previous.map { link in { library.openLecture(link.id, tab: tab) } },
+            nextLecture: neighbors.next.map { link in { library.openLecture(link.id, tab: tab) } },
             edit: { library.sheet = .editLecture(lecture.id) },
             reveal: { library.revealInFinder(lecture.folder) })
     }

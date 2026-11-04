@@ -6,6 +6,9 @@ import WebKit
 /// страница присылает сигнал `rendered` (для печати в PDF на этапе экспорта).
 struct NotesWebView: NSViewRepresentable {
     var markdown: String
+    /// Ссылки на соседние лекции под конспектом; в текст конспекта они не попадают.
+    var neighbors = LectureNeighbors()
+    var openLecture: (UUID) -> Void = { _ in }
     @Environment(\.readingScale) private var readingScale
     var onRendered: (_ katexErrors: Int) -> Void = { _ in }
 
@@ -30,6 +33,7 @@ struct NotesWebView: NSViewRepresentable {
         // «Крупнее/Мельче» масштабирует конспект целиком, как ⌘+ в Safari: текст, формулы и ширина колонки.
         if view.pageZoom != readingScale { view.pageZoom = readingScale }
         context.coordinator.show(markdown, in: view)
+        context.coordinator.showNeighbors(neighbors, in: view)
     }
 
     static func dismantleNSView(_ view: WKWebView, coordinator: Coordinator) {
@@ -41,6 +45,7 @@ struct NotesWebView: NSViewRepresentable {
         var parent: NotesWebView
         private var loaded = false
         private var shown: String?
+        private var shownNeighbors: LectureNeighbors?
 
         init(_ parent: NotesWebView) { self.parent = parent }
 
@@ -51,16 +56,30 @@ struct NotesWebView: NSViewRepresentable {
             view.evaluateJavaScript("window.inklingShow(\(json))")
         }
 
+        func showNeighbors(_ neighbors: LectureNeighbors, in view: WKWebView) {
+            guard loaded, neighbors != shownNeighbors else { return }
+            shownNeighbors = neighbors
+            struct Payload: Encodable { var previous, next: LectureNeighbors.Link? }
+            let json = (try? JSONEncoder().encode(Payload(previous: neighbors.previous, next: neighbors.next)))
+                .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+            view.evaluateJavaScript("window.inklingSetNeighbors(\(json))")
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             loaded = true
             show(parent.markdown, in: webView)
+            showNeighbors(parent.neighbors, in: webView)
         }
 
-        /// Ссылки из конспекта открываются в браузере, а не внутри приложения.
+        /// Ссылки из конспекта открываются в браузере, а не внутри приложения; `inkling-lecture://<id>` — другая лекция.
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
             if action.navigationType == .linkActivated, let url = action.request.url, url.scheme != "file" {
-                if Self.opensExternally(url) { NSWorkspace.shared.open(url) }
+                if let id = Self.lectureID(url) {
+                    parent.openLecture(id)
+                } else if Self.opensExternally(url) {
+                    NSWorkspace.shared.open(url)
+                }
                 decisionHandler(.cancel)
             } else {
                 decisionHandler(.allow)
@@ -70,6 +89,13 @@ struct NotesWebView: NSViewRepresentable {
         /// Только веб-ссылки и почта: схемы вроде `smb:` или `shortcuts:` ответ модели открывать не должен.
         nonisolated static func opensExternally(_ url: URL) -> Bool {
             ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "")
+        }
+
+        nonisolated static let lectureScheme = "inkling-lecture"
+
+        nonisolated static func lectureID(_ url: URL) -> UUID? {
+            guard url.scheme?.lowercased() == lectureScheme, let host = url.host() else { return nil }
+            return UUID(uuidString: host)
         }
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
