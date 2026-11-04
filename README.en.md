@@ -1,6 +1,22 @@
+<div align="center">
+
+<img src="docs/assets/icon.svg" width="120" alt="Inkling icon: a lowercase “i” whose dot is an amber ink drop">
+
 # Inkling
 
+[![Download Inkling 1.0.0](https://img.shields.io/badge/Download-Inkling_1.0.0-F5B83D?style=for-the-badge&logo=apple&logoColor=white&labelColor=1C1C1E)](https://github.com/nkkalmyk/inkling/releases/latest)
+
+![macOS 26+](https://img.shields.io/badge/macOS-26%2B-111111?logo=apple&logoColor=white)
+![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-555555)](LICENSE)
+
+[Русская версия](README.md)
+
+</div>
+
 **Photos of handwritten notes in, clean notes and flashcards out.** A native macOS app (Swift, SwiftUI) that recognises handwritten lecture notes and teacher slides (chemistry, maths, physics), assembles them into a tidy Markdown note with formulas, and builds questions, a quiz and flashcards for self-testing. The interface is in Russian.
+
+<p align="center"><img src="docs/assets/screen-konspekt.png" width="92%" alt="Inkling window: lecture list and a study note with formulas; concepts from other lectures are underlined, PDF button in the toolbar"></p>
 
 > Status: v1.0. Russian is the primary language of the docs; this page is a short summary.
 

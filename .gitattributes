@@ -1,0 +1,2 @@
+# Сторонние минифицированные ассеты (KaTeX, markdown-it) не считаются кодом проекта в статистике языков GitHub.
+Inkling/Resources/Web/vendor/** linguist-vendored
