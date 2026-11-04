@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// Средняя колонка: лекции выбранного предмета (или все) с поиском по теме и предмету.
-/// Поиск идёт по `meta` в памяти: тексты лекций для него не читаются (в iCloud они могут быть выгружены).
+/// Средняя колонка: лекции выбранного предмета (или все) с поиском по теме, предмету и тексту конспекта.
+/// Сам список файлы не читает (в iCloud они могут быть выгружены): текст ищется в индексе `KonspektSearchCenter`,
+/// который читает конспекты в фоне.
 struct LectureListView: View {
     @Environment(Library.self) private var library
+    @Environment(KonspektSearchCenter.self) private var search
     @State private var query = ""
     @FocusState private var searchFocused: Bool
     /// Запрос «Найти лекцию» (⌘F) из строки меню: флаг, а не замыкание — значения `FocusedValues` сравниваются.
@@ -11,13 +13,14 @@ struct LectureListView: View {
 
     var body: some View {
         @Bindable var library = library
-        let sections = self.sections
+        let snippets = search.snippets(for: query)
+        let sections = sections(snippets)
         List(selection: $library.selection) {
             ForEach(sections, id: \.subject.id) { section in
                 if showsSubjectHeaders {
-                    Section(section.subject.name) { rows(section) }
+                    Section(section.subject.name) { rows(section, snippets: snippets) }
                 } else {
-                    rows(section)
+                    rows(section, snippets: snippets)
                 }
             }
         }
@@ -25,6 +28,7 @@ struct LectureListView: View {
         // ⌫ в списке — «Удалить…» выбранной лекции, с тем же подтверждением, что и в контекстном меню.
         .onDeleteCommand { if let id = library.selection { library.requestDeleteLecture(id) } }
         .searchable(text: $query, placement: .toolbar, prompt: "Поиск лекций")
+        .task(id: indexKeys) { search.refresh(allLectures, revisions: library.konspektRevision) }
         .searchFocused($searchFocused)
         .focusedSceneValue(\.focusLectureSearch, $searchRequested)
         .onChange(of: searchRequested) {
@@ -54,7 +58,15 @@ struct LectureListView: View {
     /// В «Все лекции» лекции сгруппированы по предметам, в предмете — просто список.
     private var showsSubjectHeaders: Bool { library.scope == .all }
 
-    private var sections: [SubjectSection] {
+    private var allLectures: [LectureRecord] { library.subjects.flatMap(\.lectures) }
+
+    /// Индекс поиска обновляется, когда меняется конспект какой-нибудь лекции.
+    private var indexKeys: [String?] {
+        allLectures.map { KonspektSearchCenter.key($0, revision: library.konspektRevision[$0.id] ?? 0) }
+    }
+
+    /// Лекция попадает в поиск по теме, предмету или тексту конспекта (тогда у неё есть фрагмент).
+    private func sections(_ snippets: [UUID: KonspektSnippet]) -> [SubjectSection] {
         let subjects: [SubjectRecord] = switch library.scope {
         case .all: library.subjects
         case .subject(let name): library.subjects.filter { $0.name == name }
@@ -63,7 +75,7 @@ struct LectureListView: View {
         return subjects.compactMap { subject in
             let lectures = subject.lectures
                 .filter { text.isEmpty || $0.meta.topic.localizedStandardContains(text)
-                    || subject.name.localizedStandardContains(text) }
+                    || subject.name.localizedStandardContains(text) || snippets[$0.id] != nil }
                 .sorted { ($0.meta.date, $0.meta.topic) > ($1.meta.date, $1.meta.topic) }
             let unavailable = text.isEmpty ? subject.unavailable : []
             if lectures.isEmpty && unavailable.isEmpty && showsSubjectHeaders { return nil }
@@ -72,9 +84,9 @@ struct LectureListView: View {
     }
 
     @ViewBuilder
-    private func rows(_ section: SubjectSection) -> some View {
+    private func rows(_ section: SubjectSection, snippets: [UUID: KonspektSnippet]) -> some View {
         ForEach(section.lectures) { lecture in
-            LectureRow(lecture: lecture)
+            LectureRow(lecture: lecture, snippet: snippets[lecture.id])
                 .tag(lecture.id)
                 .contextMenu { lectureMenu(lecture) }
         }
@@ -128,12 +140,13 @@ extension FocusedValues {
     @Entry var focusLectureSearch: Binding<Bool>?
 }
 
-/// Строка лекции: тема, дата и число страниц, справа — тихий статус.
+/// Строка лекции: тема, дата и число страниц, справа — тихий статус. В поиске под ними — фрагмент конспекта.
 private struct LectureRow: View {
     @Environment(RecognitionCenter.self) private var recognition
     @Environment(AssemblyCenter.self) private var assembly
     @Environment(StudyCenter.self) private var study
     let lecture: LectureRecord
+    var snippet: KonspektSnippet?
 
     var body: some View {
         HStack(spacing: Spacing.s) {
@@ -145,12 +158,27 @@ private struct LectureRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if let snippet {
+                    Text(Self.attributed(snippet))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
             Spacer(minLength: 0)
             status
         }
         .padding(.vertical, Spacing.xs)
         .accessibilityElement(children: .combine)
+    }
+
+    /// Найденные слова — жирным, а не цветом: выделение должно читаться и без цвета.
+    private static func attributed(_ snippet: KonspektSnippet) -> AttributedString {
+        snippet.parts.reduce(into: AttributedString()) { result, part in
+            var piece = AttributedString(part.text)
+            if part.isMatch { piece.inlinePresentationIntent = .stronglyEmphasized }
+            result += piece
+        }
     }
 
     private var details: String {
