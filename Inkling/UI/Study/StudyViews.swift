@@ -442,7 +442,7 @@ struct QuizView: View {
     private func start(available: [StudyMaterials.QuizItem], progress: StudyProgress, materials: StudyMaterials) -> some View {
         let mistakes = progress.quizMistakes(in: materials)
         let last = progress.quizAttempts.last
-        return StudyStart(systemImage: "checklist", title: "Тест: \(available.count) вопросов",
+        return StudyStart(systemImage: "checklist", title: "Тест: \(UIFormat.count(available.count, "вопрос", "вопроса", "вопросов"))",
                           subtitle: last.map { "Последняя попытка: \($0.score) из \($0.total), \($0.date.stamp)" },
                           hint: "Клавиши: 1–4 — вариант ответа, Return — дальше.") {
             Button("Только ошибки (\(mistakes.count))") { begin(mistakes, onlyMistakes: true) }
