@@ -316,3 +316,13 @@ struct QuizDuplicateIDTests {
         #expect(session.optionOrder["z1"]?.count == 4)
     }
 }
+
+@Suite("Склонение числа")
+struct CountWordTests {
+    @Test(arguments: [(1, "1 вопрос"), (2, "2 вопроса"), (4, "4 вопроса"), (5, "5 вопросов"), (0, "0 вопросов"),
+                      (11, "11 вопросов"), (12, "12 вопросов"), (14, "14 вопросов"), (21, "21 вопрос"),
+                      (22, "22 вопроса"), (111, "111 вопросов"), (101, "101 вопрос")])
+    func questions(n: Int, expected: String) {
+        #expect(UIFormat.count(n, "вопрос", "вопроса", "вопросов") == expected)
+    }
+}

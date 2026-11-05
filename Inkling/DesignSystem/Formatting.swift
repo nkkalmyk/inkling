@@ -4,6 +4,13 @@ import Foundation
 /// а не `\.locale` из окружения SwiftUI.
 enum UIFormat {
     static let locale = Locale(identifier: "ru_RU")
+
+    /// Число со словом в нужной форме: «1 вопрос», «2 вопроса», «5 вопросов», «11 вопросов», «21 вопрос».
+    nonisolated static func count(_ n: Int, _ one: String, _ few: String, _ many: String) -> String {
+        let tens = abs(n) % 100, units = abs(n) % 10
+        let word = (11...14).contains(tens) ? many : units == 1 ? one : (2...4).contains(units) ? few : many
+        return "\(n) \(word)"
+    }
 }
 
 extension Date {

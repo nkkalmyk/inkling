@@ -9,7 +9,7 @@ enum PDFToolsError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .tooManyPages(let name, let count): "В PDF «\(name)» \(count) страниц, больше допустимых \(PDFTools.maxPages)."
+        case .tooManyPages(let name, let count): "В PDF «\(name)» \(UIFormat.count(count, "страница", "страницы", "страниц")), больше допустимых \(PDFTools.maxPages)."
         case .unreadable(let name): "Не удалось открыть PDF «\(name)». Возможно, файл повреждён или защищён паролем."
         case .pageMissing(let index): "В PDF нет страницы \(index + 1)."
         }
