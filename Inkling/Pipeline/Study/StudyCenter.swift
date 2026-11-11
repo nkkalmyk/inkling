@@ -96,7 +96,8 @@ final class StudyCenter {
                 runs[lectureID] = nil
                 tasks[lectureID] = nil
             }
-            // Учебные материалы строятся по авторскому тексту: блоки кнопки «Дополнить» в них и в хеш не входят.
+            // Учебные материалы строятся по авторскому тексту: блоки прежней кнопки «Дополнить» (в старых конспектах)
+            // в них и в хеш не входят.
             let raw = await Self.readBaseText(folder: folder, info: info)
             guard !Task.isCancelled else { return }
             let konspekt = raw.trimmingCharacters(in: .whitespacesAndNewlines)

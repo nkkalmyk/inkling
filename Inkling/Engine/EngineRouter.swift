@@ -103,8 +103,8 @@ actor EngineRouter {
         if Task.isCancelled { throw .cancelled }
 
         if request.cloudOnly, !primary.id.isCloud {
-            throw .invalidOutput("Это действие работает только через Claude Code или Codex. "
-                + "Выберите «Авто», «Только Claude» или «Только Codex» в меню «Модель».")
+            throw .invalidOutput("Это действие работает только через облачный движок: Claude Code, Codex или Gemini. "
+                + "Выберите «Авто», «Только Claude», «Только Codex» или «Только Gemini» в меню «Модель».")
         }
         // Для облачных действий локальная модель не может быть запасной.
         let canFallback = settings.autoFallback && (fallback.map { !request.cloudOnly || $0.id.isCloud } ?? false)

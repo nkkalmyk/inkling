@@ -1,8 +1,7 @@
 import Foundation
 import Observation
 
-/// Настройки приложения в `UserDefaults` (SPEC, раздел 9). На этапе 1 большая часть — заготовка:
-/// значения сохраняются, но использоваться начнут на следующих этапах.
+/// Настройки приложения в `UserDefaults` (SPEC, разделы 9 и 13).
 @MainActor
 @Observable
 final class AppSettings {

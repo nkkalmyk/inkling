@@ -166,7 +166,6 @@ struct OllamaEngine: AIEngine {
         http.timeoutInterval = timeout
 
         let prepared = http
-        // Локальная модель держит один запрос за раз: второй параллельный только удвоит память.
         var unstructured = prepared
         unstructured.httpBody = Self.chatBody(request, model: model, images: images, structured: false)
         let fallbackRequest = unstructured
@@ -175,6 +174,7 @@ struct OllamaEngine: AIEngine {
             retry.httpBody = Self.chatBody(request, model: model, images: images, temperature: temperature)
             return retry
         }
+        // Локальная модель держит один запрос за раз: второй параллельный только удвоит память.
         return try await server.exclusively { () async throws(AIError) -> AIResponse in
             let started = Date()
             var (data, status) = try await Self.send(prepared, timeout: timeout, transport: transport)
