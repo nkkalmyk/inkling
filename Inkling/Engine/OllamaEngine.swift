@@ -11,7 +11,7 @@ struct OllamaEngine: AIEngine {
     }
 
     /// HTTP-транспорт; в тестах подменяется.
-    typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    typealias Transport = HTTPSend.Transport
 
     let id = EngineID.ollama
     var config: Config
@@ -192,28 +192,11 @@ struct OllamaEngine: AIEngine {
     /// Запрос с общим таймаутом (у `URLRequest` таймаут только между пакетами) и отменой.
     static func send(_ request: URLRequest, timeout: TimeInterval,
                      transport: @escaping Transport) async throws(AIError) -> (Data, Int) {
-        do {
-            return try await withThrowingTaskGroup(of: (Data, Int).self) { group in
-                group.addTask {
-                    let (data, response) = try await transport(request)
-                    return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
-                }
-                group.addTask {
-                    try await Task.sleep(for: .seconds(timeout))
-                    throw AIError.timeout
-                }
-                defer { group.cancelAll() }
-                return try await group.next()!
-            }
-        } catch let error as AIError {
-            throw error
-        } catch {
-            if Task.isCancelled || (error as? URLError)?.code == .cancelled || error is CancellationError { throw .cancelled }
-            if (error as? URLError)?.code == .timedOut { throw .timeout }
+        try await HTTPSend.send(request, timeout: timeout, transport: transport) { error in
             if let urlError = error as? URLError, [.cannotConnectToHost, .networkConnectionLost].contains(urlError.code) {
-                throw .ollamaUnavailable("Сервер Ollama перестал отвечать: \(urlError.localizedDescription)")
+                return .ollamaUnavailable("Сервер Ollama перестал отвечать: \(urlError.localizedDescription)")
             }
-            throw .processFailed(exitCode: -1, stderr: error.localizedDescription)
+            return .processFailed(exitCode: -1, stderr: error.localizedDescription)
         }
     }
 

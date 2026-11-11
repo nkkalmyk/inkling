@@ -15,7 +15,7 @@ struct GeminiEngine: AIEngine {
     }
 
     /// HTTP-транспорт; в тестах подменяется.
-    typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    typealias Transport = HTTPSend.Transport
 
     let id = EngineID.gemini
     var config = Config()
@@ -186,25 +186,8 @@ struct GeminiEngine: AIEngine {
     /// Запрос с общим таймаутом (у `URLRequest` таймаут только между пакетами) и отменой.
     static func send(_ request: URLRequest, timeout: TimeInterval,
                      transport: @escaping Transport) async throws(AIError) -> (Data, Int) {
-        do {
-            return try await withThrowingTaskGroup(of: (Data, Int).self) { group in
-                group.addTask {
-                    let (data, response) = try await transport(request)
-                    return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
-                }
-                group.addTask {
-                    try await Task.sleep(for: .seconds(timeout))
-                    throw AIError.timeout
-                }
-                defer { group.cancelAll() }
-                return try await group.next()!
-            }
-        } catch let error as AIError {
-            throw error
-        } catch {
-            if Task.isCancelled || (error as? URLError)?.code == .cancelled || error is CancellationError { throw .cancelled }
-            if (error as? URLError)?.code == .timedOut { throw .timeout }
-            throw .processFailed(exitCode: -1, stderr: "Нет связи с Gemini: \(error.localizedDescription)")
+        try await HTTPSend.send(request, timeout: timeout, transport: transport) { error in
+            .processFailed(exitCode: -1, stderr: "Нет связи с Gemini: \(error.localizedDescription)")
         }
     }
 
