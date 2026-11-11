@@ -328,10 +328,19 @@ private struct SlidePageThumbnail: View {
 
 struct NotePageMenu: View {
     @Environment(Library.self) private var library
+    @Environment(RecognitionCenter.self) private var recognition
     let page: NotePage
     let lecture: LectureRecord
 
     var body: some View {
+        // Ручную правку меню не перезаписывает: для этого — кнопка на странице, она спрашивает подтверждение.
+        let edited = page.text?.manuallyEdited == true
+        let busy = recognition.state(of: page.id) != nil && !isFailed
+        Button("Распознать заново") { recognition.recognize(lectureID: lecture.id, pageIDs: [page.id]) }
+            .disabled(edited || busy)
+        Button("Распознать подробно") { recognition.recognize(lectureID: lecture.id, pageIDs: [page.id], detailed: true) }
+            .disabled(edited || busy)
+        Divider()
         Button("Повернуть влево") { library.rotateNote(page.id, by: -1, lectureID: lecture.id) }
         Button("Повернуть вправо") { library.rotateNote(page.id, by: 1, lectureID: lecture.id) }
         Divider()
@@ -347,6 +356,10 @@ struct NotePageMenu: View {
         Button("Удалить страницу", role: .destructive) {
             library.requestDeletePages([page.id], lectureID: lecture.id)
         }
+    }
+
+    private var isFailed: Bool {
+        if case .failed = recognition.state(of: page.id) { true } else { false }
     }
 }
 
