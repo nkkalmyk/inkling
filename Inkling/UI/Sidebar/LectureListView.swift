@@ -160,6 +160,13 @@ struct LectureListView: View {
     @ViewBuilder
     private func lectureMenu(_ lecture: LectureRecord) -> some View {
         Button("Изменить…") { library.sheet = .editLecture(lecture.id) }
+        Menu("Переместить в предмет") {
+            ForEach(library.subjects.filter { $0.name != lecture.meta.subject }) { subject in
+                Button(subject.name) { library.moveLecture(lecture.id, toSubject: subject.name) }
+            }
+        }
+        .disabled(library.subjects.count < 2)
+        Button("Новая лекция в этом предмете…") { library.sheet = .newLecture(subject: lecture.meta.subject) }
         Button("Показать в Finder") { library.revealInFinder(lecture.folder) }
         Divider()
         Button("Удалить…", role: .destructive) { library.requestDeleteLecture(lecture.id) }

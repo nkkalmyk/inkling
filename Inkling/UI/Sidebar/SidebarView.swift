@@ -27,6 +27,8 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        // ⌫ на выбранном предмете — «Удалить…» с тем же подтверждением, что и в контекстном меню.
+        .onDeleteCommand { if case .subject(let name) = library.scope { library.requestDeleteSubject(name) } }
         .overlay {
             if library.subjects.isEmpty {
                 ContentUnavailableView {
