@@ -37,6 +37,10 @@ final class AssemblyCenter {
     /// Выдержки из учебников для предмета и темы (по словам лекции); в тестах — пусто.
     @ObservationIgnored private let literature: @MainActor (_ subject: String, _ topic: String, _ texts: [String]) async -> [LiteraturePassage]
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
+    /// Готовые ответы частей и склейки до успешного сохранения конспекта: если одна часть упала, «Повторить»
+    /// не оплачивает заново остальные. Ключ — содержимое запроса и движок (`cacheKey`), поэтому изменённые страницы
+    /// или другой движок дают новый ключ. Только в памяти, на диск ничего не пишется.
+    @ObservationIgnored private var partCache: [UUID: [String: AIResponse]] = [:]
     private var cachedReadiness: [UUID: Readiness] = [:]
     @ObservationIgnored private var readinessKeys: [UUID: ReadinessKey] = [:]
     @ObservationIgnored private var readinessTasks: [UUID: Task<Void, Never>] = [:]
@@ -196,22 +200,52 @@ final class AssemblyCenter {
     }
 
     /// Запросы частей идут параллельно (маршрутизатор ограничивает число вызовов); ответы — в порядке запросов.
+    /// Если часть упала, остальные дорабатывают до конца и запоминаются (`partCache`), а не отменяются: иначе
+    /// уже оплаченные ответы пропали бы. Ошибка бросается после всех частей.
     private func runRequests(_ requests: [AIRequest], lectureID: UUID, router: EngineRouter) async throws -> [AIResponse] {
         let onEvent: @Sendable (EngineRouter.Event) -> Void = { event in
             Task { @MainActor in self.note(event, lectureID: lectureID) }
         }
+        let keys = requests.map { Self.cacheKey($0, engine: router.primaryID) }
         var outputs = [AIResponse?](repeating: nil, count: requests.count)
-        try await withThrowingTaskGroup(of: (Int, AIResponse).self) { group in
+        var failure: AIError?
+        await withTaskGroup(of: (Int, Result<AIResponse, AIError>).self) { group in
             for (index, request) in requests.enumerated() {
-                group.addTask { (index, try await router.run(request, onEvent: onEvent)) }
+                if let cached = partCache[lectureID]?[keys[index]] {
+                    outputs[index] = cached
+                    runs[lectureID]?.finishedCalls += 1
+                    continue
+                }
+                group.addTask {
+                    do throws(AIError) { return (index, .success(try await router.run(request, onEvent: onEvent))) }
+                    catch { return (index, .failure(error)) }
+                }
             }
-            for try await (index, response) in group {
-                outputs[index] = response
-                runs[lectureID]?.finishedCalls += 1
+            for await (index, result) in group {
+                switch result {
+                case .success(let response):
+                    outputs[index] = response
+                    partCache[lectureID, default: [:]][keys[index]] = response
+                    runs[lectureID]?.finishedCalls += 1
+                case .failure(let error):
+                    if failure == nil || failure == .cancelled { failure = error }
+                }
             }
         }
         if Task.isCancelled { throw AIError.cancelled }
+        if let failure { throw failure }
         return outputs.compactMap { $0 }
+    }
+
+    /// Ключ ответа в `partCache`: промпт, системный промпт, модель, движок и картинки с размером и временем изменения
+    /// (повёрнутое или заменённое фото даёт новый ключ при том же имени файла).
+    static func cacheKey(_ request: AIRequest, engine: EngineID) -> String {
+        var parts = [request.prompt, request.systemPrompt, request.model ?? "", "\(engine)"]
+        for image in request.images {
+            let values = try? image.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            parts.append("\(image.path)|\(values?.fileSize ?? -1)|\(values?.contentModificationDate?.timeIntervalSince1970 ?? 0)")
+        }
+        return FileHash.sha256(parts.joined(separator: "\u{1F}"))
     }
 
     /// Финальный проход: склейка частей длинной лекции.
@@ -229,7 +263,14 @@ final class AssemblyCenter {
             request.model = model
             request.modelEngine = .claude
         }
-        let merged = try await router.run(request, onEvent: onEvent)
+        let key = Self.cacheKey(request, engine: router.primaryID)
+        let merged: AIResponse
+        if let cached = partCache[lectureID]?[key] {
+            merged = cached
+        } else {
+            merged = try await router.run(request, onEvent: onEvent)
+            partCache[lectureID, default: [:]][key] = merged
+        }
         runs[lectureID]?.finishedCalls += 1
         return (MarkdownCleanup.unwrap(merged.text), merged)
     }
@@ -249,6 +290,7 @@ final class AssemblyCenter {
         stamped.literature = literature
         library.mutate(lectureID) { $0.konspekt = stamped }
         library.konspektRevision[lectureID, default: 0] += 1
+        partCache[lectureID] = nil
         onAssembled?(lectureID)
     }
 

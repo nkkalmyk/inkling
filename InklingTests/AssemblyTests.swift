@@ -512,6 +512,31 @@ struct AssemblyCenterTests {
         #expect(env.lecture.meta.konspekt?.parts == plan.parts.count)
     }
 
+    /// Регресс A4 (аудит 2026-11): сбой одной части выбрасывал готовые, и «Повторить» оплачивало все части заново.
+    @Test func retryAfterFailedPartReusesFinishedParts() async throws {
+        let env = try Env(pages: Array(repeating: String(repeating: "x", count: 4000), count: 5))
+        let engine = FakeEngine([.success("часть"), .failure(.notAuthenticated("Not logged in")), .success("часть")])
+        let router = EngineRouter(primary: engine, fallback: nil, settings: .init(maxParallel: 1))
+        let center = AssemblyCenter(library: env.library, router: { router }, threshold: { 9000 })
+        let plan = try #require(center.readiness(env.lecture).plan)
+        #expect(plan.parts.count >= 3 && plan.needsMerge)
+        let parts = plan.parts.count
+
+        center.assemble(env.lectureID)
+        try await waitIdle(center, env.lectureID)
+        #expect(center.errors[env.lectureID] == .notAuthenticated("Not logged in"))
+        // Соседние части не отменены, а доработали.
+        #expect(await engine.calls == parts)
+        #expect(env.konspekt.read() == nil)
+
+        center.assemble(env.lectureID)
+        try await waitIdle(center, env.lectureID)
+        // Повтор: только упавшая часть и склейка.
+        #expect(await engine.calls == parts + 2)
+        #expect(center.errors[env.lectureID] == nil)
+        #expect(env.konspekt.read() == "ok\n")
+    }
+
     @Test func failureKeepsPreviousKonspekt() async throws {
         let env = try Env(pages: ["Страница"])
         let first = env.center(FakeEngine([.success("Первая версия")]))
