@@ -131,6 +131,8 @@ final class SubjectExportCenter {
                 try await PDFExporter().export(markdown: part.markdown, title: part.lecture.meta.topic,
                                                heading: heading(part.lecture), to: file)
                 files.append((part.lecture.meta.topic, file))
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 failed.append("\(part.lecture.meta.topic) (не удалось напечатать)")
                 firstError = firstError ?? error

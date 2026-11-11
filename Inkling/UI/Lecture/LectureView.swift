@@ -177,7 +177,9 @@ struct LectureView: View {
         }
         ToolbarItem {
             LectureActivityIndicator(lecture: lecture, exportingPDFSince: export?.exportingPDFSince,
-                                     exportingHTMLSince: export?.exportingHTMLSince)
+                                     exportingHTMLSince: export?.exportingHTMLSince,
+                                     cancelPDF: export.map { export in { export.cancelPDF() } },
+                                     cancelHTML: export.map { export in { export.cancelHTML() } })
         }
         if let primary {
             ToolbarItem {

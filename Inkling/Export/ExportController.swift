@@ -16,6 +16,12 @@ final class ExportController {
     private(set) var exportingPDFSince: Date?
     /// Когда начался экспорт HTML; `nil` — не идёт.
     private(set) var exportingHTMLSince: Date?
+    @ObservationIgnored private var pdfTask: Task<Void, Never>?
+    @ObservationIgnored private var htmlTask: Task<Void, Never>?
+
+    /// «Отменить» в индикаторе работы: экспорт останавливается на ближайшей проверке, прежний файл не трогается.
+    func cancelPDF() { pdfTask?.cancel() }
+    func cancelHTML() { htmlTask?.cancel() }
     /// Дописывает отложенную правку конспекта в файл до чтения (`NotesFlush`).
     var flushEdits: (() -> Void)?
 
@@ -91,13 +97,15 @@ final class ExportController {
         }
         exportingHTMLSince = .now
         let heading = PrintHeading(subject: meta.subject, topic: meta.topic, date: meta.date.formatted)
-        Task {
+        htmlTask = Task {
             defer { exportingHTMLSince = nil }
             do {
                 let rendered = try await NotesRenderer().render(markdown: konspekt, heading: heading)
+                try Task.checkCancellation()
                 try HTMLExporter.write(title: "\(meta.topic) — \(meta.subject)",
                                        sections: [.init(id: "lecture", title: meta.topic, rendered: rendered)], to: url)
                 NSWorkspace.shared.activateFileViewerSelecting([url])
+            } catch is CancellationError {
             } catch {
                 library.errorMessage = error.localizedDescription
             }
@@ -129,11 +137,12 @@ final class ExportController {
         let title = lecture.meta.topic
         let heading = PrintHeading(subject: lecture.meta.subject, topic: lecture.meta.topic,
                                    date: lecture.meta.date.formatted)
-        Task {
+        pdfTask = Task {
             defer { exportingPDFSince = nil }
             do {
                 try await PDFExporter().export(markdown: konspekt, title: title, heading: heading, to: url)
                 NSWorkspace.shared.activateFileViewerSelecting([url])
+            } catch is CancellationError {
             } catch {
                 library.errorMessage = error.localizedDescription
             }

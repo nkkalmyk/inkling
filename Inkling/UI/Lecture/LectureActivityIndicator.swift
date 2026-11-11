@@ -12,6 +12,8 @@ struct LectureActivityIndicator: View {
     let lecture: LectureRecord
     var exportingPDFSince: Date?
     var exportingHTMLSince: Date?
+    var cancelPDF: (() -> Void)?
+    var cancelHTML: (() -> Void)?
 
     var body: some View {
         ActivityIndicator(activities: activities)
@@ -53,10 +55,10 @@ struct LectureActivityIndicator: View {
             result.append(Activity(id: "fix", title: "Исправление формул", cancel: { checker.cancelFix(id) }))
         }
         if let exportingPDFSince {
-            result.append(Activity(id: "pdf", title: "Экспорт в PDF", startedAt: exportingPDFSince))
+            result.append(Activity(id: "pdf", title: "Экспорт в PDF", startedAt: exportingPDFSince, cancel: cancelPDF))
         }
         if let exportingHTMLSince {
-            result.append(Activity(id: "html", title: "Экспорт в HTML", startedAt: exportingHTMLSince))
+            result.append(Activity(id: "html", title: "Экспорт в HTML", startedAt: exportingHTMLSince, cancel: cancelHTML))
         }
         return result
     }

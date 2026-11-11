@@ -69,6 +69,7 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
             }
         }
 
+        try Task.checkCancellation()
         if let json = try? await view.evaluateJavaScript(PDFNavigation.outlineScript) as? String {
             outline = try? JSONDecoder().decode(PDFNavigation.Outline.self, from: Data(json.utf8))
         }
@@ -100,6 +101,8 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
                                didRun: #selector(printOperationDidRun(_:success:contextInfo:)), contextInfo: nil)
         }
         guard ok, FileManager.default.fileExists(atPath: printed.path) else { throw PDFExportError.printFailed }
+        // Отменили во время печати — прежний PDF не заменяется.
+        try Task.checkCancellation()
         let label = heading.map { "\($0.subject) · \($0.topic)" } ?? title
         // Места ссылок ищутся в напечатанном файле, а ставятся при перерисовке с колонтитулами.
         let navigation = outline.flatMap { PDFNavigation.plan($0, for: printed) }
