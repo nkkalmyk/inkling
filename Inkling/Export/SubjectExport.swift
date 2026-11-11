@@ -99,7 +99,7 @@ final class SubjectExportCenter {
     }
 
     private func heading(_ lecture: LectureRecord) -> PrintHeading {
-        PrintHeading(subject: lecture.meta.subject, topic: lecture.meta.topic, date: lecture.meta.date.formatted)
+        PrintHeading(lecture.meta)
     }
 
     private func exportHTML(_ parts: [Part], subject: String, to url: URL) async throws {

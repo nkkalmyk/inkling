@@ -20,6 +20,13 @@ struct PrintHeading: Encodable {
     var date: String
 }
 
+extension PrintHeading {
+    /// Титул лекции: предмет, тема и дата словами — одинаково для PDF, HTML и экспорта предмета.
+    init(_ meta: LectureMeta) {
+        self.init(subject: meta.subject, topic: meta.topic, date: meta.date.formatted)
+    }
+}
+
 /// PDF A4 из отрендеренного конспекта (SPEC, раздел 8). Печать начинается только после сигнала
 /// `rendered` из JS: KaTeX отрисовал формулы и загрузил шрифты. Печатается всегда светлая тема.
 /// Первая страница начинается с титула (предмет, тема, дата), внизу каждой — колонтитул.

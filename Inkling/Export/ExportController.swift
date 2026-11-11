@@ -82,21 +82,25 @@ final class ExportController {
             subject: lecture.meta.subject, topic: lecture.meta.topic, date: lecture.meta.date))
     }
 
+    /// Путь в «Конспекты/<предмет>»; если папку создать не удалось — сообщение с её именем и `nil`.
+    private func exportURL(_ make: () throws -> URL) -> URL? {
+        do {
+            return try make()
+        } catch {
+            library.errorMessage = "Не удалось создать папку «\(ExportLocation.pdfFolderName)/"
+                + "\(ExportLocation.subjectFolderName(lecture.meta.subject))»: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
     /// Конспект одним HTML-файлом рядом с PDF: открывается офлайн в любом браузере (`HTMLExporter`).
     func exportHTML() {
         guard exportingHTMLSince == nil, let konspekt else { return }
         let meta = lecture.meta
-        let url: URL
-        do {
-            url = try ExportLocation.htmlURL(baseName: ExportLocation.pdfBaseName(subject: meta.subject, topic: meta.topic,
-                                                                                    date: meta.date), subject: meta.subject)
-        } catch {
-            library.errorMessage = "Не удалось создать папку «\(ExportLocation.pdfFolderName)/"
-                + "\(ExportLocation.subjectFolderName(meta.subject))»: \(error.localizedDescription)"
-            return
-        }
+        guard let url = exportURL({ try ExportLocation.htmlURL(baseName: ExportLocation.pdfBaseName(
+            subject: meta.subject, topic: meta.topic, date: meta.date), subject: meta.subject) }) else { return }
         exportingHTMLSince = .now
-        let heading = PrintHeading(subject: meta.subject, topic: meta.topic, date: meta.date.formatted)
+        let heading = PrintHeading(meta)
         htmlTask = Task {
             defer { exportingHTMLSince = nil }
             do {
@@ -125,18 +129,11 @@ final class ExportController {
 
     private func exportPDF(markdown konspekt: String, baseName: String) {
         // PDF сразу падает в «Документы → Конспекты → <предмет>», без панели сохранения.
-        let url: URL
-        do {
-            url = try ExportLocation.pdfURL(baseName: baseName, subject: lecture.meta.subject)
-        } catch {
-            library.errorMessage = "Не удалось создать папку «\(ExportLocation.pdfFolderName)/"
-                + "\(ExportLocation.subjectFolderName(lecture.meta.subject))»: \(error.localizedDescription)"
-            return
-        }
+        guard let url = exportURL({ try ExportLocation.pdfURL(baseName: baseName, subject: lecture.meta.subject) })
+        else { return }
         exportingPDFSince = .now
         let title = lecture.meta.topic
-        let heading = PrintHeading(subject: lecture.meta.subject, topic: lecture.meta.topic,
-                                   date: lecture.meta.date.formatted)
+        let heading = PrintHeading(lecture.meta)
         pdfTask = Task {
             defer { exportingPDFSince = nil }
             do {
