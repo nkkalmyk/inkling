@@ -202,14 +202,16 @@ struct LectureView: View {
         }
         ToolbarItem {
             Menu {
-                if let export { ExportMenuItems(export: export) }
+                if let export { ExportMenuItems(export: export, available: pdfAvailable) }
                 Divider()
                 Button("Изменить лекцию…") { library.sheet = .editLecture(lecture.id) }
                 Button("Показать в Finder") { library.revealInFinder(lecture.folder) }
+                Divider()
+                Button("Удалить лекцию…", role: .destructive) { library.requestDeleteLecture(lecture.id) }
             } label: {
                 Label("Ещё", systemImage: "ellipsis")
             }
-            .help("Экспорт, изменение лекции")
+            .help("Экспорт, изменение и удаление лекции")
         }
     }
 

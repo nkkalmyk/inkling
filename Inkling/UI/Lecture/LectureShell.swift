@@ -266,14 +266,14 @@ struct LectureMenuCommands: View {
             .disabled(commands?.nextLecture == nil)
         Divider()
         Menu("Экспорт") {
-            Button("Конспект в Markdown…") { commands?.exportMarkdown?() }
-                .disabled(commands?.exportMarkdown == nil)
             Button("Конспект в PDF") { commands?.exportPDF?() }
                 .disabled(commands?.exportPDF == nil)
             Button("Шпаргалка в PDF") { commands?.exportCheatSheet?() }
                 .disabled(commands?.exportCheatSheet == nil)
             Button("Конспект в HTML") { commands?.exportHTML?() }
                 .disabled(commands?.exportHTML == nil)
+            Button("Конспект в Markdown…") { commands?.exportMarkdown?() }
+                .disabled(commands?.exportMarkdown == nil)
             Button("Карточки для Anki…") { commands?.exportAnki?() }
                 .disabled(commands?.exportAnki == nil)
         }

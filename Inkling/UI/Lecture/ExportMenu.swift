@@ -165,24 +165,27 @@ final class ExportController {
     }
 }
 
-/// Пункты экспорта для меню «…». Конспект в PDF — отдельной кнопкой «PDF» в тулбаре.
+/// Пункты экспорта для меню «…». Конспект в PDF — отдельной кнопкой «PDF» в тулбаре. Порядок и отключение — как в
+/// «Лекция → Экспорт»: пока конспект пересобирается (`available == false`), его производные не экспортируются.
 struct ExportMenuItems: View {
     let export: ExportController
+    var available: Bool
 
     var body: some View {
+        Button("Шпаргалка в PDF") { export.exportCheatSheet() }
+            .disabled(!available || export.exportingPDFSince != nil)
+            .help("Определения, законы, теоремы и формулы конспекта подряд на одном листе")
+        Button("Конспект в HTML") { export.exportHTML() }
+            .disabled(!available || export.exportingHTMLSince != nil)
+            .help("Один файл со стилями и формулами: открывается без интернета в любом браузере, на телефоне и в Windows")
         Button("Конспект в Markdown…") { export.exportMarkdown() }
             .disabled(!export.hasKonspekt)
-        Button("Конспект в HTML") { export.exportHTML() }
-            .disabled(!export.hasKonspekt || export.exportingHTMLSince != nil)
-            .help("Один файл со стилями и формулами: открывается без интернета в любом браузере, на телефоне и в Windows")
+        Button("Карточки для Anki…") { export.askAnki = true }
+            .disabled(!export.hasStudy)
+        Divider()
         Button("Скопировать для чата") { export.copyForChat() }
             .disabled(!export.hasKonspekt)
             .help("Конспект с короткой просьбой к репетитору — в буфер обмена, для ChatGPT, Claude или другого чата в браузере")
-        Button("Шпаргалка в PDF") { export.exportCheatSheet() }
-            .disabled(!export.hasKonspekt || export.exportingPDFSince != nil)
-            .help("Определения, законы, теоремы и формулы конспекта подряд на одном листе")
-        Button("Карточки для Anki…") { export.askAnki = true }
-            .disabled(!export.hasStudy)
     }
 }
 
