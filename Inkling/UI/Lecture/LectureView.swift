@@ -153,7 +153,8 @@ struct LectureView: View {
         case .sources:
             SourcesView(lecture: lecture)
         case .notes:
-            NotesView(lecture: lecture, showSources: { tab = .sources })
+            NotesView(lecture: lecture, showSources: { tab = .sources },
+                      prepareStudy: { perform(.prepareStudy(rebuild: false)) })
         case .questions:
             QuestionsView(lecture: lecture, showNotes: { tab = .notes })
         case .quiz:

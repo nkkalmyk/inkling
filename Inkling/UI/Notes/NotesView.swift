@@ -7,9 +7,15 @@ struct NotesView: View {
     @Environment(AssemblyCenter.self) private var assembly
     @Environment(KonspektCheckCenter.self) private var checker
     @Environment(RecognitionCenter.self) private var recognition
+    @Environment(StudyCenter.self) private var study
+    @AppStorage(ClassicInterface.key) private var classicInterface = false
+    /// Подсказку «Подготовить вопросы и карточки?» закрыли в этой лекции.
+    @State private var studyHintDismissed = false
     let lecture: LectureRecord
     /// Переход на «Источники» из пустого состояния, когда собирать ещё не из чего.
     var showSources: () -> Void = {}
+    /// Переход на самопроверку с подготовкой материалов (подсказка после первой сборки).
+    var prepareStudy: () -> Void = {}
 
     @State private var editing = false
     /// `konspekt.md` есть по описанию, но не прочитался (выгружен в iCloud без сети, нет доступа): правка отключена,
@@ -56,6 +62,15 @@ struct NotesView: View {
                     InlineNotice(.error, "Конспект не собран. \(error.userMessage)", systemImage: "exclamationmark.octagon.fill",
                                  details: error.details, dismiss: { assembly.errors[lecture.id] = nil }) {
                         Button("Повторить") { start(force: true) }
+                    }
+                    .transition(.notice(reduceMotion: reduceMotion))
+                    Divider()
+                } else if showsStudyHint(readiness) {
+                    // Шаг «проверь себя» вне самопроверки сжат до значка (SPEC, раздел 13), поэтому после первой
+                    // сборки о нём напоминает плашка (C5, аудит 2026-11).
+                    InlineNotice(.info, "Конспект готов. Подготовить по нему вопросы, тест и карточки?",
+                                 systemImage: "graduationcap", dismiss: { studyHintDismissed = true }) {
+                        Button("Подготовить материалы", action: prepareStudy)
                     }
                     .transition(.notice(reduceMotion: reduceMotion))
                     Divider()
@@ -133,6 +148,11 @@ struct NotesView: View {
     }
 
     // MARK: Состояния
+
+    private func showsStudyHint(_ readiness: AssemblyCenter.Readiness?) -> Bool {
+        !classicInterface && !studyHintDismissed && info != nil && lecture.meta.study == nil
+            && !study.isRunning(lecture.id) && readiness?.isStale == false
+    }
 
     private func emptyState(_ readiness: AssemblyCenter.Readiness?) -> some View {
         EmptyState(assembly.isRunning(lecture.id) ? "Конспект собирается…" : "Конспекта пока нет",
