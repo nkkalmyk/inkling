@@ -258,18 +258,26 @@ private struct LectureRow: View {
 private struct UnavailableRow: View {
     let item: UnavailableLecture
 
+    private var helpText: String {
+        switch item.reason {
+        case .downloading: "Загружается из iCloud…"
+        case .unreadable(let message): "Не удалось прочитать описание лекции (meta.json): \(message)"
+        }
+    }
+
     var body: some View {
         HStack(spacing: Spacing.s) {
             switch item.reason {
             case .downloading:
                 ProgressView().controlSize(.small)
+                    .accessibilityLabel("Загружается из iCloud")
                 Text(item.name).lineLimit(1).foregroundStyle(.secondary)
-                    .help("Загружается из iCloud…")
-            case .unreadable(let message):
-                Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.statusError)
+            case .unreadable:
+                StatusSymbol(systemImage: "exclamationmark.triangle", label: "Не удалось прочитать лекцию", tint: .statusError)
                 Text(item.name).lineLimit(1).foregroundStyle(.secondary)
-                    .help("Не удалось прочитать meta.json: \(message)")
             }
         }
+        // Причина — на всю строку, а не только на текст; служебное имя файла — в подробностях.
+        .help(helpText)
     }
 }
