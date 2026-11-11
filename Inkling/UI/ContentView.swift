@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(Library.self) private var library
+    @Environment(EngineCenter.self) private var engines
+    @Environment(\.openSettings) private var openSettings
+    @AppStorage(ClassicInterface.key) private var classicInterface = false
     @AppStorage(ReadingScale.key) private var readingScale = 1.0
     @State private var dropTargeted = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -29,6 +32,19 @@ struct ContentView: View {
             }
         }
         .environment(\.readingScale, readingScale)
+        // Движок не найден — сказать сразу при запуске, а не после первого упавшего распознавания (C26).
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !classicInterface, let problem = engines.setupProblem {
+                VStack(spacing: 0) {
+                    InlineNotice(.error, problem, systemImage: "exclamationmark.triangle.fill",
+                                 dismiss: { engines.dismissSetupProblem() }) {
+                        Button("Настройки…") { openSettings() }
+                    }
+                    Divider()
+                }
+            }
+        }
+        .task { if !InklingApp.isRunningTests { await engines.checkSetup() } }
         // Фото и PDF можно бросить или вставить в любое место окна; «Источники» принимают их в свой раздел сами.
         .onDrop(of: ImportStaging.acceptedTypes, isTargeted: $dropTargeted) { providers in
             library.importIntoWindow(providers)
