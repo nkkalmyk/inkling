@@ -200,11 +200,13 @@ struct LectureView: View {
         // на кружке рядом). Место освобождено самой главной кнопкой, тулбар не переполняется (C4, аудит 2026-11).
         if primary == nil, !classicInterface, let runningStep {
             ToolbarItem {
-                Text(runningStep)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .accessibilityLabel("Выполняется: \(runningStep)")
+                // Выключенная кнопка, а не голый текст: так подпись выровнена в капсуле тулбара, как главная кнопка.
+                Button {} label: {
+                    Label(runningStep, systemImage: "hourglass").labelStyle(.titleAndIcon)
+                }
+                .disabled(true)
+                .help("Идёт работа: подробности и отмена — по щелчку на кружке рядом")
+                .accessibilityLabel("Выполняется: \(runningStep)")
             }
         }
         if let export, export.hasKonspekt {
@@ -266,7 +268,16 @@ struct LectureView: View {
             recognition.recognize(lectureID: lecture.id, pageIDs: pages)
         case .assemble:
             tab = .notes
-            requests.assemble = true
+            // Сборка сразу с главной кнопки. Через «Конспект» (с вопросом) — только когда вопрос нужен: конспект
+            // правился вручную или часть страниц не распознана. Раньше жёлтая кнопка всегда лишь переключала вкладку.
+            notesFlush()
+            let current = library.lecture(id: lecture.id) ?? lecture
+            if let readiness = assembly.knownReadiness(current), current.meta.konspekt?.manuallyEdited != true,
+               readiness.input.unrecognizedNotes + readiness.input.unrecognizedSlides == 0 {
+                assembly.assemble(lecture.id)
+            } else {
+                requests.assemble = true
+            }
         case .prepareStudy:
             if !tab.isStudy { tab = lastStudyTab }
             requests.prepareStudy = true
