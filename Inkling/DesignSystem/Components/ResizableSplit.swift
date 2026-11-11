@@ -21,7 +21,7 @@ struct ResizableSplit<Leading: View, Trailing: View>: View {
             Divider()
                 .overlay {
                     Color.clear
-                        .frame(width: 9)
+                        .frame(width: SplitHandle.width)
                         .contentShape(Rectangle())
                         .pointerStyle(.columnResize)
                         .gesture(resize)

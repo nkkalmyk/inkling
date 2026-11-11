@@ -72,7 +72,7 @@
 
 - `Spacing`: `xxs` 2 · `xs` 4 · `s` 8 · `m` 12 · `l` 16 · `xl` 20 · `xxl` 24 · `xxxl` 32. Других чисел в отступах нет.
 - `Radius`: `chip` 4 · `control` 8 · `card` 12; фигура — `RoundedRectangle.ds(_:)` (непрерывное скругление).
-- `SheetWidth`: `compact` 400 · `regular` 480 · `wide` 620. `ReadingWidth`: `focused` 720.
+- `SheetWidth`: `compact` 400 · `regular` 480 · `wide` 620. `ReadingWidth`: `focused` 720. `PopoverSize`: `width` 320, `historyList` 240×300, `historyPreview` 380×300. `Tint` (прозрачность цветной подложки): `faint` 0,08 · `soft` 0,12 · `medium` 0,14 · `track` 0,18. `SplitHandle.width` 9.
 
 ### Движение (`Tokens/Motion.swift`)
 

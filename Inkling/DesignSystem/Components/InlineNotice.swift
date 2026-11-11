@@ -76,7 +76,7 @@ struct InlineNotice<Actions: View>: View {
         switch kind {
         case .info: .clear
         case .attention: .surfaceRaised
-        case .error: .statusError.opacity(0.08)
+        case .error: .statusError.opacity(Tint.faint)
         }
     }
 
