@@ -187,8 +187,12 @@ struct NotesView: View {
 
             provenance
             if katexErrors > 0 && !editing {
-                Label("ошибок в формулах: \(katexErrors)", systemImage: "exclamationmark.triangle")
+                // В одну строку и без сжатия: при нехватке места уступают описание и проверка, а не это.
+                Label("\(UIFormat.count(katexErrors, "ошибка", "ошибки", "ошибок")) в формулах",
+                      systemImage: "exclamationmark.triangle")
                     .foregroundStyle(Color.statusError)
+                    .lineLimit(1)
+                    .fixedSize()
                     .help("Формулы с ошибкой показаны исходным LaTeX красным")
                 if checker.checks[lecture.id]?.brokenFormulas.isEmpty == false {
                     if checker.isFixing(lecture.id) {
@@ -197,6 +201,7 @@ struct NotesView: View {
                             .help("Идёт исправление формул; отменить можно в индикаторе работы на панели")
                     } else {
                         Button("Исправить формулы") { flushSave(); checker.fixFormulas(lecture.id) }
+                            .fixedSize()
                             .help("Один короткий вызов модели: исправляется только синтаксис формул, смысл не меняется. Прежняя версия уйдёт в историю.")
                     }
                 }
@@ -205,6 +210,8 @@ struct NotesView: View {
                 Label("проверка: " + KonspektCheck(diagramErrors: check.diagramErrors, missingStructure: check.missingStructure).summary,
                       systemImage: "checklist")
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .layoutPriority(-1)
                     .help("Локальная проверка конспекта. Недостающие разделы появятся после «Пересобрать».")
             }
             Spacer()
@@ -236,8 +243,10 @@ struct NotesView: View {
     @ViewBuilder
     private var provenance: some View {
         if let info {
+            // Сокращается первым, когда шапке не хватает ширины; полный текст — в подсказке.
             Text(describe(info)).foregroundStyle(.secondary).lineLimit(1)
-                .help(provenanceHelp(info))
+                .layoutPriority(-1)
+                .help([describe(info), provenanceHelp(info)].filter { !$0.isEmpty }.joined(separator: "\n"))
             ReviewBadge(engine: info.engine, manuallyEdited: info.manuallyEdited)
         }
     }
