@@ -14,7 +14,8 @@ struct CalendarDate: Hashable, Comparable, Sendable, CustomStringConvertible {
 
     init(_ date: Date, calendar: Calendar = .current) {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
-        self.init(year: parts.year!, month: parts.month!, day: parts.day!)
+        // Григорианский и прочие календари Foundation всегда дают год, месяц и день; запасное значение — на всякий случай.
+        self.init(year: parts.year ?? 1970, month: parts.month ?? 1, day: parts.day ?? 1)
     }
 
     /// Разбирает строку `ГГГГ-ММ-ДД`; несуществующие даты (например, 2026-02-30) отвергаются.
@@ -36,7 +37,8 @@ struct CalendarDate: Hashable, Comparable, Sendable, CustomStringConvertible {
 
     /// Полдень этого дня в заданном календаре: безопасно для DatePicker при любых часовых поясах.
     func date(calendar: Calendar = .current) -> Date {
-        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))
+            ?? Date(timeIntervalSince1970: 0)
     }
 
     static func < (lhs: CalendarDate, rhs: CalendarDate) -> Bool {

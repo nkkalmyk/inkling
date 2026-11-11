@@ -19,7 +19,8 @@ struct PageTextEditor: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
-        let textView = scroll.documentView as! NSTextView
+        // `scrollableTextView()` всегда кладёт внутрь NSTextView; запасной вариант — пустое поле, а не падение.
+        guard let textView = scroll.documentView as? NSTextView else { return scroll }
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.allowsUndo = true
@@ -81,11 +82,12 @@ struct PageTextEditor: NSViewRepresentable {
             while true {
                 let found = string.range(of: PageTextEditor.illegible, options: [], range: search)
                 guard found.location != NSNotFound else { break }
-                storage.addAttributes([
+                var attributes: [NSAttributedString.Key: Any] = [
                     .backgroundColor: NSColor.appAccent.withAlphaComponent(0.3),
-                    .link: URL(string: "\(PageTextEditor.linkScheme)://\(found.location)")!,
                     .toolTip: "Щёлкните, чтобы приблизить это место на фото",
-                ], range: found)
+                ]
+                if let link = URL(string: "\(PageTextEditor.linkScheme)://\(found.location)") { attributes[.link] = link }
+                storage.addAttributes(attributes, range: found)
                 let next = found.location + found.length
                 search = NSRange(location: next, length: full.length - next)
             }

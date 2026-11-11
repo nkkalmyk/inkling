@@ -61,8 +61,7 @@ enum KonspektChecker {
     }
 
     private static func renderReport(_ markdown: String) -> Report? {
-        guard let web = NotesWebView.webFolder else { return nil }
-        let context = JSContext()!
+        guard let web = NotesWebView.webFolder, let context = JSContext() else { return nil }
         // В WebKit atob есть, в голом JavaScriptCore нет (нужен markdown-it).
         let atob: @convention(block) (String) -> String = { base64 in
             String(data: Data(base64Encoded: base64) ?? Data(), encoding: .isoLatin1) ?? ""
