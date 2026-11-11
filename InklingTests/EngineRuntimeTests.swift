@@ -366,6 +366,28 @@ struct EngineRouterTests {
         #expect(try await router.run(request).text == "ok")
     }
 
+    /// Регресс A14 (аудит 2026-11): после смены режима в меню «Модель» новый маршрутизатор считал вызовы заново
+    /// (до 4 CLI вместо 2) и забывал пометку «лимит до …».
+    @Test func routersShareCallLimitAndLimitMarks() async throws {
+        let gate = EngineGate()
+        let engine = FakeEngine([], delay: .milliseconds(120))
+        let first = EngineRouter(primary: engine, fallback: nil, settings: .init(maxParallel: 2), gate: gate)
+        let second = EngineRouter(primary: engine, fallback: nil, settings: .init(maxParallel: 2), gate: gate)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for router in [first, second, first, second, first, second] {
+                group.addTask { _ = try await router.run(request) }
+            }
+            try await group.waitForAll()
+        }
+        #expect(await engine.calls == 6)
+        #expect(await engine.maxConcurrent == 2)
+
+        let limited = EngineRouter(primary: FakeEngine([.failure(limit)]), fallback: nil, settings: .init(), gate: gate)
+        _ = try? await limited.run(request)
+        let fresh = EngineRouter(primary: FakeEngine([]), fallback: nil, settings: .init(), gate: gate)
+        #expect(await fresh.isLimited(.claude))
+    }
+
     @Test func cancelledBeforeStart() async {
         let router = EngineRouter(primary: FakeEngine([]), fallback: nil, settings: .init())
         let task = Task { () async throws -> AIResponse in

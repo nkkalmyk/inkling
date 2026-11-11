@@ -86,7 +86,11 @@ final class EngineCenter {
         routing.primary == .ollama ? min(settings.chunkThresholdChars, Self.localChunkThreshold) : settings.chunkThresholdChars
     }
 
-    /// Маршрутизатор с текущими настройками. Пересоздаётся при их изменении (пометки «лимит до …» при этом сбрасываются).
+    /// Один на всё приложение: при пересоздании маршрутизатора ограничение вызовов и пометки лимита сохраняются.
+    @ObservationIgnored private let gate = EngineGate()
+
+    /// Маршрутизатор с текущими настройками. Пересоздаётся при их изменении; счётчик вызовов и пометки «лимит до …»
+    /// общие (`gate`).
     var router: EngineRouter {
         let routing = routing
         let key = [routing.primary.rawValue, routing.fallback?.rawValue ?? "-", "\(settings.autoFallback)",
@@ -97,7 +101,8 @@ final class EngineCenter {
         let router = EngineRouter(primary: engine(routing.primary),
                                   fallback: routing.fallback.map(engine),
                                   settings: .init(autoFallback: settings.autoFallback,
-                                                  maxParallel: settings.maxParallelCalls))
+                                                  maxParallel: settings.maxParallelCalls),
+                                  gate: gate)
         cachedRouter = (key, router)
         return router
     }
