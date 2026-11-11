@@ -7,6 +7,7 @@ struct LectureView: View {
     @Environment(RecognitionCenter.self) private var recognition
     @Environment(AssemblyCenter.self) private var assembly
     @Environment(StudyCenter.self) private var study
+    @AppStorage(ClassicInterface.key) private var classicInterface = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let lecture: LectureRecord
 
@@ -192,6 +193,17 @@ struct LectureView: View {
                 .help("\(primary.title) — следующий шаг (⌘↩)")
             }
         }
+        // Пока идёт работа, главной кнопки нет; на её месте — название идущего шага (подробности и отмена — по щелчку
+        // на кружке рядом). Место освобождено самой главной кнопкой, тулбар не переполняется (C4, аудит 2026-11).
+        if primary == nil, !classicInterface, let runningStep {
+            ToolbarItem {
+                Text(runningStep)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .accessibilityLabel("Выполняется: \(runningStep)")
+            }
+        }
         if let export, export.hasKonspekt {
             ToolbarItem {
                 PDFExportButton(export: export, prominent: prominentButton == .pdf, available: pdfAvailable)
@@ -217,6 +229,16 @@ struct LectureView: View {
 
     /// Пока конспект пересобирается, его не экспортируют.
     private var pdfAvailable: Bool { export?.hasKonspekt == true && !assembly.isRunning(lecture.id) }
+
+    /// Название шага, который сейчас идёт по лекции.
+    private var runningStep: String? {
+        let id = lecture.id
+        if let batch = recognition.batches[id] { return "Распознаётся \(batch.done + batch.failed) из \(batch.total)" }
+        if assembly.isRunning(id) { return "Собирается конспект" }
+        if study.isRunning(id) { return "Готовятся материалы" }
+        if library.importProgress?.lectureID == id { return "Импорт" }
+        return nil
+    }
 
     private var prominentButton: LectureProminentButton {
         LectureProminentButton.choose(primary: primary, pdfAvailable: pdfAvailable,
