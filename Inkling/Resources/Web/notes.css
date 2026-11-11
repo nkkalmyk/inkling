@@ -106,7 +106,7 @@ blockquote.warn { background: var(--surface); border-left-color: var(--muted); }
 /* Вставка со слайда — в тоне акцента. */
 blockquote.slides { background: var(--accent-soft); border-left-color: var(--accent); }
 
-/* Блоки «Дополнить» (пояснение, пример, связи) — одна форма, как у остальных вставок: нейтральная подложка,
+/* Блоки 💡 📝 🔗 учебной сборки и прежней «Дополнить» (пояснение, пример, связи) — одна форма, как у остальных вставок: нейтральная подложка,
    акцентная граница. Различает их значок в начале. Резюме — тоже вставка, а не отдельный стиль. */
 blockquote.explain, blockquote.example, blockquote.link { background: var(--surface); border-left-color: var(--accent); }
 h2.summary-heading { border-bottom-color: var(--accent); }

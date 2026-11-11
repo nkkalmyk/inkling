@@ -44,8 +44,8 @@ struct Chip: View {
         let shape = RoundedRectangle.ds(Radius.chip)
         switch style {
         case .neutral: shape.fill(Color.surfaceRaised)
-        case .accent: shape.fill(Color.accentColor.opacity(0.14))
-        case .error: shape.fill(Color.statusError.opacity(0.12))
+        case .accent: shape.fill(Color.accentColor.opacity(Tint.medium))
+        case .error: shape.fill(Color.statusError.opacity(Tint.soft))
         case .overlay: shape.fill(.regularMaterial)
         }
     }

@@ -44,7 +44,16 @@ struct InklingApp: App {
         }
         _assembly = State(initialValue: assembly)
         _study = State(initialValue: study)
-        _konspektCheck = State(initialValue: KonspektCheckCenter(library: library, router: { engines.router }))
+        let konspektCheck = KonspektCheckCenter(library: library, router: { engines.router })
+        _konspektCheck = State(initialValue: konspektCheck)
+        library.onLecturesDeleted = { ids in
+            for id in ids {
+                recognition.cancel(lectureID: id)
+                assembly.cancel(id)
+                study.cancel(id)
+                konspektCheck.cancelFix(id)
+            }
+        }
         _subjectExport = State(initialValue: SubjectExportCenter(library: library))
     }
 
@@ -61,7 +70,7 @@ struct InklingApp: App {
                 .environment(konspektCheck)
                 .environment(konspektSearch)
                 .environment(subjectExport)
-                .environment(\.locale, Locale(identifier: "ru_RU"))
+                .environment(\.locale, UIFormat.locale)
                 .task {
                     appDelegate.library = library
                     if !Self.isRunningTests {
@@ -78,6 +87,8 @@ struct InklingApp: App {
                     .keyboardShortcut("t")
                 Button("Новый предмет…") { library.sheet = .newSubject }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
+                Divider()
+                AddFilesCommand()
             }
             // «Файл» → «Импорт с iPhone»: снимок получает экран с .importsItemProviders («Источники»).
             ImportFromDevicesCommands()
@@ -97,7 +108,7 @@ struct InklingApp: App {
                 .environment(engines)
                 .environment(library)
                 .environment(literature)
-                .environment(\.locale, Locale(identifier: "ru_RU"))
+                .environment(\.locale, UIFormat.locale)
         }
     }
 }

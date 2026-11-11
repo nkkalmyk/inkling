@@ -113,11 +113,9 @@ enum AnkiExporter {
         return nil
     }
 
-    private static func escapeHTML(_ s: String) -> String {
-        s.replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-    }
+    /// То же экранирование, что у HTML-экспорта, с кавычкой: поле, начинающееся с `"`, Anki читает как закавыченное
+    /// (кавычки пропадают, а непарная склеивает следующие поля и строки).
+    private static func escapeHTML(_ s: String) -> String { HTMLExporter.escape(s) }
 
     /// Минимум Markdown внутри строки: **жирный** и *курсив*.
     private static func inlineMarkdown(_ s: String) -> String {

@@ -42,8 +42,15 @@ struct AIRequest: Sendable {
     var model: String?
     /// Движок, для которого написана `model`: на другом движке (запасном) модель берётся из его настроек.
     var modelEngine: EngineID?
-    /// Только облачный движок (Claude Code или Codex): без локальной модели, в том числе как запасной.
+    /// Только облачный движок (Claude Code, Codex или Gemini): без локальной модели, в том числе как запасной.
     var cloudOnly = false
+}
+
+extension AIRequest {
+    /// Короткий запрос «Проверить подключение» в настройках — один для всех движков.
+    static func connectionProbe(timeout: TimeInterval) -> AIRequest {
+        AIRequest(prompt: "Ответь одним словом: готово.", systemPrompt: "Отвечай очень кратко.", timeout: timeout)
+    }
 }
 
 struct AIResponse: Sendable, Equatable {
@@ -77,6 +84,18 @@ enum AIError: Error, Equatable, Sendable {
     case geminiNotAuthenticated(String)
     /// Gemini: выбранной модели нет (404).
     case geminiModelUnavailable(model: String)
+    /// Ответ модели получен, но не записан (нет места, iCloud недоступен, лекцию удалили). Не повторяется:
+    /// новый вызов модели тут не поможет.
+    case storageFailed(String)
+    /// Не удалось подготовить входные файлы (фото страниц пропали: лекцию переименовали, файл выгружен в iCloud).
+    /// Не повторяется и не переключает движок: другой движок упрётся в то же самое.
+    case inputUnavailable(String)
+
+    /// Ошибки записи результата отдельно от ошибок модели: раньше любая ошибка записи выглядела как
+    /// «модель вернула пустой ответ», и настоящая причина пряталась в подробностях (аудит 2026-11).
+    static func storing<T>(_ body: () throws -> T) throws(AIError) -> T {
+        do { return try body() } catch let error as AIError { throw error } catch { throw .storageFailed(error.localizedDescription) }
+    }
 
     /// Повтор на том же движке имеет смысл (SPEC, раздел 2.6).
     var isRetryable: Bool {
@@ -126,6 +145,13 @@ enum AIError: Error, Equatable, Sendable {
             return "Gemini не принял ключ или отказал в доступе. Создайте ключ на aistudio.google.com/apikey и вставьте его в настройках (вкладка «Движок»)."
         case .geminiModelUnavailable(let model):
             return "Модель Gemini «\(model)» недоступна для вашего ключа. Выберите другую в настройках (вкладка «Движок»)."
+        case .inputUnavailable(let reason):
+            let reason = reason.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+            return "Не удалось подготовить фото страниц для модели (\(reason)). "
+                + "Если лекцию только что переименовали или файлы загружаются из iCloud, повторите через минуту."
+        case .storageFailed(let reason):
+            let reason = reason.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+            return "Ответ модели получен, но не сохранён (\(reason)). Проверьте место на диске и доступ к папке хранения."
         }
     }
 
@@ -133,7 +159,8 @@ enum AIError: Error, Equatable, Sendable {
     var details: String {
         switch self {
         case .binaryNotFound(let s), .notAuthenticated(let s), .invalidOutput(let s), .ollamaUnavailable(let s),
-             .codexUnavailable(let s), .codexNotAuthenticated(let s), .geminiNotAuthenticated(let s): s
+             .codexUnavailable(let s), .codexNotAuthenticated(let s), .geminiNotAuthenticated(let s), .storageFailed(let s),
+             .inputUnavailable(let s): s
         case .modelNotInstalled(let model), .geminiModelUnavailable(let model): model
         case .rateLimited(_, let s): s
         case .processFailed(_, let stderr): stderr
@@ -141,7 +168,7 @@ enum AIError: Error, Equatable, Sendable {
         }
     }
 
-    private static let timeFormat = Date.FormatStyle(date: .omitted, time: .shortened).locale(Locale(identifier: "ru_RU"))
+    private static let timeFormat = Date.FormatStyle(date: .omitted, time: .shortened).locale(UIFormat.locale)
 }
 
 /// Результат «Проверить подключение».

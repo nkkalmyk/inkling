@@ -93,3 +93,29 @@ struct KonspektSearchTests {
         #expect(center.texts.isEmpty, "удалённая лекция уходит из индекса")
     }
 }
+
+/// D1.2 (аудит 2026-11): `contains` ищет понятие только с мест, где слово начинается с тех же двух букв.
+/// Ответ должен совпадать с прежним полным перебором.
+@Suite("Поиск понятий в тексте: индекс по началу слова")
+struct ConceptContainsTests {
+    private static func bruteForce(_ text: String, _ stems: [String]) -> Bool {
+        let words = text.lowercased().replacingOccurrences(of: "ё", with: "е")
+            .split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        guard !stems.isEmpty, words.count >= stems.count else { return false }
+        return (0...(words.count - stems.count)).contains { start in
+            stems.indices.allSatisfy { words[start + $0].hasPrefix(stems[$0]) }
+        }
+    }
+
+    @Test func matchesBruteForce() {
+        let text = "Квадратная матрица называется вырожденной, если её определитель равен нулю. "
+            + "Ранг матрицы — наибольший порядок ненулевого минора. Ёмкость и 2x2 матрица А."
+        let search = KonspektSearchText(markdown: text)
+        let cases: [[String]] = [["матриц"], ["квадратн", "матриц"], ["определител", "равен"], ["ранг", "матриц"],
+                                 ["емкост"], ["2x2"], ["а"], ["м"], ["матриц", "назыв", "вырожд"], ["минор", "ранг"],
+                                 ["нул"], ["xyz"], [], ["определител", "матриц"]]
+        for stems in cases {
+            #expect(search.contains(stems) == Self.bruteForce(text, stems), "\(stems)")
+        }
+    }
+}

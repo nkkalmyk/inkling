@@ -37,9 +37,12 @@ final class AssemblyCenter {
     /// Выдержки из учебников для предмета и темы (по словам лекции); в тестах — пусто.
     @ObservationIgnored private let literature: @MainActor (_ subject: String, _ topic: String, _ texts: [String]) async -> [LiteraturePassage]
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
+    /// Готовые ответы частей и склейки до успешного сохранения конспекта: если одна часть упала, «Повторить»
+    /// не оплачивает заново остальные. Ключ — содержимое запроса и движок (`cacheKey`), поэтому изменённые страницы
+    /// или другой движок дают новый ключ. Только в памяти, на диск ничего не пишется.
+    @ObservationIgnored private var partCache: [UUID: [String: AIResponse]] = [:]
     private var cachedReadiness: [UUID: Readiness] = [:]
-    @ObservationIgnored private var readinessKeys: [UUID: ReadinessKey] = [:]
-    @ObservationIgnored private var readinessTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private let readinessRefresh = BackgroundRefresh<ReadinessKey>()
 
     init(library: Library, router: @escaping @MainActor () -> EngineRouter, threshold: @escaping @MainActor () -> Int,
          style: @escaping @MainActor () -> AssemblyStyle = { .faithful },
@@ -61,7 +64,7 @@ final class AssemblyCenter {
     /// (`nil`, пока его ещё не было).
     func knownReadiness(_ lecture: LectureRecord) -> Readiness? {
         let key = ReadinessKey(meta: lecture.meta, texts: library.textRevision[lecture.id] ?? 0, threshold: threshold())
-        if readinessKeys[lecture.id] != key { refreshReadiness(lecture, key: key) }
+        refreshReadiness(lecture, key: key)
         return cachedReadiness[lecture.id]
     }
 
@@ -79,14 +82,13 @@ final class AssemblyCenter {
 
     private func refreshReadiness(_ lecture: LectureRecord, key: ReadinessKey) {
         let id = lecture.id, meta = lecture.meta, paths = LecturePaths(folder: lecture.folder)
-        readinessKeys[id] = key
-        readinessTasks[id]?.cancel()
-        readinessTasks[id] = Task {
+        readinessRefresh.refresh(id, key: key) { [weak self] in
             let input = await Self.collectInBackground(meta: meta, paths: paths)
             guard !Task.isCancelled else { return }
-            cachedReadiness[id] = Self.readiness(meta: meta, input: input, threshold: key.threshold)
+            self?.cachedReadiness[id] = Self.readiness(meta: meta, input: input, threshold: key.threshold)
         }
     }
+
 
     @concurrent
     private static func collectInBackground(meta: LectureMeta, paths: LecturePaths) async -> AssemblyInput {
@@ -113,26 +115,32 @@ final class AssemblyCenter {
         guard runs[lectureID] == nil, let lecture = library.lecture(id: lectureID) else { return }
         errors[lectureID] = nil
         let paths = LecturePaths(folder: lecture.folder)
-        let input = AssemblyInput.collect(meta: lecture.meta, texts: PageTextStore(paths: paths))
-        guard let plan = AssemblyPlanner.plan(input, threshold: threshold()) else {
-            errors[lectureID] = .invalidOutput("Нет распознанных страниц: собирать не из чего.")
-            return
-        }
+        let meta = lecture.meta
+        let threshold = threshold()
         let router = router()
         // Локальная модель с десятком фотографий не справляется: при «Только локальная» остаётся точная сборка.
         let style = router.primaryID.isCloud ? (style ?? defaultStyle()) : .faithful
-        let studyPlan = style == .study
-            ? StudyAssemblyPlanner.plan(meta: lecture.meta, input: input, paths: paths, textThreshold: threshold()) : nil
-        let subject = lecture.meta.subject, topic = lecture.meta.topic
+        let subject = meta.subject, topic = meta.topic
         let prompts = library.prompts
         let model = assemblyModel().trimmingCharacters(in: .whitespaces)
-        runs[lectureID] = Run(totalCalls: studyPlan?.calls ?? plan.calls)
+        // Сборка считается идущей сразу (повторное «Собрать» отсекается), а тексты страниц читаются уже в фоне:
+        // в iCloud они могут быть выгружены, и чтение на главном потоке подвешивало окно (аудит 2026-11, A20).
+        runs[lectureID] = Run(totalCalls: 1)
 
         tasks[lectureID] = Task {
             defer {
                 runs[lectureID] = nil
                 tasks[lectureID] = nil
             }
+            let input = await Self.collectInBackground(meta: meta, paths: paths)
+            guard !Task.isCancelled else { return }
+            guard let plan = AssemblyPlanner.plan(input, threshold: threshold) else {
+                errors[lectureID] = .invalidOutput("Нет распознанных страниц: собирать не из чего.")
+                return
+            }
+            let studyPlan = style == .study
+                ? StudyAssemblyPlanner.plan(meta: meta, input: input, paths: paths, textThreshold: threshold) : nil
+            runs[lectureID]?.totalCalls = studyPlan?.calls ?? plan.calls
             do {
                 let result: (text: String, response: AIResponse)
                 var passages: [LiteraturePassage] = []
@@ -144,9 +152,11 @@ final class AssemblyCenter {
                     result = try await run(plan, input: input, subject: subject, topic: topic, prompts: prompts,
                                            router: router, lectureID: lectureID)
                 }
-                try save(result.text, response: result.response, plan: plan, input: input,
-                         style: studyPlan == nil ? .faithful : .study, parts: studyPlan?.parts.count ?? plan.parts.count,
-                         literature: passages.isEmpty ? nil : LiteratureRetrieval.references(passages), lectureID: lectureID)
+                try AIError.storing {
+                    try save(result.text, response: result.response, plan: plan, input: input,
+                             style: studyPlan == nil ? .faithful : .study, parts: studyPlan?.parts.count ?? plan.parts.count,
+                             literature: passages.isEmpty ? nil : LiteratureRetrieval.references(passages), lectureID: lectureID)
+                }
             } catch let error as AIError {
                 if error != .cancelled { errors[lectureID] = error }
             } catch {
@@ -196,22 +206,52 @@ final class AssemblyCenter {
     }
 
     /// Запросы частей идут параллельно (маршрутизатор ограничивает число вызовов); ответы — в порядке запросов.
+    /// Если часть упала, остальные дорабатывают до конца и запоминаются (`partCache`), а не отменяются: иначе
+    /// уже оплаченные ответы пропали бы. Ошибка бросается после всех частей.
     private func runRequests(_ requests: [AIRequest], lectureID: UUID, router: EngineRouter) async throws -> [AIResponse] {
         let onEvent: @Sendable (EngineRouter.Event) -> Void = { event in
             Task { @MainActor in self.note(event, lectureID: lectureID) }
         }
+        let keys = requests.map { Self.cacheKey($0, engine: router.primaryID) }
         var outputs = [AIResponse?](repeating: nil, count: requests.count)
-        try await withThrowingTaskGroup(of: (Int, AIResponse).self) { group in
+        var failure: AIError?
+        await withTaskGroup(of: (Int, Result<AIResponse, AIError>).self) { group in
             for (index, request) in requests.enumerated() {
-                group.addTask { (index, try await router.run(request, onEvent: onEvent)) }
+                if let cached = partCache[lectureID]?[keys[index]] {
+                    outputs[index] = cached
+                    runs[lectureID]?.finishedCalls += 1
+                    continue
+                }
+                group.addTask {
+                    do throws(AIError) { return (index, .success(try await router.run(request, onEvent: onEvent))) }
+                    catch { return (index, .failure(error)) }
+                }
             }
-            for try await (index, response) in group {
-                outputs[index] = response
-                runs[lectureID]?.finishedCalls += 1
+            for await (index, result) in group {
+                switch result {
+                case .success(let response):
+                    outputs[index] = response
+                    partCache[lectureID, default: [:]][keys[index]] = response
+                    runs[lectureID]?.finishedCalls += 1
+                case .failure(let error):
+                    if failure == nil || failure == .cancelled { failure = error }
+                }
             }
         }
         if Task.isCancelled { throw AIError.cancelled }
+        if let failure { throw failure }
         return outputs.compactMap { $0 }
+    }
+
+    /// Ключ ответа в `partCache`: промпт, системный промпт, модель, движок и картинки с размером и временем изменения
+    /// (повёрнутое или заменённое фото даёт новый ключ при том же имени файла).
+    static func cacheKey(_ request: AIRequest, engine: EngineID) -> String {
+        var parts = [request.prompt, request.systemPrompt, request.model ?? "", "\(engine)"]
+        for image in request.images {
+            let values = try? image.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            parts.append("\(image.path)|\(values?.fileSize ?? -1)|\(values?.contentModificationDate?.timeIntervalSince1970 ?? 0)")
+        }
+        return FileHash.sha256(parts.joined(separator: "\u{1F}"))
     }
 
     /// Финальный проход: склейка частей длинной лекции.
@@ -229,7 +269,14 @@ final class AssemblyCenter {
             request.model = model
             request.modelEngine = .claude
         }
-        let merged = try await router.run(request, onEvent: onEvent)
+        let key = Self.cacheKey(request, engine: router.primaryID)
+        let merged: AIResponse
+        if let cached = partCache[lectureID]?[key] {
+            merged = cached
+        } else {
+            merged = try await router.run(request, onEvent: onEvent)
+            partCache[lectureID, default: [:]][key] = merged
+        }
         runs[lectureID]?.finishedCalls += 1
         return (MarkdownCleanup.unwrap(merged.text), merged)
     }
@@ -249,20 +296,14 @@ final class AssemblyCenter {
         stamped.literature = literature
         library.mutate(lectureID) { $0.konspekt = stamped }
         library.konspektRevision[lectureID, default: 0] += 1
+        partCache[lectureID] = nil
         onAssembled?(lectureID)
     }
 
     private func note(_ event: EngineRouter.Event, lectureID: UUID) {
         guard runs[lectureID] != nil else { return }
-        switch event {
-        case .started(let engine):
-            runs[lectureID]?.engine = engine
-        case .retrying(_, let error):
-            runs[lectureID]?.note = "Повтор после ошибки: \(error.userMessage)"
-        case .switchedToFallback(_, let to, let error):
-            runs[lectureID]?.engine = to
-            runs[lectureID]?.note = "\(error.userMessage) Переход на \(to.title)."
-        }
+        if let engine = event.engine { runs[lectureID]?.engine = engine }
+        if let note = event.note { runs[lectureID]?.note = note }
     }
 }
 

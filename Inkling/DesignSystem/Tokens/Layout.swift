@@ -51,6 +51,24 @@ enum SheetWidth {
 enum ReadingWidth {
     /// Вопрос теста, флеш-карточка.
     static let focused: CGFloat = 720
-    /// Список или лента карточек.
-    static let column: CGFloat = 820
+}
+
+/// Размеры поповеров (индикатор работы, история версий).
+enum PopoverSize {
+    static let width: CGFloat = 320
+    static let historyList = CGSize(width: 240, height: 300)
+    static let historyPreview = CGSize(width: 380, height: 300)
+}
+
+/// Прозрачность цветной подложки: ошибка в плашке, чипы, ответ теста, дорожка кольца.
+enum Tint {
+    static let faint = 0.08
+    static let soft = 0.12
+    static let medium = 0.14
+    static let track = 0.18
+}
+
+/// Ширина ручки перетаскивания разделителя панелей.
+enum SplitHandle {
+    static let width: CGFloat = 9
 }

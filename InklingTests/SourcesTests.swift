@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import PDFKit
 import Testing
 @testable import Inkling
 
@@ -434,5 +435,166 @@ struct CurrentSubjectTests {
         #expect(library.currentSubject == names[1])
         #expect(library.createLecture(subject: names[0], topic: "Тема", date: .d("2026-10-14")))
         #expect(library.currentSubject == names[0])
+    }
+}
+
+/// Регресс C17 (аудит 2026-11): удаление страниц шло без вопроса, а распознанный и правленный текст стирался навсегда.
+@Suite("Удаление страниц")
+@MainActor
+struct PageDeletionTests {
+    @Test func textGoesToTrashAndSeveralOrEditedPagesAsk() throws {
+        let env = try RecognitionCenterTests.Env(photos: 3)
+        let trasher = try #require(env.library.store.trasher as? FakeTrasher)
+        let (first, second, third) = (env.pages[0], env.pages[1], env.pages[2])
+        try env.textStore.write("текст модели", id: first, in: .notes, previous: nil)
+
+        // Одна нетронутая страница — сразу, текст и картинка в корзине.
+        env.library.requestDeletePages([first], lectureID: env.lectureID)
+        #expect(env.library.pendingDeletion == nil)
+        #expect(env.lecture.meta.notes.map(\.id) == [second, third])
+        #expect(trasher.trashed.contains("\(first).md"))
+        #expect(trasher.trashed.contains("\(first).jpg"))
+
+        // Ручная правка — даже одна страница через подтверждение.
+        env.library.saveEditedText("моя правка", pageID: second, lectureID: env.lectureID)
+        env.library.requestDeletePages([second], lectureID: env.lectureID)
+        #expect(env.library.pendingDeletion == .pages([second], lectureID: env.lectureID, edited: true))
+        #expect(env.lecture.meta.notes.count == 2)
+
+        // Несколько страниц — через подтверждение; после него удалены обе.
+        env.library.requestDeletePages([second, third], lectureID: env.lectureID)
+        let pending = try #require(env.library.pendingDeletion)
+        #expect(pending == .pages([second, third], lectureID: env.lectureID, edited: true))
+        env.library.confirmDeletion(pending)
+        #expect(env.lecture.meta.notes.isEmpty)
+        #expect(trasher.trashed.contains("\(second).md"))
+    }
+}
+
+/// Регресс A17 (аудит 2026-11): PDF, у которого страница не обработалась, попадал в «пропущенные», а его копия
+/// и уже созданные картинки страниц оставались в папке лекции без записи в `meta.json`.
+@Suite("Импорт: сбойный PDF")
+struct FailedPDFImportTests {
+    @Test func failedPDFLeavesNothingBehind() throws {
+        let dir = try TempDir()
+        let pdf = dir.url.appendingPathComponent("скан.pdf")
+        var box = CGRect(x: 0, y: 0, width: 200, height: 300)
+        let context = try #require(CGContext(pdf as CFURL, mediaBox: &box, nil))
+        for _ in 0..<2 {
+            context.beginPDFPage(nil)
+            context.setFillColor(gray: 0.2, alpha: 1)
+            context.fill(CGRect(x: 20, y: 20, width: 100, height: 100))
+            context.endPDFPage()
+        }
+        context.closePDF()
+
+        let paths = LecturePaths(folder: dir.url.appendingPathComponent("lecture"))
+        // Папка картинок страниц занята обычным файлом: запись первой же страницы падает.
+        let photos = paths.notePhoto("x").deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: photos.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: photos)
+
+        let result = SourceImporter(paths: paths).importFiles([pdf], into: .notes)
+        #expect(result.notes.isEmpty)
+        #expect(result.skipped.map(\.name) == ["скан.pdf"])
+        let originals = (try? FileManager.default.contentsOfDirectory(atPath: paths.originalsFolder(.notes).path)) ?? []
+        #expect(originals.isEmpty)
+    }
+}
+
+/// Регресс A6 (аудит 2026-11): второй импорт, начатый до конца первого, писал в старый путь лекции,
+/// а первый тем временем переименовывал папку (дата по фото): появлялась папка-призрак и страницы без картинок.
+@Suite("Импорт: два подряд")
+@MainActor
+struct ConsecutiveImportTests {
+    @Test func secondImportFollowsRenamedFolder() async throws {
+        let dir = try TempDir()
+        let library = Library(root: dir.url.appendingPathComponent("Inkling"),
+                              trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: library.root)
+        #expect(library.createLecture(subject: "Высшая алгебра", topic: "Матрицы", date: .today))
+        let lectureID = try #require(library.selection)
+        let photos = (0..<16).map { i in
+            Fixtures.write(Fixtures.halfRed(), to: dir.url.appendingPathComponent("p\(i).jpg"),
+                           dateTimeOriginal: String(format: "2026:10:14 09:%02d:00", i))
+        }
+        // Первый импорт короткий и успевает переименовать папку, пока второй, длинный, ещё пишет страницы.
+        library.importFiles([photos[0]], into: .notes, lectureID: lectureID)
+        library.importFiles(Array(photos[1...]), into: .notes, lectureID: lectureID)
+        for _ in 0..<500 where (library.lecture(id: lectureID)?.meta.notes.count ?? 0) < 16 || library.importProgress != nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let lecture = try #require(library.lecture(id: lectureID))
+        #expect(lecture.meta.notes.count == 16)
+        #expect(lecture.meta.date == .d("2026-10-14"))
+        let paths = LecturePaths(folder: lecture.folder)
+        for page in lecture.meta.notes { #expect(FileManager.default.fileExists(atPath: paths.notePhoto(page.id).path)) }
+        let subjectFolders = try FileManager.default.contentsOfDirectory(atPath: lecture.folder.deletingLastPathComponent().path)
+            .filter { !$0.hasPrefix(".") }
+        #expect(subjectFolders == [lecture.folder.lastPathComponent])
+    }
+}
+
+/// C23 (аудит 2026-11): импорт можно отменить; уже импортированные страницы не теряются и не остаются сиротами.
+@Suite("Импорт: отмена")
+struct ImportCancellationTests {
+    @Test func cancelledImportStopsAndKeepsWhatIsDone() async throws {
+        let dir = try TempDir()
+        let photos = (0..<30).map { i in
+            Fixtures.write(Fixtures.halfRed(), to: dir.url.appendingPathComponent("p\(i).jpg"),
+                           dateTimeOriginal: String(format: "2026:10:14 09:%02d:00", i))
+        }
+        let paths = LecturePaths(folder: dir.url.appendingPathComponent("lecture"))
+        let importer = SourceImporter(paths: paths)
+        let task = Task.detached { importer.importFiles(photos, into: .notes) }
+        task.cancel()
+        let result = await task.value
+        #expect(result.notes.count < 30)
+        #expect(result.skipped.isEmpty)
+        // Каждая импортированная страница — с картинкой, лишних картинок нет.
+        let images = (try? FileManager.default.contentsOfDirectory(atPath: paths.notePhoto("x").deletingLastPathComponent().path)) ?? []
+        #expect(images.count == result.notes.count)
+    }
+}
+
+/// C12 (аудит 2026-11): перетаскивание лекции на предмет переносит её туда, тема и дата прежние.
+@Suite("Перенос лекции в другой предмет")
+@MainActor
+struct MoveLectureTests {
+    @Test func moveKeepsTopicAndDate() throws {
+        let dir = try TempDir()
+        let library = Library(root: dir.url.appendingPathComponent("Inkling"),
+                              trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: library.root)
+        #expect(library.createLecture(subject: "Высшая алгебра", topic: "Матрицы", date: .d("2026-10-14")))
+        let id = try #require(library.selection)
+        #expect(library.moveLecture(id, toSubject: "Математический анализ"))
+        let moved = try #require(library.lecture(id: id))
+        #expect(moved.meta.subject == "Математический анализ")
+        #expect(moved.meta.topic == "Матрицы" && moved.meta.date == .d("2026-10-14"))
+        #expect(moved.folder.deletingLastPathComponent().lastPathComponent == "Математический анализ")
+        // В тот же предмет — ничего не делает.
+        #expect(!library.moveLecture(id, toSubject: "Математический анализ"))
+    }
+}
+
+/// C16 (аудит 2026-11): перестановку страниц можно отменить и повторить.
+@Suite("Отмена перестановки страниц")
+@MainActor
+struct PageOrderUndoTests {
+    @Test func undoAndRedoRestoreOrder() throws {
+        let env = try RecognitionCenterTests.Env(photos: 3)
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        let original = env.lecture.meta.pageOrder(in: .notes)
+        undo.beginUndoGrouping()
+        env.library.movePages([original[2]], before: original[0], in: .notes, lectureID: env.lectureID, undoManager: undo)
+        undo.endUndoGrouping()
+        let moved = [original[2], original[0], original[1]]
+        #expect(env.lecture.meta.pageOrder(in: .notes) == moved)
+        undo.undo()
+        #expect(env.lecture.meta.pageOrder(in: .notes) == original)
+        undo.redo()
+        #expect(env.lecture.meta.pageOrder(in: .notes) == moved)
     }
 }

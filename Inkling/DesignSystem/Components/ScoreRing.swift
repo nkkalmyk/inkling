@@ -14,7 +14,7 @@ struct ScoreRing: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.accentColor.opacity(0.18), lineWidth: lineWidth)
+                .stroke(Color.accentColor.opacity(Tint.track), lineWidth: lineWidth)
             Circle()
                 .trim(from: 0, to: shown)
                 .stroke(Color.accentColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))

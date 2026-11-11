@@ -19,7 +19,7 @@ enum CheatSheet {
         struct Section { var title: String; var items: [String] = [] }
         var sections: [Section] = []
         var skipping = false
-        var inFence = false
+        var fence = MarkdownFence()
         var block: [String] = []
 
         func flush() {
@@ -30,8 +30,8 @@ enum CheatSheet {
 
         for line in markdown.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("```") { inFence.toggle(); block = []; continue }
-            if inFence { continue }
+            if fence.consume(line) { block = []; continue }
+            if fence.isInside { continue }
             if trimmed.hasPrefix("#") {
                 flush()
                 let level = trimmed.prefix { $0 == "#" }.count

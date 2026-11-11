@@ -35,6 +35,9 @@ final class RecognitionCenter {
     private(set) var batches: [UUID: Batch] = [:]
     /// Последняя ошибка, из-за которой очередь остановлена (нет входа, лимит и т. п.).
     var blockingError: AIError?
+    /// Сетка фрагментов режима «Подробно». Меняет её только живой тест сравнения вариантов; раньше для этого
+    /// служила изменяемая глобальная `nonisolated(unsafe)` (аудит 2026-11, B26).
+    @ObservationIgnored var detailedLayout = ImageProcessor.detailedLayout
 
     @ObservationIgnored private let library: Library
     @ObservationIgnored private let router: @MainActor () -> EngineRouter
@@ -143,11 +146,12 @@ final class RecognitionCenter {
             if job.detailed, location.section == .notes {
                 let page = lecture.meta.notes[location.index]
                 let original = paths.original(page.source, in: .notes)
-                let folder = try await Self.writeBands(of: page, original: original)
+                let layout = detailedLayout
+                let folder = try await Self.writeBands(of: page, original: original, layout: layout)
                 bandsFolder = folder
                 let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.sorted() ?? []
                 let prompt = try library.prompts.detailedRecognitionPrompt(subject: lecture.meta.subject, topic: lecture.meta.topic,
-                                                                           imageNames: names)
+                                                                           imageNames: names, layout: layout.description)
                 var detailedRequest = AIRequest(prompt: prompt, systemPrompt: PromptLibrary.recognitionSystemPrompt,
                                                 images: names.map { folder.appendingPathComponent($0) }, format: .text,
                                                 timeout: timeout() * 2)
@@ -163,7 +167,8 @@ final class RecognitionCenter {
             fail(job, error as? AIError ?? .invalidOutput(error.localizedDescription))
             return
         }
-        let imageHash = FileHash.sha256(image)
+        // SHA-256 картинки в фоне: файл может качаться из iCloud (аудит 2026-11, A20).
+        let imageHash = await Self.hash(image)
 
         let lectureID = job.lectureID
         states[job.pageID] = .running(engine: router().primaryID, startedAt: Date())
@@ -182,7 +187,7 @@ final class RecognitionCenter {
                 try save(response, job: job, imageHash: imageHash)
                 finish(job, failed: false)
             } catch {
-                fail(job, .invalidOutput("Не удалось сохранить текст: \(error.localizedDescription)"))
+                fail(job, .storageFailed(error.localizedDescription))
             }
         case .failure(.cancelled):
             states[job.pageID] = nil
@@ -191,23 +196,26 @@ final class RecognitionCenter {
         }
     }
 
+    @concurrent
+    private static func hash(_ url: URL) async -> String? { FileHash.sha256(url) }
+
     /// Нарезает оригинал страницы на фрагменты для режима «Подробно» (вне главного потока) и пишет их во временную папку.
-    nonisolated private static func writeBands(of page: NotePage, original: URL) async throws -> URL {
-        try await Task.detached(priority: .userInitiated) {
-            let image: CIImage
-            switch page.source {
-            case .image: image = try ImageProcessor.loadOriented(original)
-            case .pdfPage(_, let index): image = try PDFTools.renderPage(original, index: index)
-            }
-            let bands = try ImageProcessor.detailedBands(image, crop: page.crop, rotation: page.rotation)
-            let folder = FileManager.default.temporaryDirectory
-                .appendingPathComponent("Inkling-bands-\(UUID().uuidString)", isDirectory: true)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            for (index, data) in bands.enumerated() {
-                try data.write(to: folder.appendingPathComponent("part\(index + 1).jpg"))
-            }
-            return folder
-        }.value
+    @concurrent
+    nonisolated private static func writeBands(of page: NotePage, original: URL,
+                                               layout: ImageProcessor.DetailedLayout) async throws -> URL {
+        let image: CIImage
+        switch page.source {
+        case .image: image = try ImageProcessor.loadOriented(original)
+        case .pdfPage(_, let index): image = try PDFTools.renderPage(original, index: index)
+        }
+        let bands = try ImageProcessor.detailedBands(image, crop: page.crop, rotation: page.rotation, layout: layout)
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Inkling-bands-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for (index, data) in bands.enumerated() {
+            try data.write(to: folder.appendingPathComponent("part\(index + 1).jpg"))
+        }
+        return folder
     }
 
     /// Записывает текст страницы (прежний — в историю) и описание в `meta.json`. Папка ищется заново:
@@ -228,15 +236,10 @@ final class RecognitionCenter {
 
     private func note(_ event: EngineRouter.Event, lectureID: UUID, pageID: String) {
         guard var batch = batches[lectureID] else { return }
-        switch event {
-        case .started(let engine):
-            batch.engine = engine
-            if case .running(_, let startedAt) = states[pageID] { states[pageID] = .running(engine: engine, startedAt: startedAt) }
-        case .retrying(_, let error):
-            batch.note = "Повтор после ошибки: \(error.userMessage)"
-        case .switchedToFallback(_, let to, let error):
-            batch.engine = to
-            batch.note = "\(error.userMessage) Переход на \(to.title)."
+        if let engine = event.engine { batch.engine = engine }
+        if let note = event.note { batch.note = note }
+        if case .started(let engine) = event, case .running(_, let startedAt) = states[pageID] {
+            states[pageID] = .running(engine: engine, startedAt: startedAt)
         }
         batches[lectureID] = batch
     }
@@ -255,6 +258,9 @@ final class RecognitionCenter {
                 states[other.pageID] = .failed(error)
                 batches[other.lectureID]?.failed += 1
             }
+            // Задачи других лекций уже не пройдут через `workLoop`, где закрывается прогресс: закрываем здесь,
+            // иначе лекция навсегда остаётся «распознаётся», а «Собрать» выключена.
+            for lectureID in Set(stopped.map(\.lectureID)) where lectureID != job.lectureID { settle(lectureID) }
         case .processFailed where error.isModelUnavailable:
             blockingError = error
         default:

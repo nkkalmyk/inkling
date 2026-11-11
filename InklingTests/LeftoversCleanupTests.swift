@@ -25,6 +25,24 @@ struct LeftoversCleanupTests {
         #expect(fm.fileExists(atPath: foreign.path))
     }
 
+    /// Регресс A16 (аудит 2026-11): папки вызовов CLI и экспорта предмета не убирались после аварийного выхода.
+    @MainActor
+    @Test func runAndExportFoldersAreCleanedOllamaFilesAreKept() throws {
+        let fm = FileManager.default
+        let old = Date().addingTimeInterval(-3 * 24 * 3600)
+        let names = ["Inkling-run-\(UUID().uuidString)", "Inkling-\(UUID().uuidString)", "Inkling-ollama.log", "Inkling-ollama.pid",
+                     "Inkling-notes"]
+        for name in names {
+            let url = dir.url.appendingPathComponent(name)
+            if name.contains(".") { try Data("x".utf8).write(to: url) } else { try fm.createDirectory(at: url, withIntermediateDirectories: true) }
+            try fm.setAttributes([.modificationDate: old], ofItemAtPath: url.path)
+        }
+        #expect(ImportStaging.removeStale(in: dir.url) == 2)
+        #expect(!fm.fileExists(atPath: dir.url.appendingPathComponent(names[0]).path))
+        #expect(!fm.fileExists(atPath: dir.url.appendingPathComponent(names[1]).path))
+        for kept in names.dropFirst(2) { #expect(fm.fileExists(atPath: dir.url.appendingPathComponent(kept).path)) }
+    }
+
     @Test func orphanServerIsStoppedOnlyWhenNameMatches() throws {
         let sleeper = Process()
         sleeper.executableURL = URL(fileURLWithPath: "/bin/sleep")

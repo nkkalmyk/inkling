@@ -266,6 +266,30 @@ struct RecognitionCenterTests {
         #expect(env.lecture.meta.notes.allSatisfy { $0.text == nil })
     }
 
+    /// Регресс A2 (аудит 2026-11): останавливающая ошибка в одной лекции закрывала прогресс только у неё,
+    /// а лекция со страницами в очереди навсегда оставалась «распознаётся».
+    @Test func blockingErrorSettlesOtherLectures() async throws {
+        let env = try Env(photos: 1)
+        #expect(env.library.createLecture(subject: "Общая и неорганическая химия", topic: "Кислоты", date: .d("2026-10-15")))
+        let otherID = try #require(env.library.selection)
+        let other = try #require(env.library.lecture(id: otherID))
+        let photo = Fixtures.write(Fixtures.halfRed(), to: env.dir.url.appendingPathComponent("q.jpg"),
+                                   dateTimeOriginal: "2026:10:15 09:00:00")
+        let imported = SourceImporter(paths: LecturePaths(folder: other.folder)).importFiles([photo], into: .notes)
+        env.library.mutate(otherID) { $0.appendImported(imported) }
+        let otherPage = try #require(imported.notes.first?.id)
+
+        let engine = FakeEngine([.failure(.rateLimited(resetAt: nil, details: "limit"))], delay: .milliseconds(50))
+        let center = env.center(engine, parallel: 1)
+        center.recognize(lectureID: env.lectureID, pageIDs: env.pages)
+        center.recognize(lectureID: otherID, pageIDs: [otherPage])
+        try await waitIdle(center, env.lectureID)
+        try await waitIdle(center, otherID)
+        #expect(await engine.calls == 1)
+        #expect(center.blockingError != nil)
+        #expect(center.state(of: otherPage) == .failed(.rateLimited(resetAt: nil, details: "limit")))
+    }
+
     @Test func cancelStopsEverything() async throws {
         let env = try Env(photos: 3)
         let engine = FakeEngine([], delay: .seconds(5))
@@ -278,6 +302,28 @@ struct RecognitionCenterTests {
         #expect(env.pages.allSatisfy { center.state(of: $0) == nil })
         #expect(env.lecture.meta.notes.allSatisfy { $0.text == nil })
         #expect(await engine.calls == 1)
+    }
+
+    /// Регресс A13 (аудит 2026-11): удаление лекции или предмета не останавливало их задачи.
+    @Test func deletingLecturesReportsTheirIDs() async throws {
+        let env = try Env(photos: 1)
+        #expect(env.library.createLecture(subject: "Общая и неорганическая химия", topic: "Кислоты", date: .d("2026-10-15")))
+        let second = try #require(env.library.selection)
+        var reported: [[UUID]] = []
+        let engine = FakeEngine([], delay: .seconds(5))
+        let center = env.center(engine, parallel: 1)
+        env.library.onLecturesDeleted = { ids in
+            reported.append(ids)
+            for id in ids { center.cancel(lectureID: id) }
+        }
+        center.recognize(lectureID: env.lectureID, pageIDs: env.pages)
+        try await Task.sleep(for: .milliseconds(100))
+        env.library.confirmDeletion(.lecture(env.lectureID, title: "ОВР"))
+        #expect(reported == [[env.lectureID]])
+        #expect(!center.isBusy(env.lectureID))
+
+        env.library.confirmDeletion(.subject("Общая и неорганическая химия", lectureCount: 1))
+        #expect(reported.last == [second])
     }
 
     @Test func respectsParallelLimit() async throws {
@@ -407,7 +453,7 @@ struct DetailedRecognitionLiveTests {
         let variants = (environment["INKLING_LIVE_VARIANTS"] ?? "normal,rows3").split(separator: ",").map(String.init)
         for name in variants {
             let detailed = name != "normal"
-            if let layout = layouts[name] { ImageProcessor.detailedLayout = layout }
+            if let layout = layouts[name] { center.detailedLayout = layout }
             let started = Date()
             center.recognize(lectureID: lectureID, pageIDs: [pageID], detailed: detailed)
             for _ in 0..<1500 where center.isBusy(lectureID) { try await Task.sleep(for: .milliseconds(200)) }

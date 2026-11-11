@@ -263,7 +263,8 @@ enum ImageProcessor {
 
     /// Размер длинной стороны при разбиении на фрагменты: крупнее обычных 2000 px, чтобы мелкие детали не терялись.
     static let detailedMaxDimension: CGFloat = 4500
-    nonisolated(unsafe) static var detailedLayout = DetailedLayout(rows: 3, columns: 2)
+    /// Сетка режима «Подробно» (SPEC, раздел 13). Другую сетку для сравнения задаёт `RecognitionCenter.detailedLayout`.
+    static let detailedLayout = DetailedLayout(rows: 3, columns: 2)
 
     /// Режет картинку на фрагменты по сетке `layout`, ряды сверху вниз, внутри ряда слева направо.
     static func tiles(of image: CIImage, layout: DetailedLayout) -> [CIImage] {

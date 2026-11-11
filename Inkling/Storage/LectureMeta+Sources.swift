@@ -48,6 +48,23 @@ extension LectureMeta {
 
     /// Переставляет страницы `ids` (в их текущем порядке) перед страницей `target`; `nil` — в конец раздела.
     /// Страницы другого раздела игнорируются.
+    /// Порядок страниц раздела.
+    func pageOrder(in section: SourceSection) -> [String] {
+        switch section {
+        case .notes: notes.map(\.id)
+        case .slides: slides.map(\.id)
+        }
+    }
+
+    /// Возвращает раздел к прежнему порядку (отмена перестановки). Страницы, которых нет в `order`, — в конце.
+    mutating func restoreOrder(_ order: [String], in section: SourceSection) {
+        let rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        switch section {
+        case .notes: notes = notes.enumerated().sorted { (rank[$0.element.id] ?? Int.max, $0.offset) < (rank[$1.element.id] ?? Int.max, $1.offset) }.map(\.element)
+        case .slides: slides = slides.enumerated().sorted { (rank[$0.element.id] ?? Int.max, $0.offset) < (rank[$1.element.id] ?? Int.max, $1.offset) }.map(\.element)
+        }
+    }
+
     mutating func movePages(_ ids: [String], before target: String?, in section: SourceSection) {
         switch section {
         case .notes: notes = Self.moving(notes, ids: ids, before: target)

@@ -22,7 +22,7 @@ struct HistoryPopover: View {
                 Text("Предыдущих версий нет. \(emptyHint)")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(width: 320, alignment: .leading)
+                    .frame(width: PopoverSize.width, alignment: .leading)
             } else {
                 HStack(alignment: .top, spacing: Spacing.m) {
                     List(entries, selection: $selection) { entry in
@@ -31,13 +31,14 @@ struct HistoryPopover: View {
                             Text(subtitle(entry)).font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    .frame(width: 240, height: 300)
+                    .frame(width: PopoverSize.historyList.width, height: PopoverSize.historyList.height)
                     preview
-                        .frame(width: 380, height: 300)
+                        .frame(width: PopoverSize.historyPreview.width, height: PopoverSize.historyPreview.height)
                         .surface(.sunken, radius: Radius.control)
                 }
                 .onChange(of: selection) { text = selected.map(load) ?? "" }
                 HStack {
+                    Text("Текущая версия сохранится в истории.").font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button("Восстановить эту версию") { if let selected { restore(selected) } }
                         .disabled(selected == nil)

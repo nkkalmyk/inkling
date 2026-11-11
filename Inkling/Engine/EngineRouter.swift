@@ -1,5 +1,49 @@
 import Foundation
 
+/// Общее для всех маршрутизаторов приложения: ограничение одновременных вызовов и пометки «лимит до …».
+/// Маршрутизатор пересоздаётся при смене настроек (меню «Модель»), а вызовы старого продолжаются: со своим счётчиком
+/// у каждого одновременно шло бы до вдвое больше вызовов, а пометки лимита сбрасывались бы (аудит 2026-11).
+actor EngineGate {
+    private(set) var limitedUntil: [EngineID: Date] = [:]
+    private var running = 0
+    private var waiters: [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] = []
+
+    init() {}
+
+    func markLimited(_ engine: EngineID, until: Date) { limitedUntil[engine] = until }
+
+    /// `true` — слот получен; `false` — задачу отменили, пока она ждала слот (слот не занят, освобождать нечего).
+    /// Без этого отменённая сборка висела в очереди до конца чужого вызова и выглядела идущей.
+    func acquire(limit: Int) async -> Bool {
+        if running < max(limit, 1) {
+            running += 1
+            return true
+        }
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled { continuation.resume(returning: false) } else { waiters.append((id, continuation)) }
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(id) }
+        }
+    }
+
+    /// Слот передаётся ждущему, если после уменьшения предела в настройках ещё есть место; иначе освобождается.
+    func release(limit: Int) {
+        if !waiters.isEmpty, running <= max(limit, 1) {
+            waiters.removeFirst().continuation.resume(returning: true)
+        } else {
+            running -= 1
+        }
+    }
+
+    private func cancelWaiter(_ id: UUID) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume(returning: false)
+    }
+}
+
 /// Выбор движка, повторы и переход на запасной (SPEC, разделы 2.5–2.6), ограничение параллельных вызовов.
 actor EngineRouter {
     struct Settings: Sendable {
@@ -14,6 +58,24 @@ actor EngineRouter {
         case started(EngineID)
         case retrying(EngineID, AIError)
         case switchedToFallback(from: EngineID, to: EngineID, AIError)
+
+        /// Движок, который теперь работает; `nil`, если он не сменился.
+        var engine: EngineID? {
+            switch self {
+            case .started(let engine): engine
+            case .switchedToFallback(_, let to, _): to
+            case .retrying: nil
+            }
+        }
+
+        /// Примечание для индикатора работы — одно на все центры (распознавание, сборка, материалы).
+        var note: String? {
+            switch self {
+            case .started: nil
+            case .retrying(_, let error): "Повтор после ошибки: \(error.userMessage)"
+            case .switchedToFallback(_, let to, let error): "\(error.userMessage) Переход на \(to.title)."
+            }
+        }
     }
 
     private let primary: any AIEngine
@@ -22,37 +84,49 @@ actor EngineRouter {
     private let fallback: (any AIEngine)?
     private let settings: Settings
     private let now: @Sendable () -> Date
-    private(set) var limitedUntil: [EngineID: Date] = [:]
-    private var running = 0
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private let gate: EngineGate
 
-    init(primary: any AIEngine, fallback: (any AIEngine)?, settings: Settings,
+    /// `gate` — общий для приложения (`EngineCenter`); по умолчанию свой (тесты).
+    init(primary: any AIEngine, fallback: (any AIEngine)?, settings: Settings, gate: EngineGate = EngineGate(),
          now: @escaping @Sendable () -> Date = { Date() }) {
         self.primary = primary
         primaryID = primary.id
         self.fallback = fallback
         self.settings = settings
+        self.gate = gate
         self.now = now
     }
 
+    var limitedUntil: [EngineID: Date] { get async { await gate.limitedUntil } }
+
     /// Основной движок помечен «лимит до …»: новые задания до этого времени идут на запасной.
-    func isLimited(_ engine: EngineID) -> Bool {
-        guard let until = limitedUntil[engine] else { return false }
+    func isLimited(_ engine: EngineID) async -> Bool {
+        guard let until = await gate.limitedUntil[engine] else { return false }
         return until > now()
     }
 
     func run(_ request: AIRequest, onEvent: @Sendable (Event) -> Void = { _ in }) async throws(AIError) -> AIResponse {
-        await acquire()
-        defer { release() }
+        guard await gate.acquire(limit: settings.maxParallel) else { throw .cancelled }
+        do {
+            let response = try await runAcquired(request, onEvent: onEvent)
+            await gate.release(limit: settings.maxParallel)
+            return response
+        } catch {
+            await gate.release(limit: settings.maxParallel)
+            throw error
+        }
+    }
+
+    private func runAcquired(_ request: AIRequest, onEvent: @Sendable (Event) -> Void) async throws(AIError) -> AIResponse {
         if Task.isCancelled { throw .cancelled }
 
         if request.cloudOnly, !primary.id.isCloud {
-            throw .invalidOutput("Это действие работает только через Claude Code или Codex. "
-                + "Выберите «Авто», «Только Claude» или «Только Codex» в меню «Модель».")
+            throw .invalidOutput("Это действие работает только через облачный движок: Claude Code, Codex или Gemini. "
+                + "Выберите «Авто», «Только Claude», «Только Codex» или «Только Gemini» в меню «Модель».")
         }
         // Для облачных действий локальная модель не может быть запасной.
         let canFallback = settings.autoFallback && (fallback.map { !request.cloudOnly || $0.id.isCloud } ?? false)
-        if canFallback, isLimited(primary.id), let fallback {
+        if canFallback, await isLimited(primary.id), let fallback {
             onEvent(.started(fallback.id))
             return try await runWithRetry(fallback, request, onEvent: onEvent)
         }
@@ -90,7 +164,7 @@ actor EngineRouter {
             return try await engine.run(Self.prepared(request, for: engine))
         } catch {
             if case .rateLimited(let resetAt, _) = error {
-                limitedUntil[engine.id] = resetAt ?? now().addingTimeInterval(settings.unknownLimitCooldown)
+                await gate.markLimited(engine.id, until: resetAt ?? now().addingTimeInterval(settings.unknownLimitCooldown))
                 throw error
             }
             guard error.isRetryable, !Task.isCancelled else { throw error }
@@ -99,28 +173,10 @@ actor EngineRouter {
                 return try await engine.run(Self.prepared(request, for: engine))
             } catch {
                 if case .rateLimited(let resetAt, _) = error {
-                    limitedUntil[engine.id] = resetAt ?? now().addingTimeInterval(settings.unknownLimitCooldown)
+                    await gate.markLimited(engine.id, until: resetAt ?? now().addingTimeInterval(settings.unknownLimitCooldown))
                 }
                 throw error
             }
-        }
-    }
-
-    // MARK: Не больше `maxParallel` вызовов одновременно
-
-    private func acquire() async {
-        if running < max(settings.maxParallel, 1) {
-            running += 1
-            return
-        }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    private func release() {
-        if waiters.isEmpty {
-            running -= 1
-        } else {
-            waiters.removeFirst().resume()
         }
     }
 }

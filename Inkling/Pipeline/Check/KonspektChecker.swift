@@ -40,7 +40,9 @@ enum KonspektChecker {
     }
 
     static func missingStructure(_ markdown: String, expectSources: Bool) -> [String] {
-        let headings = markdown.components(separatedBy: "\n").filter { $0.hasPrefix("#") }
+        var fence = MarkdownFence()
+        let headings = markdown.components(separatedBy: "\n")
+            .filter { line in !fence.consume(line) && !fence.isInside && line.hasPrefix("#") }
             .map { $0.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces).lowercased() }
         var missing: [String] = []
         if !headings.contains(where: { $0.hasPrefix("оглавление") }) { missing.append("«Оглавление»") }
@@ -61,8 +63,7 @@ enum KonspektChecker {
     }
 
     private static func renderReport(_ markdown: String) -> Report? {
-        guard let web = NotesWebView.webFolder else { return nil }
-        let context = JSContext()!
+        guard let web = NotesWebView.webFolder, let context = JSContext() else { return nil }
         // В WebKit atob есть, в голом JavaScriptCore нет (нужен markdown-it).
         let atob: @convention(block) (String) -> String = { base64 in
             String(data: Data(base64Encoded: base64) ?? Data(), encoding: .isoLatin1) ?? ""

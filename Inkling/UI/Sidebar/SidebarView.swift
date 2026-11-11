@@ -3,6 +3,7 @@ import SwiftUI
 /// Первая колонка: «Все лекции» и предметы. Лекции выбранного — в средней колонке (`LectureListView`).
 struct SidebarView: View {
     @Environment(Library.self) private var library
+    @AppStorage(ClassicInterface.key) private var classicInterface = false
     @Environment(SubjectExportCenter.self) private var subjectExport
 
     var body: some View {
@@ -16,10 +17,18 @@ struct SidebarView: View {
                         .badge(subject.lectures.count)
                         .tag(LibraryScope.subject(subject.name))
                         .contextMenu { subjectMenu(subject) }
+                        .dropDestination(for: String.self) { items, _ in
+                            guard !classicInterface else { return false }
+                            let ids = items.filter { $0.hasPrefix(Library.lectureDragPrefix) }
+                                .compactMap { UUID(uuidString: String($0.dropFirst(Library.lectureDragPrefix.count))) }
+                            return ids.map { library.moveLecture($0, toSubject: subject.name) }.contains(true)
+                        }
                 }
             }
         }
         .listStyle(.sidebar)
+        // ⌫ на выбранном предмете — «Удалить…» с тем же подтверждением, что и в контекстном меню.
+        .onDeleteCommand { if case .subject(let name) = library.scope { library.requestDeleteSubject(name) } }
         .overlay {
             if library.subjects.isEmpty {
                 ContentUnavailableView {
@@ -70,6 +79,6 @@ struct SidebarView: View {
 extension CalendarDate {
     /// «14 октября 2026 г.»
     var formatted: String {
-        date().formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "ru_RU")))
+        date().formatted(.dateTime.day().month(.wide).year().locale(UIFormat.locale))
     }
 }

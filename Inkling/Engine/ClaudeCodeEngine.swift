@@ -144,7 +144,7 @@ struct ClaudeCodeEngine: AIEngine {
                 try FileManager.default.copyItem(at: image, to: workdir.appendingPathComponent(image.lastPathComponent))
             }
         } catch {
-            throw .processFailed(exitCode: -1, stderr: "Не удалось подготовить временную папку: \(error.localizedDescription)")
+            throw .inputUnavailable(error.localizedDescription)
         }
 
         let model = request.model ?? config.model
@@ -195,8 +195,7 @@ struct ClaudeCodeEngine: AIEngine {
         }
 
         do {
-            let response = try await run(AIRequest(prompt: "Ответь одним словом: готово.",
-                                                   systemPrompt: "Отвечай очень кратко.", timeout: 90))
+            let response = try await run(.connectionProbe(timeout: 90))
             report.model = response.model
             report.duration = response.duration
         } catch {

@@ -7,6 +7,7 @@ struct LectureView: View {
     @Environment(RecognitionCenter.self) private var recognition
     @Environment(AssemblyCenter.self) private var assembly
     @Environment(StudyCenter.self) private var study
+    @AppStorage(ClassicInterface.key) private var classicInterface = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let lecture: LectureRecord
 
@@ -152,7 +153,8 @@ struct LectureView: View {
         case .sources:
             SourcesView(lecture: lecture)
         case .notes:
-            NotesView(lecture: lecture)
+            NotesView(lecture: lecture, showSources: { tab = .sources },
+                      prepareStudy: { perform(.prepareStudy(rebuild: false)) })
         case .questions:
             QuestionsView(lecture: lecture, showNotes: { tab = .notes })
         case .quiz:
@@ -175,7 +177,9 @@ struct LectureView: View {
         }
         ToolbarItem {
             LectureActivityIndicator(lecture: lecture, exportingPDFSince: export?.exportingPDFSince,
-                                     exportingHTMLSince: export?.exportingHTMLSince)
+                                     exportingHTMLSince: export?.exportingHTMLSince,
+                                     cancelPDF: export.map { export in { export.cancelPDF() } },
+                                     cancelHTML: export.map { export in { export.cancelHTML() } })
         }
         if let primary {
             ToolbarItem {
@@ -192,6 +196,17 @@ struct LectureView: View {
                 .help("\(primary.title) — следующий шаг (⌘↩)")
             }
         }
+        // Пока идёт работа, главной кнопки нет; на её месте — название идущего шага (подробности и отмена — по щелчку
+        // на кружке рядом). Место освобождено самой главной кнопкой, тулбар не переполняется (C4, аудит 2026-11).
+        if primary == nil, !classicInterface, let runningStep {
+            ToolbarItem {
+                Text(runningStep)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .accessibilityLabel("Выполняется: \(runningStep)")
+            }
+        }
         if let export, export.hasKonspekt {
             ToolbarItem {
                 PDFExportButton(export: export, prominent: prominentButton == .pdf, available: pdfAvailable)
@@ -202,19 +217,31 @@ struct LectureView: View {
         }
         ToolbarItem {
             Menu {
-                if let export { ExportMenuItems(export: export) }
+                if let export { ExportMenuItems(export: export, available: pdfAvailable) }
                 Divider()
                 Button("Изменить лекцию…") { library.sheet = .editLecture(lecture.id) }
                 Button("Показать в Finder") { library.revealInFinder(lecture.folder) }
+                Divider()
+                Button("Удалить лекцию…", role: .destructive) { library.requestDeleteLecture(lecture.id) }
             } label: {
                 Label("Ещё", systemImage: "ellipsis")
             }
-            .help("Экспорт, изменение лекции")
+            .help("Экспорт, изменение и удаление лекции")
         }
     }
 
     /// Пока конспект пересобирается, его не экспортируют.
     private var pdfAvailable: Bool { export?.hasKonspekt == true && !assembly.isRunning(lecture.id) }
+
+    /// Название шага, который сейчас идёт по лекции.
+    private var runningStep: String? {
+        let id = lecture.id
+        if let batch = recognition.batches[id] { return "Распознаётся \(batch.done + batch.failed) из \(batch.total)" }
+        if assembly.isRunning(id) { return "Собирается конспект" }
+        if study.isRunning(id) { return "Готовятся материалы" }
+        if library.importProgress?.lectureID == id { return "Импорт" }
+        return nil
+    }
 
     private var prominentButton: LectureProminentButton {
         LectureProminentButton.choose(primary: primary, pdfAvailable: pdfAvailable,
@@ -260,6 +287,14 @@ struct LectureView: View {
             previousLecture: neighbors.previous.map { link in { library.openLecture(link.id, tab: tab) } },
             nextLecture: neighbors.next.map { link in { library.openLecture(link.id, tab: tab) } },
             edit: { library.sheet = .editLecture(lecture.id) },
-            reveal: { library.revealInFinder(lecture.folder) })
+            reveal: { library.revealInFinder(lecture.folder) },
+            addFiles: { tab = .sources; requests.addFiles = true },
+            delete: { library.requestDeleteLecture(lecture.id) },
+            cancelWork: recognition.isBusy(lecture.id) || assembly.isRunning(lecture.id) || study.isRunning(lecture.id)
+                ? { [id = lecture.id] in
+                    recognition.cancel(lectureID: id)
+                    assembly.cancel(id)
+                    study.cancel(id)
+                } : nil)
     }
 }

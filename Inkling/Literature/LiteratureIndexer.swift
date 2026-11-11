@@ -92,6 +92,12 @@ actor LiteratureIndexer {
                 }
             }
             try Task.checkCancellation()
+            // «Готово» — только когда прочитаны все страницы: рабочий поток мог не открыть PDF и вернуть пустую пачку.
+            guard finished >= pageCount else {
+                try await store.setStatus(book: id, "неполный")
+                summary.skippedBooks.append("\(title): прочитано \(finished) из \(pageCount) стр.")
+                continue
+            }
             try await store.setStatus(book: id, "готово")
             summary.indexedBooks += 1
         }

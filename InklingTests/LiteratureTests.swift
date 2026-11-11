@@ -261,3 +261,54 @@ struct LiteratureCleaningTests {
         #expect(unrelated.first?.book == "А")
     }
 }
+
+/// Регрессы A19 и A10 (аудит 2026-11): записи индекса без транзакций, страницы удалённой книги, повреждённая база.
+@Suite("Учебники: целостность индекса")
+@MainActor
+struct LiteratureIntegrityTests {
+    @Test func pagesForRemovedBookAreNotWritten() async throws {
+        let store = try LiteratureStore.inMemory()
+        let id = try await store.upsertBook(path: "/b.pdf", title: "Б", subject: "С", size: 1, mtime: 1, pages: 2)
+        try await store.add(pages: [(1, "энтальпия реакции", "layer")], book: id)
+        try await store.removeBook(path: "/b.pdf")
+        // Индексатор ещё дописывает пачку удалённой книги.
+        try await store.add(pages: [(2, "энтропия системы", "ocr")], book: id)
+        #expect(try await store.totalPages() == 0)
+        #expect(try await store.documentFrequency("энтроп") == 0)
+        #expect(try await store.search(terms: ["энтроп"], subject: nil, limit: 3).isEmpty)
+    }
+
+    /// Повторная запись страницы заменяет её и в полнотекстовом индексе, без дублей (D5.1: удаление только для
+    /// страниц, которые уже были).
+    @Test func rewritingPageReplacesFullTextRow() async throws {
+        let store = try LiteratureStore.inMemory()
+        let id = try await store.upsertBook(path: "/b.pdf", title: "Б", subject: "С", size: 1, mtime: 1, pages: 1)
+        try await store.add(pages: [(1, "энтальпия реакции", "ocr")], book: id)
+        try await store.add(pages: [(1, "энтропия системы", "layer")], book: id)
+        #expect(try await store.totalPages() == 1)
+        #expect(try await store.documentFrequency("энтальп") == 0)
+        #expect(try await store.search(terms: ["энтроп"], subject: nil, limit: 5).count == 1)
+    }
+
+    @Test func clearEmptiesFullTextIndex() async throws {
+        let store = try LiteratureStore.inMemory()
+        let id = try await store.upsertBook(path: "/b.pdf", title: "Б", subject: "С", size: 1, mtime: 1, pages: 1)
+        try await store.add(pages: [(1, "энтальпия реакции", "layer")], book: id)
+        try await store.clear()
+        #expect(try await store.books().isEmpty)
+        #expect(try await store.documentFrequency("энтальп") == 0)
+    }
+
+    @Test func corruptIndexIsRecreatedOnClear() async throws {
+        let dir = try TempDir()
+        let url = dir.url.appendingPathComponent("index.sqlite")
+        try Data(repeating: 0x5A, count: 4096).write(to: url)
+        #expect((try? LiteratureStore(url: url)) == nil)
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "literature-tests-\(UUID().uuidString)")!)
+        let center = LiteratureCenter(settings: settings, storeURL: url)
+        await center.clearIndex()
+        #expect(center.errorMessage == nil)
+        let store = try LiteratureStore(url: url)
+        #expect(try await store.books().isEmpty)
+    }
+}

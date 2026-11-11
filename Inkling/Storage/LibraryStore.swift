@@ -1,86 +1,5 @@
 import Foundation
 
-/// Лекция, найденная на диске.
-struct LectureRecord: Identifiable, Equatable, Sendable {
-    var meta: LectureMeta
-    var folder: URL
-    /// У `meta.json` есть конфликтные копии iCloud.
-    var hasConflict: Bool = false
-
-    var id: UUID { meta.id }
-}
-
-/// Папка лекции, которую пока нельзя показать.
-struct UnavailableLecture: Identifiable, Equatable, Sendable {
-    enum Reason: Equatable, Sendable {
-        /// `meta.json` выгружен в iCloud и скачивается.
-        case downloading
-        /// `meta.json` не читается.
-        case unreadable(String)
-    }
-
-    var folder: URL
-    var reason: Reason
-
-    var id: String { folder.path }
-    var name: String { folder.lastPathComponent }
-}
-
-struct SubjectRecord: Identifiable, Equatable, Sendable {
-    var name: String
-    var folder: URL
-    var lectures: [LectureRecord] = []
-    var unavailable: [UnavailableLecture] = []
-
-    var id: String { name }
-}
-
-enum LibraryError: LocalizedError, Equatable {
-    case subjectExists(String)
-    case subjectNotFound(String)
-    case lectureNotFound
-    case emptyName
-
-    var errorDescription: String? {
-        switch self {
-        case .subjectExists(let name): "Предмет «\(name)» уже есть."
-        case .subjectNotFound(let name): "Предмет «\(name)» не найден. Возможно, папку переименовали или удалили в Finder."
-        case .lectureNotFound: "Лекция не найдена. Возможно, папку переименовали или удалили в Finder."
-        case .emptyName: "Название не может быть пустым."
-        }
-    }
-}
-
-/// Удаление в корзину. В тестах подменяется, чтобы не трогать настоящую корзину.
-protocol Trasher: Sendable {
-    func trash(_ url: URL) throws
-}
-
-/// Корзина macOS. Для папки в iCloud Drive система переносит файлы в корзину iCloud, и приложению без доступа
-/// к iCloud Drive она может отказать («нет прав доступа»). Тогда файлы переносятся в `_Удалённое/<метка>/`
-/// внутри папки хранения: данные не теряются, а приложение эту папку не показывает.
-struct SystemTrasher: Trasher {
-    static let fallbackFolderName = "_Удалённое"
-
-    var fallbackRoot: URL?
-
-    func trash(_ url: URL) throws {
-        do {
-            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-        } catch {
-            guard let fallbackRoot else { throw error }
-            try Self.moveAside(url, into: fallbackRoot)
-        }
-    }
-
-    static func moveAside(_ url: URL, into root: URL, now: Date = Date()) throws {
-        let folder = root.appendingPathComponent(fallbackFolderName, isDirectory: true)
-            .appendingPathComponent(HistoryStore.stamp(now), isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try FileManager.default.moveItem(at: url, to: folder.appendingPathComponent(url.lastPathComponent))
-    }
-}
-
 /// Файловая библиотека: `<корень>/<Предмет>/<ГГГГ-ММ-ДД — Тема>/meta.json` (SPEC, разделы 6 и 13).
 struct LibraryStore: Sendable {
     static let metaFileName = "meta.json"
@@ -128,7 +47,7 @@ struct LibraryStore: Sendable {
                 subject.unavailable.append(UnavailableLecture(folder: lectureFolder, reason: .downloading))
             case .local:
                 do {
-                    let meta = try readMeta(in: lectureFolder)
+                    let meta = try readMeta(in: lectureFolder).inSubjectFolder(folder)
                     subject.lectures.append(LectureRecord(meta: meta, folder: lectureFolder,
                                                           hasConflict: ICloud.hasConflicts(metaURL)))
                 } catch {
@@ -170,7 +89,8 @@ struct LibraryStore: Sendable {
     private func lectureRecord(at lectureFolder: URL) -> LectureRecord? {
         let metaURL = lectureFolder.appendingPathComponent(Self.metaFileName)
         guard ICloud.availability(of: metaURL) == .local,
-              let meta = try? readMeta(in: lectureFolder) else { return nil }
+              let meta = try? readMeta(in: lectureFolder).inSubjectFolder(lectureFolder.deletingLastPathComponent())
+        else { return nil }
         return LectureRecord(meta: meta, folder: lectureFolder, hasConflict: ICloud.hasConflicts(metaURL))
     }
 
@@ -198,8 +118,9 @@ struct LibraryStore: Sendable {
         if folder.lastPathComponent != newName {
             try moveItem(from: folder, to: target)
         }
-        for lecture in try loadSubject(at: target).lectures where lecture.meta.subject != newName {
-            var meta = lecture.meta
+        for lecture in try loadSubject(at: target).lectures {
+            // В записи предмет уже взят из папки; сверяем с тем, что лежит в файле.
+            guard var meta = try? readMeta(in: lecture.folder), meta.subject != newName else { continue }
             meta.subject = newName
             meta.touch()
             try writeMeta(meta, in: lecture.folder)
@@ -338,5 +259,16 @@ struct LibraryStore: Sendable {
         return try fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey],
                                                    options: [.skipsHiddenFiles])
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+    }
+}
+
+private extension LectureMeta {
+    /// Главное — папка на диске (решение владельца, аудит 2026-11): если предмет переименовали в Finder или лекцию
+    /// перенесли в другую папку, `subject` в `meta.json` устарел. Запись лекции берёт предмет из папки, и первое же
+    /// изменение исправляет файл; иначе изменение создавало бы папку со старым названием и уносило лекцию туда.
+    func inSubjectFolder(_ subjectFolder: URL) -> LectureMeta {
+        var meta = self
+        meta.subject = subjectFolder.lastPathComponent
+        return meta
     }
 }

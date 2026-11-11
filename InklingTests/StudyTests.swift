@@ -209,12 +209,15 @@ struct StudyCenterTests {
         #expect(StudyStore(folder: env.lecture.folder).readStudy() == nil)
     }
 
-    @Test func needsKonspekt() throws {
+    /// Конспект читается в фоне (A20, аудит 2026-11): ошибка появляется, когда чтение закончилось.
+    @Test func needsKonspekt() async throws {
         let env = try env(konspekt: nil)
-        let center = center(env, FakeEngine([]))
+        let engine = FakeEngine([])
+        let center = center(env, engine)
         center.generate(env.lectureID)
-        #expect(!center.isRunning(env.lectureID))
+        try await waitIdle(center, env.lectureID)
         #expect(center.errors[env.lectureID] != nil)
+        #expect(await engine.calls == 0)
     }
 
     @Test func regenerationMovesProgressToHistory() async throws {
@@ -232,6 +235,36 @@ struct StudyCenterTests {
         #expect(store.history.entries().count == 1)
         let oldProgress = try #require(store.progressHistory.entries().first)
         #expect(try AtomicFile.readJSON(StudyProgress.self, from: oldProgress.file).items["f1"]?.result == .known)
+    }
+
+    /// Регресс A1 (аудит 2026-11): нечитаемый `progress.json` читался как пустой и затирался первым же ответом.
+    @Test func unreadableProgressIsNotOverwritten() async throws {
+        let env = try env()
+        let center = center(env, FakeEngine([.success(StudyFixtures.json())]))
+        center.generate(env.lectureID)
+        try await waitIdle(center, env.lectureID)
+        let store = StudyStore(folder: env.lecture.folder)
+        let broken = Data("{\"items\": {\"f1\": {\"result\": \"known\", \"date\": ".utf8)
+        try broken.write(to: store.progressURL)
+
+        center.updateProgress(env.lectureID) { $0.record(.unknown, for: "f2") }
+        #expect(try Data(contentsOf: store.progressURL) == broken)
+        #expect(env.library.errorMessage?.contains("Прежний прогресс не тронут") == true)
+    }
+
+    /// Файл без части полей (старая версия, ручная правка) читается, остальной прогресс сохраняется.
+    @Test func progressWithMissingFieldsKeepsTheRest() throws {
+        let dir = try TempDir()
+        let store = StudyStore(folder: dir.url)
+        try Data("{\"items\": {\"f1\": {\"result\": \"known\", \"date\": \"2026-10-14T09:00:00Z\"}}}".utf8)
+            .write(to: store.progressURL)
+        var progress = try store.readProgressForUpdate()
+        #expect(progress.items["f1"]?.result == .known)
+        #expect(progress.flagged.isEmpty && progress.quizAttempts.isEmpty)
+        progress.flagged.insert("q1")
+        try store.writeProgress(progress)
+        #expect(store.readProgress().items["f1"]?.result == .known)
+        #expect(store.readProgress().flagged == ["q1"])
     }
 
     @Test func konspektChangeMakesStudyStale() async throws {

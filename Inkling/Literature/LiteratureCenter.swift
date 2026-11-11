@@ -98,15 +98,25 @@ final class LiteratureCenter {
 
     func cancel() { task?.cancel() }
 
-    func clearIndex() {
-        Task {
+    /// Если база повреждена и не открывается (или не очищается), файлы индекса удаляются и база создаётся заново:
+    /// иначе выхода из такого состояния из интерфейса не было бы. Пользователь и так просил пустой индекс.
+    func clearIndex() async {
+        do {
+            try await store().clear()
+        } catch {
+            cachedStore = nil
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(at: URL(fileURLWithPath: storeURL.path + suffix))
+            }
             do {
-                try await store().clear()
-                books = []
+                _ = try store()
             } catch {
                 errorMessage = "Не удалось очистить индекс: \(error.localizedDescription)"
+                return
             }
         }
+        errorMessage = nil
+        books = []
     }
 
     /// Убирает из индекса книги, которых нет в настройках.

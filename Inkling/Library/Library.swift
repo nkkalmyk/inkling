@@ -32,11 +32,14 @@ final class Library {
     enum Deletion: Identifiable, Equatable {
         case lecture(UUID, title: String)
         case subject(String, lectureCount: Int)
+        /// Страницы лекции; `edited` — среди них есть текст, правленный вручную.
+        case pages(Set<String>, lectureID: UUID, edited: Bool)
 
         var id: String {
             switch self {
             case .lecture(let id, _): "lecture-\(id)"
             case .subject(let name, _): "subject-\(name)"
+            case .pages(let ids, let lectureID, _): "pages-\(lectureID)-\(ids.sorted().joined(separator: ","))"
             }
         }
     }
@@ -63,6 +66,9 @@ final class Library {
 
     // Источники (Library+Sources.swift).
     var importProgress: ImportProgress?
+    /// Импорты одной лекции идут по очереди: первый может переименовать папку (дата по фото), и второй,
+    /// запомнивший старый путь, писал бы в папку-призрак без `meta.json` (аудит 2026-11).
+    @ObservationIgnored var importChains: [UUID: Task<Void, Never>] = [:]
     var pdfQuestion: PDFSectionQuestion?
     /// Страницы, которые сейчас пересоздаются.
     var busyPages: Set<String> = []
@@ -79,6 +85,9 @@ final class Library {
     var pendingImport: PendingImport?
     /// Очередь распознавания; задаётся приложением.
     @ObservationIgnored weak var recognition: RecognitionCenter?
+    /// Лекции ушли в корзину: их распознавание, сборку и материалы нужно остановить, иначе вызовы модели
+    /// тратят лимит до конца, а результат выбрасывается. Задаёт приложение, где известны все центры.
+    @ObservationIgnored var onLecturesDeleted: @MainActor ([UUID]) -> Void = { _ in }
 
     var prompts: PromptLibrary { PromptLibrary(root: root) }
 
@@ -121,21 +130,29 @@ final class Library {
         watcher?.stop()
         watcher = nil
         store = LibraryStore(root: newRoot, trasher: customTrasher ?? SystemTrasher(fallbackRoot: newRoot))
-        perform { try store.bootstrap() }
-        perform { try prompts.installMissingDefaults() }
+        // Одно чтение библиотеки на запуск: через `perform` каждый шаг перечитывал бы все `meta.json` (аудит 2026-11).
+        do { try store.bootstrap() } catch { errorMessage = error.localizedDescription }
+        do { try prompts.installMissingDefaults() } catch { errorMessage = error.localizedDescription }
         reload()
         watcher = DirectoryWatcher(url: newRoot) { [weak self] in self?.reloadInBackground() }
     }
 
     /// Перечитывание по событию файловой системы: чтение и разбор всех `meta.json` идут вне главного потока.
     /// Результат отбрасывается, если за это время состояние уже обновили синхронным `reload()` или сменили папку.
+    @concurrent
+    private static func loadInBackground(_ store: LibraryStore) async -> [SubjectRecord]? {
+        try? store.loadSubjects()
+    }
+
     private func reloadInBackground() {
         let generation = reloadGeneration
         let store = store
         Task {
-            let loaded = await Task.detached(priority: .utility) { try? store.loadSubjects() }.value
+            let loaded = await Self.loadInBackground(store)
             guard generation == reloadGeneration, let loaded else { return }
-            subjects = loaded
+            // Без изменений не трогаем наблюдаемое свойство: иначе каждое событие FSEvents перерисовывало бы
+            // сайдбар, список лекций и вкладки.
+            if loaded != subjects { subjects = loaded }
             if let selection, lecture(id: selection) == nil { self.selection = nil }
             scheduleDownloadPollIfNeeded()
         }
@@ -144,7 +161,8 @@ final class Library {
     func reload() {
         reloadGeneration &+= 1
         do {
-            subjects = try store.loadSubjects()
+            let loaded = try store.loadSubjects()
+            if loaded != subjects { subjects = loaded }
         } catch {
             errorMessage = "Не удалось прочитать папку «\(store.root.path)»: \(error.localizedDescription)"
             subjects = []
@@ -191,9 +209,33 @@ final class Library {
         perform { try store.updateLecture(id: id, subject: subject, topic: topic, date: date) } != nil
     }
 
+    /// Строка перетаскивания лекции из списка на предмет в сайдбаре.
+    static let lectureDragPrefix = "inkling-lecture:"
+
+    /// Перенос лекции в другой предмет перетаскиванием (C12, аудит 2026-11): тема и дата прежние, папка переезжает.
+    /// Идущие задачи лекции перед записью ищут её папку заново по `id`.
+    @discardableResult
+    func moveLecture(_ id: UUID, toSubject name: String) -> Bool {
+        guard let lecture = lecture(id: id), lecture.meta.subject != name else { return false }
+        return updateLecture(id: id, subject: name, topic: lecture.meta.topic, date: lecture.meta.date)
+    }
+
     func requestDeleteLecture(_ id: UUID) {
         guard let lecture = lecture(id: id) else { return }
         pendingDeletion = .lecture(id, title: lecture.meta.topic)
+    }
+
+    /// Удаление страниц из интерфейса (⌫, меню, «Удалить выбранные»). Одна страница без ручной правки удаляется сразу:
+    /// её текст можно распознать заново, и всё равно всё уходит в корзину. Несколько страниц или ручная правка —
+    /// после подтверждения (решение владельца, аудит 2026-11).
+    func requestDeletePages(_ ids: Set<String>, lectureID: UUID) {
+        guard !ids.isEmpty, let lecture = lecture(id: lectureID) else { return }
+        let edited = ids.contains { lecture.meta.pageText($0)?.manuallyEdited == true }
+        if ids.count == 1 && !edited {
+            deletePages(ids, lectureID: lectureID)
+        } else {
+            pendingDeletion = .pages(ids, lectureID: lectureID, edited: edited)
+        }
     }
 
     func requestDeleteSubject(_ name: String) {
@@ -204,9 +246,15 @@ final class Library {
     func confirmDeletion(_ deletion: Deletion) {
         switch deletion {
         case .lecture(let id, _):
-            if perform({ try store.deleteLecture(id: id) }) != nil, selection == id { selection = nil }
+            guard perform({ try store.deleteLecture(id: id) }) != nil else { return }
+            if selection == id { selection = nil }
+            onLecturesDeleted([id])
         case .subject(let name, _):
-            perform { try store.deleteSubject(name) }
+            let ids = subjects.first { $0.name == name }?.lectures.map(\.id) ?? []
+            guard perform({ try store.deleteSubject(name) }) != nil else { return }
+            onLecturesDeleted(ids)
+        case .pages(let ids, let lectureID, _):
+            deletePages(ids, lectureID: lectureID)
         }
     }
 

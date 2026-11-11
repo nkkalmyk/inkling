@@ -5,7 +5,12 @@ import SwiftUI
 /// на какой доле высоты страницы (по номеру строки) находится место, чтобы приблизить фото.
 struct PageTextEditor: NSViewRepresentable {
     @Binding var text: String
+    /// Выключается, пока модель переписывает этот же файл (сборка, «Распознать заново») или файл не прочитался:
+    /// отложенное сохранение правки иначе легло бы поверх свежего результата или затёрло бы непрочитанный файл.
+    var isEditable = true
     var onIllegibleClick: (Double) -> Void = { _ in }
+    /// Размер текста для чтения («Вид → Крупнее / Мельче», ⌘+ ⌘−) действует и на редактор (аудит 2026-11, C32).
+    @Environment(\.readingScale) private var readingScale
 
     static let illegible = "[неразборчиво]"
     private static let linkScheme = "inkling-illegible"
@@ -14,7 +19,8 @@ struct PageTextEditor: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
-        let textView = scroll.documentView as! NSTextView
+        // `scrollableTextView()` всегда кладёт внутрь NSTextView; запасной вариант — пустое поле, а не падение.
+        guard let textView = scroll.documentView as? NSTextView else { return scroll }
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.allowsUndo = true
@@ -22,7 +28,7 @@ struct PageTextEditor: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.font = Self.font
+        textView.font = font
         textView.textContainerInset = NSSize(width: 8, height: 10)
         textView.linkTextAttributes = [.cursor: NSCursor.pointingHand]
         textView.string = text
@@ -32,12 +38,16 @@ struct PageTextEditor: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
-        guard let textView = scroll.documentView as? NSTextView, textView.string != text else { return }
-        textView.string = text
+        guard let textView = scroll.documentView as? NSTextView else { return }
+        if textView.isEditable != isEditable { textView.isEditable = isEditable }
+        let fontChanged = textView.font != font
+        guard textView.string != text || fontChanged else { return }
+        if textView.string != text { textView.string = text }
+        textView.font = font
         context.coordinator.highlight(textView)
     }
 
-    private static let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+    var font: NSFont { NSFont.monospacedSystemFont(ofSize: 13 * readingScale, weight: .regular) }
 
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -66,17 +76,18 @@ struct PageTextEditor: NSViewRepresentable {
             guard let storage = textView.textStorage else { return }
             let full = NSRange(location: 0, length: storage.length)
             storage.beginEditing()
-            storage.setAttributes([.font: PageTextEditor.font, .foregroundColor: NSColor.textColor], range: full)
+            storage.setAttributes([.font: parent.font, .foregroundColor: NSColor.textColor], range: full)
             let string = storage.string as NSString
             var search = full
             while true {
                 let found = string.range(of: PageTextEditor.illegible, options: [], range: search)
                 guard found.location != NSNotFound else { break }
-                storage.addAttributes([
+                var attributes: [NSAttributedString.Key: Any] = [
                     .backgroundColor: NSColor.appAccent.withAlphaComponent(0.3),
-                    .link: URL(string: "\(PageTextEditor.linkScheme)://\(found.location)")!,
                     .toolTip: "Щёлкните, чтобы приблизить это место на фото",
-                ], range: found)
+                ]
+                if let link = URL(string: "\(PageTextEditor.linkScheme)://\(found.location)") { attributes[.link] = link }
+                storage.addAttributes(attributes, range: found)
                 let next = found.location + found.length
                 search = NSRange(location: next, length: full.length - next)
             }
@@ -91,7 +102,7 @@ struct PageTextEditor: NSViewRepresentable {
                 }
             }
             storage.endEditing()
-            textView.typingAttributes = [.font: PageTextEditor.font, .foregroundColor: NSColor.textColor]
+            textView.typingAttributes = [.font: parent.font, .foregroundColor: NSColor.textColor]
         }
     }
 }

@@ -18,7 +18,7 @@
     return defaultImage(tokens, idx, options, env, self);
   };
 
-  // ```plot и ```svg — графики и схемы из «Дополнить» (diagram.js). Остальные блоки кода — как обычно.
+  // ```plot и ```svg — графики и схемы учебной сборки и прежней «Дополнить» (diagram.js). Остальные блоки кода — как обычно.
   var defaultFence = md.renderer.rules.fence;
   md.renderer.rules.fence = function (tokens, idx, options, env, self) {
     var info = (tokens[idx].info || '').trim().toLowerCase();

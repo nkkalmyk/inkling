@@ -127,50 +127,17 @@ enum HTMLExporter {
 
 /// Отрисовывает конспект в невидимом `WKWebView` тем же `notes.html`, что и окно, и отдаёт готовую разметку.
 @MainActor
-final class NotesRenderer: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-    private var markdown = ""
-    private var heading: PrintHeading?
-    private var rendered: CheckedContinuation<Void, Error>?
-
+final class NotesRenderer {
     func render(markdown: String, heading: PrintHeading) async throws -> HTMLExporter.Rendered {
-        self.markdown = markdown
-        self.heading = heading
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController.add(self, name: "rendered")
-        let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 794, height: 1123), configuration: configuration)
-        view.navigationDelegate = self
-        defer { configuration.userContentController.removeScriptMessageHandler(forName: "rendered") }
-        guard let folder = NotesWebView.webFolder else { throw HTMLExportError.missingResources }
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            rendered = continuation
-            view.loadFileURL(folder.appendingPathComponent("notes.html"), allowingReadAccessTo: folder)
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(30))
-                self?.finish(.failure(HTMLExportError.renderTimeout))
-            }
-        }
+        let page = RenderedNotesPage()
+        defer { page.close() }
+        try await page.show(markdown: markdown, heading: heading, expandSolutions: false,
+                            timeoutError: HTMLExportError.renderTimeout)
         let script = "JSON.stringify({heading: document.getElementById('print-heading').outerHTML, "
             + "content: document.getElementById('content').innerHTML})"
-        guard let json = try await view.evaluateJavaScript(script) as? String,
+        guard let json = try await page.view.evaluateJavaScript(script) as? String,
               let parts = try? JSONDecoder().decode([String: String].self, from: Data(json.utf8))
         else { throw HTMLExportError.renderTimeout }
         return HTMLExporter.Rendered(heading: parts["heading"] ?? "", content: parts["content"] ?? "")
-    }
-
-    private func finish(_ result: Result<Void, Error>) {
-        guard let continuation = rendered else { return }
-        rendered = nil
-        continuation.resume(with: result)
-    }
-
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        let json = (try? JSONEncoder().encode(markdown)).map { String(decoding: $0, as: UTF8.self) } ?? "\"\""
-        let headingJSON = heading.flatMap { try? JSONEncoder().encode($0) }.map { String(decoding: $0, as: UTF8.self) }
-        let setHeading = headingJSON.map { "window.inklingSetHeading(\($0));" } ?? ""
-        webView.evaluateJavaScript(setHeading + "window.inklingShow(\(json))")
-    }
-
-    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        finish(.success(()))
     }
 }

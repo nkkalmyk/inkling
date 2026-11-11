@@ -237,6 +237,18 @@ struct StudyProgress: Codable, Equatable, Sendable {
 
     var isEmpty: Bool { items.isEmpty && quizAttempts.isEmpty && flagged.isEmpty }
 
+    init() {}
+
+    /// Недостающие поля (файл старой версии, ручная правка) читаются как пустые: иначе такой файл
+    /// не прочитался бы целиком и потерял бы остальной прогресс. Неверный тип поля — по-прежнему ошибка.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        items = try container.decodeIfPresent([String: ItemState].self, forKey: .items) ?? [:]
+        quizAttempts = try container.decodeIfPresent([QuizAttempt].self, forKey: .quizAttempts) ?? []
+        flagged = try container.decodeIfPresent(Set<String>.self, forKey: .flagged) ?? []
+    }
+
     mutating func record(_ result: Result, for id: String, at date: Date = Date()) {
         items[id] = ItemState(result: result, date: JSONCoding.rounded(date))
     }
@@ -249,6 +261,16 @@ struct StudyProgress: Codable, Equatable, Sendable {
     /// Карточки, которые последний раз отмечены «не знаю».
     func unknownCards(in study: StudyMaterials) -> [StudyMaterials.Flashcard] {
         study.flashcards.filter { items[$0.id]?.result == .unknown && !flagged.contains($0.id) }
+    }
+}
+
+enum StudyStoreError: LocalizedError {
+    case progressNotDownloaded
+
+    var errorDescription: String? {
+        switch self {
+        case .progressNotDownloaded: "Файл прогресса ещё загружается из iCloud"
+        }
     }
 }
 
@@ -265,8 +287,23 @@ struct StudyStore: Sendable {
         try? JSONDecoder().decode(StudyMaterials.self, from: AtomicFile.read(studyURL))
     }
 
+    /// Для показа: нечитаемый файл выглядит как пустой прогресс.
     func readProgress() -> StudyProgress {
         (try? AtomicFile.readJSON(StudyProgress.self, from: progressURL)) ?? StudyProgress()
+    }
+
+    /// Для изменения: пустой прогресс только если файла нет. Выгруженный в iCloud или нечитаемый файл — ошибка,
+    /// иначе первый же ответ на карточку записал бы пустой прогресс поверх настоящего.
+    func readProgressForUpdate() throws -> StudyProgress {
+        switch ICloud.availability(of: progressURL) {
+        case .missing:
+            return StudyProgress()
+        case .notDownloaded:
+            ICloud.startDownloading(progressURL)
+            throw StudyStoreError.progressNotDownloaded
+        case .local:
+            return try AtomicFile.readJSON(StudyProgress.self, from: progressURL)
+        }
     }
 
     /// Записывает материалы. Если они перезаписывают прежние (пересборка), старые `study.json` и `progress.json`

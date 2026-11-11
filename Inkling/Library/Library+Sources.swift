@@ -96,9 +96,7 @@ extension Library {
         }
         // Открытие PDF для оценки текстового слоя может быть долгим: делаем это вне главного потока.
         Task {
-            let guesses = await Task.detached(priority: .userInitiated) {
-                pdfs.compactMap { try? PDFTools.guessSection($0) }
-            }.value
+            let guesses = await Self.guessSections(pdfs)
             if let mismatch = guesses.first(where: { $0 != section }) {
                 pdfQuestion = PDFSectionQuestion(lectureID: lectureID, requested: section, guess: mismatch,
                                                  pdfs: pdfs, others: others, staging: staging)
@@ -125,46 +123,98 @@ extension Library {
 
     private func runImport(_ groups: [(SourceSection, [URL])], lectureID: UUID, staging: URL?) {
         let groups = groups.filter { !$0.1.isEmpty }
-        guard !groups.isEmpty, let lecture = (try? store.findLecture(id: lectureID, hint: lecture(id: lectureID)?.folder)) ?? nil else {
+        guard !groups.isEmpty else {
+            if let staging { try? FileManager.default.removeItem(at: staging) }
+            return
+        }
+        let previous = importChains[lectureID]
+        let task = Task {
+            // Отмена последнего импорта доходит и до тех, что стоят перед ним в очереди.
+            await withTaskCancellationHandler { await previous?.value } onCancel: { previous?.cancel() }
+            await performImport(groups, lectureID: lectureID, staging: staging)
+        }
+        importChains[lectureID] = task
+        Task {
+            await task.value
+            if importChains[lectureID] == task { importChains[lectureID] = nil }
+        }
+    }
+
+    /// Папка лекции ищется только сейчас, после предыдущего импорта: тот мог её переименовать.
+    private func performImport(_ groups: [(SourceSection, [URL])], lectureID: UUID, staging: URL?) async {
+        guard let lecture = (try? store.findLecture(id: lectureID, hint: lecture(id: lectureID)?.folder)) ?? nil else {
             if let staging { try? FileManager.default.removeItem(at: staging) }
             return
         }
         let importer = SourceImporter(paths: LecturePaths(folder: lecture.folder))
         importProgress = ImportProgress(lectureID: lectureID, done: 0, total: 0)
-        Task {
-            var combined = ImportResult()
-            for (section, urls) in groups {
-                let result = await Task.detached(priority: .userInitiated) {
-                    importer.importFiles(urls, into: section) { done, total in
-                        Task { @MainActor in
-                            self.importProgress = ImportProgress(lectureID: lectureID, done: done, total: total)
-                        }
-                    }
-                }.value
-                combined.notes += result.notes
-                combined.slides += result.slides
-                combined.skipped += result.skipped
+        var combined = ImportResult()
+        for (section, urls) in groups {
+            let result = await Self.importInBackground(importer, urls: urls, section: section) { done, total in
+                Task { @MainActor in
+                    self.importProgress = ImportProgress(lectureID: lectureID, done: done, total: total)
+                }
             }
-            if let staging { try? FileManager.default.removeItem(at: staging) }
-            importProgress = nil
-            mutate(lectureID) { $0.appendImported(combined) }
-            // Новые страницы распознаются сразу после импорта (SPEC, раздел 13).
-            let toRecognize = combined.notes.map(\.id) + combined.slides.filter(\.needsRecognition).map(\.id)
-            if !toRecognize.isEmpty { recognition?.recognize(lectureID: lectureID, pageIDs: toRecognize) }
-            if !combined.skipped.isEmpty {
-                errorMessage = "Не всё удалось импортировать:\n"
-                    + combined.skipped.map { "• \($0.name): \($0.reason)" }.joined(separator: "\n")
-            }
+            combined.notes += result.notes
+            combined.slides += result.slides
+            combined.skipped += result.skipped
         }
+        if let staging { try? FileManager.default.removeItem(at: staging) }
+        importProgress = nil
+        mutate(lectureID) { $0.appendImported(combined) }
+        // Новые страницы распознаются сразу после импорта (SPEC, раздел 13).
+        let toRecognize = combined.notes.map(\.id) + combined.slides.filter(\.needsRecognition).map(\.id)
+        if !toRecognize.isEmpty { recognition?.recognize(lectureID: lectureID, pageIDs: toRecognize) }
+        if !combined.skipped.isEmpty {
+            errorMessage = "Не всё удалось импортировать:\n"
+                + combined.skipped.map { "• \($0.name): \($0.reason)" }.joined(separator: "\n")
+        }
+    }
+
+    /// Импорт вне главного потока, но в той же задаче: «Отменить» (`cancelImport`) до него доходит.
+    @concurrent
+    private static func importInBackground(_ importer: SourceImporter, urls: [URL], section: SourceSection,
+                                           progress: @escaping @Sendable (Int, Int) -> Void) async -> ImportResult {
+        importer.importFiles(urls, into: section, progress: progress)
+    }
+
+    /// Останавливает импорт лекции: идущий и ждущие в очереди. Уже импортированные страницы остаются.
+    func cancelImport(lectureID: UUID) {
+        importChains[lectureID]?.cancel()
     }
 
     // MARK: Страницы
 
-    func movePages(_ ids: [String], before target: String?, in section: SourceSection, lectureID: UUID) {
+    /// Перестановка страниц. С `undoManager` её можно отменить (⌘Z) и повторить (C16, аудит 2026-11).
+    func movePages(_ ids: [String], before target: String?, in section: SourceSection, lectureID: UUID,
+                   undoManager: UndoManager? = nil) {
+        guard let previous = lecture(id: lectureID)?.meta.pageOrder(in: section) else { return }
         mutate(lectureID) { $0.movePages(ids, before: target, in: section) }
+        registerOrderUndo(previous, in: section, lectureID: lectureID, undoManager: undoManager)
     }
 
-    /// Удаляет страницы: обработанные копии стираются (их можно пересоздать), оригиналы уходят в корзину.
+    private func registerOrderUndo(_ order: [String], in section: SourceSection, lectureID: UUID, undoManager: UndoManager?) {
+        guard let undoManager, let current = lecture(id: lectureID)?.meta.pageOrder(in: section), current != order else { return }
+        undoManager.registerUndo(withTarget: self) { library in
+            MainActor.assumeIsolated {
+                library.mutate(lectureID) { $0.restoreOrder(order, in: section) }
+                library.registerOrderUndo(current, in: section, lectureID: lectureID, undoManager: undoManager)
+            }
+        }
+        undoManager.setActionName("Перестановка страниц")
+    }
+
+    /// Удаляет страницы обоих разделов.
+    func deletePages(_ ids: Set<String>, lectureID: UUID) {
+        guard let lecture = lecture(id: lectureID) else { return }
+        for section in SourceSection.allCases {
+            let inSection = ids.filter { lecture.meta.page($0)?.section == section }
+            if !inSection.isEmpty { deletePages(inSection, in: section, lectureID: lectureID) }
+        }
+    }
+
+    /// Удаляет страницы раздела: оригиналы, обработанные картинки и тексты уходят в корзину. Текст раньше стирался
+    /// безвозвратно, а ручную правку заново не распознаешь (аудит 2026-11).
     func deletePages(_ ids: Set<String>, in section: SourceSection, lectureID: UUID) {
         var removed: [PageSource: [String]] = [:]
         var remaining: [PageSource] = []
@@ -174,8 +224,7 @@ extension Library {
         }) else { return }
         let importer = SourceImporter(paths: LecturePaths(folder: record.folder))
         let files = importer.filesToRemove(removed: removed, section: section, remainingSources: remaining)
-        for url in files.derived { try? FileManager.default.removeItem(at: url) }
-        for url in files.originals where FileManager.default.fileExists(atPath: url.path) {
+        for url in files.derived + files.originals where FileManager.default.fileExists(atPath: url.path) {
             do { try store.trasher.trash(url) } catch { errorMessage = error.localizedDescription }
         }
     }
@@ -199,9 +248,7 @@ extension Library {
         let importer = SourceImporter(paths: LecturePaths(folder: record.folder))
         busyPages.insert(id)
         Task {
-            let outcome = await Task.detached(priority: .userInitiated) {
-                Result { try importer.syncSlideFiles(page) }
-            }.value
+            let outcome = await Self.offMain { try importer.syncSlideFiles(page) }
             if case .success(let text) = outcome, text != page.text {
                 mutate(lectureID) { $0.setPageText(text, for: id) }
             }
@@ -229,9 +276,7 @@ extension Library {
         let importer = SourceImporter(paths: LecturePaths(folder: folder))
         busyPages.insert(page.id)
         Task {
-            let outcome = await Task.detached(priority: .userInitiated) {
-                Result { try importer.renderNotePhoto(page) }
-            }.value
+            let outcome = await Self.offMain { try importer.renderNotePhoto(page) }
             if case .success(let crop) = outcome {
                 let hash = FileHash.sha256(LecturePaths(folder: folder).notePhoto(page.id))
                 mutate(lectureID) { meta in
@@ -241,6 +286,17 @@ extension Library {
             }
             finishBusy(page.id, outcome.error)
         }
+    }
+
+    @concurrent
+    private static func guessSections(_ pdfs: [URL]) async -> [SourceSection] {
+        pdfs.compactMap { try? PDFTools.guessSection($0) }
+    }
+
+    /// Тяжёлая обработка картинки или PDF вне главного потока, в той же задаче (отмена доходит).
+    @concurrent
+    private static func offMain<T: Sendable>(_ work: @Sendable () throws -> T) async -> Result<T, any Error> {
+        Result { try work() }
     }
 
     private func finishBusy(_ id: String, _ error: Error?) {

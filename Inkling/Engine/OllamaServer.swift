@@ -46,11 +46,15 @@ actor OllamaServer {
             return Status(version: version, binaryPath: owned.current?.executableURL?.path,
                           source: owned.current == nil ? "сервер уже запущен" : "запущен приложением")
         }
-        if starting == nil {
+        let task: Task<Status, Never>
+        if let starting {
+            task = starting
+        } else {
             startError = nil
-            starting = Task { await self.start(manualPath: manualPath, baseURL: baseURL, transport: transport) }
+            task = Task { await self.start(manualPath: manualPath, baseURL: baseURL, transport: transport) }
+            starting = task
         }
-        let status = await starting!.value
+        let status = await task.value
         starting = nil
         if let startError { throw startError }
         return status

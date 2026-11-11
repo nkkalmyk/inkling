@@ -11,10 +11,14 @@ enum RateLimitDetector {
         #"you['’]re out of extra usage"#,
         #"rate_limit_error"#,
         #"\brate[ -]limited\b"#,
-        #"\b429\b"#,
+        // Голое «429» и «limit reached» ловили чужое: число в пути к файлу, лимит контекста или ходов. Тогда движок
+        // блокировался на 15 минут и очередь вставала с «Исчерпан лимит подписки» (аудит 2026-11).
+        #"(?:status|error|code|http)[^\n]{0,24}\b429\b"#,
+        #"\b429\b[^\n]{0,24}(?:too many requests|resource_exhausted|rate)"#,
+        #"api_error_status[^\n]{0,4}429"#,
         #"resource_exhausted"#,
         #"\bquota\b[^\n]*\b(exceeded|exhausted)\b"#,
-        #"\blimit reached\b"#,
+        #"\b(?:usage|rate|request|session|weekly|daily|hourly)\b[^\n.]{0,20}\blimit reached\b"#,
     ]
 
     private static let compiled: [NSRegularExpression] = patterns.map {

@@ -159,7 +159,7 @@ struct CodexEngine: AIEngine {
                 imageNames.append(image.lastPathComponent)
             }
         } catch {
-            throw .processFailed(exitCode: -1, stderr: "Не удалось подготовить временную папку: \(error.localizedDescription)")
+            throw .inputUnavailable(error.localizedDescription)
         }
 
         let model = request.model ?? config.model
@@ -218,8 +218,7 @@ struct CodexEngine: AIEngine {
         }
 
         do {
-            let response = try await run(AIRequest(prompt: "Ответь одним словом: готово.",
-                                                   systemPrompt: "Отвечай очень кратко.", timeout: 120))
+            let response = try await run(.connectionProbe(timeout: 120))
             report.model = response.model
             report.duration = response.duration
         } catch {

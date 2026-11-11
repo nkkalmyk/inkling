@@ -10,6 +10,9 @@ enum PDFFooter {
             throw PDFExportError.printFailed
         }
         let temp = url.deletingLastPathComponent().appending(path: ".\(UUID().uuidString).pdf")
+        // При ошибке не оставлять скрытый временный файл в «Конспектах».
+        var replaced = false
+        defer { if !replaced { try? FileManager.default.removeItem(at: temp) } }
         let info: [CFString: Any] = [kCGPDFContextTitle: title, kCGPDFContextCreator: "Inkling"]
         guard let context = CGContext(temp as CFURL, mediaBox: nil, info as CFDictionary) else {
             throw PDFExportError.printFailed
@@ -33,6 +36,7 @@ enum PDFFooter {
         context.closePDF()
         if navigation?.links.isEmpty == false { try PDFLinkInliner.inline(temp) }
         _ = try FileManager.default.replaceItemAt(url, withItemAt: temp)
+        replaced = true
     }
 
     /// Строка на 24 pt выше нижнего края, по полям страницы (16 мм).

@@ -85,6 +85,56 @@ struct ProcessRunnerTests {
         }
         #expect(Date().timeIntervalSince(started) < 5)
     }
+
+    /// Регресс A3 (аудит 2026-11): при выходе приложения запущенные CLI оставались работать сиротами.
+    @Test func terminateStopsRegisteredGroupWithGrandchildren() async throws {
+        let dir = try TempDir()
+        let leaderFile = dir.url.appendingPathComponent("leader.pid").path
+        let childFile = dir.url.appendingPathComponent("child.pid").path
+        let task = Task { () async throws -> ProcessRunner.Output in
+            try await sh("echo $$ > '\(leaderFile)'; sleep 60 & echo $! > '\(childFile)'; wait", timeout: 120)
+        }
+        var leader: pid_t?
+        for _ in 0..<100 where leader == nil {
+            try await Task.sleep(for: .milliseconds(20))
+            leader = (try? String(contentsOfFile: childFile, encoding: .utf8)).flatMap { _ in
+                (try? String(contentsOfFile: leaderFile, encoding: .utf8))
+                    .flatMap { pid_t($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            }
+        }
+        let pid = try #require(leader)
+        #expect(ProcessRunner.isLive(pid))
+        let started = Date()
+        ProcessRunner.terminate([pid], grace: 0.5)
+        let output = try await task.value
+        #expect(output.signal == SIGTERM)
+        #expect(Date().timeIntervalSince(started) < 5)
+        let child = try #require(pid_t(try String(contentsOfFile: childFile, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)))
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(kill(child, 0) != 0, "Внук должен быть убит вместе с группой")
+        #expect(!ProcessRunner.isLive(pid))
+    }
+}
+
+/// Регресс A15 (аудит 2026-11): пропавшее фото страницы давало повторяемый «код -1», повтор и переход на запасной движок.
+@Suite("CLI-движки: недоступные входные файлы")
+struct MissingInputTests {
+    @Test func missingImageIsNotRetryable() async throws {
+        let missing = URL(fileURLWithPath: "/nonexistent/inkling/photo.jpg")
+        let request = AIRequest(prompt: "p", systemPrompt: "s", images: [missing])
+        let engines: [any AIEngine] = [ClaudeCodeEngine(config: .init(manualPath: "/bin/echo")),
+                                       CodexEngine(config: .init(manualPath: "/bin/echo"))]
+        for engine in engines {
+            do {
+                _ = try await engine.run(request)
+                Issue.record("Ожидалась ошибка у \(engine.id)")
+            } catch {
+                guard case .inputUnavailable = error else { Issue.record("\(engine.id): \(error)"); continue }
+                #expect(!error.isRetryable && !EngineRouter.shouldFallBack(after: error))
+            }
+        }
+    }
 }
 
 @Suite("BinaryLocator")
@@ -297,6 +347,58 @@ struct EngineRouterTests {
         #expect(await primary.maxConcurrent == 2)
     }
 
+    /// Регресс A12 (аудит 2026-11): отменённый вызов ждал свободный слот до конца чужого вызова.
+    @Test func cancelWhileWaitingForSlotReturnsAtOnce() async throws {
+        let primary = FakeEngine([], delay: .seconds(3))
+        let router = EngineRouter(primary: primary, fallback: nil, settings: .init(maxParallel: 1))
+        let busy = Task { try await router.run(request) }
+        try await Task.sleep(for: .milliseconds(50))
+        let waiting = Task { try await router.run(request) }
+        try await Task.sleep(for: .milliseconds(50))
+        let started = ContinuousClock.now
+        waiting.cancel()
+        #expect(await Self.error(of: waiting) == .cancelled)
+        #expect(ContinuousClock.now - started < .seconds(1))
+        #expect(await primary.calls == 1)
+        busy.cancel()
+        // Слот, освобождённый первым вызовом, достаётся следующему: счётчик не сломан.
+        _ = await busy.result
+        #expect(try await router.run(request).text == "ok")
+    }
+
+    /// Регресс A14 (аудит 2026-11): после смены режима в меню «Модель» новый маршрутизатор считал вызовы заново
+    /// (до 4 CLI вместо 2) и забывал пометку «лимит до …».
+    @Test func routersShareCallLimitAndLimitMarks() async throws {
+        let gate = EngineGate()
+        let engine = FakeEngine([], delay: .milliseconds(120))
+        let first = EngineRouter(primary: engine, fallback: nil, settings: .init(maxParallel: 2), gate: gate)
+        let second = EngineRouter(primary: engine, fallback: nil, settings: .init(maxParallel: 2), gate: gate)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for router in [first, second, first, second, first, second] {
+                group.addTask { _ = try await router.run(request) }
+            }
+            try await group.waitForAll()
+        }
+        #expect(await engine.calls == 6)
+        #expect(await engine.maxConcurrent == 2)
+
+        let limited = EngineRouter(primary: FakeEngine([.failure(limit)]), fallback: nil, settings: .init(), gate: gate)
+        _ = try? await limited.run(request)
+        let fresh = EngineRouter(primary: FakeEngine([]), fallback: nil, settings: .init(), gate: gate)
+        #expect(await fresh.isLimited(.claude))
+    }
+
+    /// B14 (аудит 2026-11): текст примечаний один на все центры.
+    @Test func eventNotes() {
+        #expect(EngineRouter.Event.started(.claude).note == nil)
+        #expect(EngineRouter.Event.started(.claude).engine == .claude)
+        #expect(EngineRouter.Event.retrying(.claude, .timeout).note == "Повтор после ошибки: \(AIError.timeout.userMessage)")
+        #expect(EngineRouter.Event.retrying(.claude, .timeout).engine == nil)
+        let switched = EngineRouter.Event.switchedToFallback(from: .claude, to: .ollama, .timeout)
+        #expect(switched.engine == .ollama)
+        #expect(switched.note == "\(AIError.timeout.userMessage) Переход на \(EngineID.ollama.title).")
+    }
+
     @Test func cancelledBeforeStart() async {
         let router = EngineRouter(primary: FakeEngine([]), fallback: nil, settings: .init())
         let task = Task { () async throws -> AIResponse in
@@ -374,5 +476,38 @@ struct ClaudeLiveTests {
         let report = await engine.checkConnection()
         #expect(report.isOK, "\(report)")
         #expect(report.version?.contains("Claude Code") == true)
+    }
+}
+
+@Suite("EngineRouter: облачные запросы")
+struct RequiredEngineTests {
+    @Test func localPrimaryIsRefusedForCloudOnlyRequest() async {
+        let local = EngineRouterTests.FakeEngine([.success("не должен")], id: .ollama)
+        let router = EngineRouter(primary: local, fallback: nil, settings: .init())
+        var request = AIRequest(prompt: "p", systemPrompt: "s")
+        request.cloudOnly = true
+        await #expect(throws: AIError.self) { try await router.run(request) }
+        #expect(await local.calls == 0)
+    }
+
+    @Test func cloudOnlyRequestDoesNotFallBackToLocalOnLimit() async {
+        let limit = AIError.rateLimited(resetAt: nil, details: "limit")
+        let claude = EngineRouterTests.FakeEngine([.failure(limit)])
+        let local = EngineRouterTests.FakeEngine([.success("не должен")], id: .ollama)
+        let router = EngineRouter(primary: claude, fallback: local, settings: .init())
+        var request = AIRequest(prompt: "p", systemPrompt: "s")
+        request.cloudOnly = true
+        await #expect(throws: limit) { try await router.run(request) }
+        #expect(await local.calls == 0)
+    }
+
+    @Test func cloudOnlyRequestMayFallBackToCodex() async throws {
+        let limit = AIError.rateLimited(resetAt: nil, details: "limit")
+        let claude = EngineRouterTests.FakeEngine([.failure(limit)])
+        let codex = EngineRouterTests.FakeEngine([.success("от Codex")], id: .codex)
+        let router = EngineRouter(primary: claude, fallback: codex, settings: .init())
+        var request = AIRequest(prompt: "p", systemPrompt: "s")
+        request.cloudOnly = true
+        #expect(try await router.run(request).text == "от Codex")
     }
 }

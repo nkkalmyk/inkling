@@ -32,6 +32,8 @@ struct AnkiExportTests {
         #expect(AnkiExporter.field("<b>не тег</b> & **жирный** и *курсив*")
             == "&lt;b&gt;не тег&lt;/b&gt; &amp; <b>жирный</b> и <i>курсив</i>")
         #expect(AnkiExporter.field("$x$*$y$") == "\\(x\\)*\\(y\\)")
+        // Регресс A8 (аудит 2026-11): сырая кавычка в начале поля ломала разбор строк в Anki.
+        #expect(AnkiExporter.field("\"Закон Гесса\" — тепловой эффект") == "&quot;Закон Гесса&quot; — тепловой эффект")
     }
 
     @Test func segmentsFollowRendererRules() {
@@ -70,6 +72,19 @@ struct PDFExportTests {
             try? FileManager.default.copyItem(at: url, to: URL(fileURLWithPath: out))
         }
     }
+
+    /// Регресс A18 (аудит 2026-11): прежний PDF удалялся до печати нового. Теперь печать идёт во временный файл,
+    /// повторный экспорт заменяет файл, временных файлов в папке не остаётся.
+    @Test func reexportReplacesFileAndLeavesNoTemporaries() async throws {
+        let dir = try TempDir()
+        let url = dir.url.appendingPathComponent("konspekt.pdf")
+        try Data("старый".utf8).write(to: url)
+        try await PDFExporter().export(markdown: "# Первая\n\nТекст.", title: "Т", to: url)
+        try await PDFExporter().export(markdown: "# Вторая версия\n\nТекст.", title: "Т", to: url)
+        let text = try #require(PDFDocument(url: url)?.page(at: 0)?.string)
+        #expect(text.contains("Вторая версия"))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.url.path) == ["konspekt.pdf"])
+    }
 }
 
 @Suite("Куда сохраняется PDF")
@@ -95,6 +110,23 @@ struct ExportLocationTests {
         // Повтор не падает на уже существующей папке.
         #expect(try ExportLocation.pdfURL(baseName: "x", subject: "Математический анализ", documents: dir.url)
             .lastPathComponent == "x.pdf")
+    }
+
+    /// Регресс A9 (аудит 2026-11): тема в 120 кириллических букв с предметом давала имя длиннее 255 байт.
+    @Test func longCyrillicNameFitsFileSystemLimit() throws {
+        let dir = try TempDir()
+        let topic = String(repeating: "я", count: 120)
+        let base = ExportLocation.cheatSheetBaseName(subject: "Общая и неорганическая химия", topic: topic, date: .d("2026-10-14"))
+        #expect(base.utf8.count > 255)
+        for url in [try ExportLocation.pdfURL(baseName: base, subject: "Общая и неорганическая химия", documents: dir.url),
+                    try ExportLocation.htmlURL(baseName: base, subject: "Общая и неорганическая химия", documents: dir.url)] {
+            #expect(url.lastPathComponent.utf8.count <= 255)
+            #expect(url.lastPathComponent.contains("… — Общая и неорганическая химия — 2026-10-14."))
+            #expect(url.lastPathComponent.hasPrefix("Шпаргалка — Я"))
+            #expect(FileManager.default.createFile(atPath: url.path, contents: Data()))
+        }
+        // Короткие имена не меняются.
+        #expect(ExportLocation.fitted("Пределы — Матанализ — 2026-10-09", extension: "pdf") == "Пределы — Матанализ — 2026-10-09")
     }
 
     @Test func subjectFolderIsLowercasedAndSafe() {

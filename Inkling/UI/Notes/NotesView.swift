@@ -7,12 +7,24 @@ struct NotesView: View {
     @Environment(AssemblyCenter.self) private var assembly
     @Environment(KonspektCheckCenter.self) private var checker
     @Environment(RecognitionCenter.self) private var recognition
+    @Environment(StudyCenter.self) private var study
+    @AppStorage(ClassicInterface.key) private var classicInterface = false
+    /// Подсказку «Подготовить вопросы и карточки?» закрыли в этой лекции.
+    @State private var studyHintDismissed = false
     let lecture: LectureRecord
+    /// Переход на «Источники» из пустого состояния, когда собирать ещё не из чего.
+    var showSources: () -> Void = {}
+    /// Переход на самопроверку с подготовкой материалов (подсказка после первой сборки).
+    var prepareStudy: () -> Void = {}
 
     @State private var editing = false
+    /// `konspekt.md` есть по описанию, но не прочитался (выгружен в iCloud без сети, нет доступа): правка отключена,
+    /// иначе набранный в пустом поле текст записался бы поверх настоящего конспекта.
+    @State private var readFailed = false
     @State private var text = ""
     @State private var loadedRevision: Int?
     @State private var saveTask: Task<Void, Never>?
+    @State private var editsID = UUID()
     @State private var confirm: Confirmation?
     @State private var showHistory = false
     @State private var katexErrors = 0
@@ -25,7 +37,8 @@ struct NotesView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Confirmation: Identifiable {
-        case overwriteManual, skipUnrecognized(Int)
+        /// `skipped` — сколько нераспознанных страниц не попадёт в конспект: второго вопроса после этого не будет.
+        case overwriteManual(skipped: Int), skipUnrecognized(Int)
         var id: String { if case .overwriteManual = self { "manual" } else { "skip" } }
     }
 
@@ -52,15 +65,29 @@ struct NotesView: View {
                     }
                     .transition(.notice(reduceMotion: reduceMotion))
                     Divider()
+                } else if showsStudyHint(readiness) {
+                    // Шаг «проверь себя» вне самопроверки сжат до значка (SPEC, раздел 13), поэтому после первой
+                    // сборки о нём напоминает плашка (C5, аудит 2026-11).
+                    InlineNotice(.info, "Конспект готов. Подготовить по нему вопросы, тест и карточки?",
+                                 systemImage: "graduationcap", dismiss: { studyHintDismissed = true }) {
+                        Button("Подготовить материалы", action: prepareStudy)
+                    }
+                    .transition(.notice(reduceMotion: reduceMotion))
+                    Divider()
                 } else if readiness?.isStale == true {
                     InlineNotice(.info, "Устарело: тексты или порядок страниц изменились после сборки.",
-                                 systemImage: "clock.arrow.circlepath") {
+                                 systemImage: "exclamationmark.arrow.circlepath") {
                         Button("Пересобрать") { start(force: false) }
                             .disabled(recognition.isBusy(lecture.id))
                     }
                     .transition(.notice(reduceMotion: reduceMotion))
                     Divider()
                 }
+            }
+            if readFailed {
+                InlineNotice(.error, "Не удалось прочитать файл конспекта. Правка отключена, чтобы не затереть его; "
+                             + "если файл загружается из iCloud, подождите.", systemImage: "exclamationmark.triangle.fill")
+                Divider()
             }
             if info == nil && text.isEmpty {
                 emptyState(readiness)
@@ -70,7 +97,8 @@ struct NotesView: View {
                 // Просмотр и правка сменяют друг друга растворением, а не скачком.
                 ZStack {
                     if editing {
-                        PageTextEditor(text: Binding(get: { text }, set: { text = $0; scheduleSave() }))
+                        PageTextEditor(text: Binding(get: { text }, set: { text = $0; scheduleSave() }),
+                                       isEditable: !readFailed && !assembly.isRunning(lecture.id))
                             .transition(.opacity)
                     } else {
                         NotesWebView(markdown: text, neighbors: library.neighbors(of: lecture.id),
@@ -96,32 +124,51 @@ struct NotesView: View {
         }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { await load() }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { checker.refresh(lecture) }
-        .onAppear { notesFlush?.action = flushSave }
-        .onDisappear(perform: flushSave)
+        .onAppear {
+            notesFlush?.action = flushSave
+            PendingEdits.register(editsID, flush: flushSave)
+        }
+        .onDisappear {
+            flushSave()
+            PendingEdits.unregister(editsID)
+        }
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
-                            presenting: confirm) { _ in
-            Button("Собрать") { start(force: true) }
+                            presenting: confirm) { which in
+            Button(which.id == "manual" ? "Пересобрать" : "Собрать") { start(force: true) }
             Button("Отмена", role: .cancel) {}
         } message: { which in
             switch which {
-            case .overwriteManual: Text("Конспект правился вручную. Ваша версия сохранится в истории.")
-            case .skipUnrecognized(let n): Text("Не распознано страниц: \(n). Они не попадут в конспект.")
+            case .overwriteManual(let skipped):
+                Text("Конспект правился вручную. Ваша версия сохранится в истории."
+                     + (skipped > 0 ? " Не распознано: \(UIFormat.count(skipped, "страница", "страницы", "страниц")) — они не попадут в конспект." : ""))
+            case .skipUnrecognized(let n):
+                Text("Не распознано: \(UIFormat.count(n, "страница", "страницы", "страниц")). Они не попадут в конспект.")
             }
         }
     }
 
     // MARK: Состояния
 
+    private func showsStudyHint(_ readiness: AssemblyCenter.Readiness?) -> Bool {
+        !classicInterface && !studyHintDismissed && info != nil && lecture.meta.study == nil
+            && !study.isRunning(lecture.id) && readiness?.isStale == false
+    }
+
     private func emptyState(_ readiness: AssemblyCenter.Readiness?) -> some View {
-        EmptyState("Конспекта пока нет", systemImage: "doc.richtext",
-                   description: readiness.map { readiness in
-                       readiness.plan.map { planDescription($0, readiness.input) }
-                           ?? "Сначала добавьте и распознайте страницы на вкладке «Источники»."
-                   }) {
+        EmptyState(assembly.isRunning(lecture.id) ? "Конспект собирается…" : "Конспекта пока нет",
+                   systemImage: "doc.text",
+                   description: assembly.isRunning(lecture.id)
+                       ? "Он появится здесь; ход сборки — в индикаторе на панели."
+                       : readiness.map { readiness in
+                           readiness.plan.map { planDescription($0, readiness.input) }
+                               ?? "Сначала добавьте и распознайте страницы на вкладке «Источники»."
+                       }) {
             if readiness?.plan != nil, !assembly.isRunning(lecture.id) {
                 Button("Собрать конспект") { start(force: false) }
                     .prominentAction()
                     .disabled(recognition.isBusy(lecture.id))
+            } else if readiness != nil, readiness?.plan == nil {
+                Button("Перейти к источникам", action: showSources)
             }
             if recognition.isBusy(lecture.id) {
                 Text("Дождитесь окончания распознавания.").font(.caption).foregroundStyle(.secondary)
@@ -146,6 +193,8 @@ struct NotesView: View {
                 if checker.checks[lecture.id]?.brokenFormulas.isEmpty == false {
                     if checker.isFixing(lecture.id) {
                         ProgressView().controlSize(.small)
+                            .accessibilityLabel("Исправление формул")
+                            .help("Идёт исправление формул; отменить можно в индикаторе работы на панели")
                     } else {
                         Button("Исправить формулы") { flushSave(); checker.fixFormulas(lecture.id) }
                             .help("Один короткий вызов модели: исправляется только синтаксис формул, смысл не меняется. Прежняя версия уйдёт в историю.")
@@ -244,7 +293,8 @@ struct NotesView: View {
                     .help(style.hint)
             }
             Divider()
-            Picker("Модель Claude", selection: $settings.assemblyModel) {
+            // Это общая настройка сборки, а не выбор на один запуск: подпись говорит об этом прямо.
+            Picker("Модель Claude (для всех сборок)", selection: $settings.assemblyModel) {
                 Text("Как в настройках").tag("")
                 ForEach(AppSettings.claudeModels, id: \.id) { Text($0.title).tag($0.id) }
             }
@@ -253,15 +303,18 @@ struct NotesView: View {
         }
         .fixedSize()
         .disabled(disabled)
-        .help("\(settings.assemblyStyle.title). Стрелка — выбрать стиль и модель.")
+        .help(recognition.isBusy(lecture.id) ? "Дождитесь окончания распознавания"
+              : assembly.isRunning(lecture.id) ? "Конспект уже собирается"
+              : "\(settings.assemblyStyle.title). Стрелка — выбрать стиль и модель.")
     }
 
     private func start(force: Bool, style: AssemblyStyle? = nil) {
         flushSave()
         if !force {
-            let missing = assembly.readiness(lecture).input
+            // Из кэша, без чтения файлов на главном потоке; пока сводки нет — читаем сейчас (редкий случай).
+            let missing = (assembly.knownReadiness(lecture) ?? assembly.readiness(lecture)).input
             let skipped = missing.unrecognizedNotes + missing.unrecognizedSlides
-            if info?.manuallyEdited == true { confirm = .overwriteManual; return }
+            if info?.manuallyEdited == true { confirm = .overwriteManual(skipped: skipped); return }
             if skipped > 0 { confirm = .skipUnrecognized(skipped); return }
         }
         editing = false
@@ -279,19 +332,30 @@ struct NotesView: View {
     private func load() async {
         guard loadedRevision != revision || text.isEmpty || !editing else { return }
         let target = revision
-        let loaded = await Self.read(store)
+        var loaded = await Self.read(store)
+        // Файл мог ещё качаться из iCloud: пробуем снова, пока вкладка открыта (задача отменяется при уходе).
+        var attempts = 0
+        while loaded == nil, lecture.meta.konspekt != nil, attempts < 40, !Task.isCancelled {
+            readFailed = true
+            attempts += 1
+            try? await Task.sleep(for: .seconds(3))
+            loaded = await Self.read(store)
+        }
         guard !Task.isCancelled, loadedRevision != target || text.isEmpty || !editing else { return }
+        readFailed = loaded == nil && lecture.meta.konspekt != nil
+        guard !readFailed else { return }
         loadedRevision = target
-        text = loaded
+        text = loaded ?? ""
         loadedFor = lecture.id
     }
 
     @concurrent
-    private static func read(_ store: KonspektStore) async -> String {
-        store.read()?.trimmingCharacters(in: .newlines) ?? ""
+    private static func read(_ store: KonspektStore) async -> String? {
+        store.read()?.trimmingCharacters(in: .newlines)
     }
 
     private func scheduleSave() {
+        guard !readFailed else { return }
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(800))

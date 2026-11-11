@@ -1,4 +1,5 @@
 import AppKit
+import Synchronization
 import WebKit
 
 enum PDFExportError: LocalizedError {
@@ -20,55 +21,43 @@ struct PrintHeading: Encodable {
     var date: String
 }
 
+extension PrintHeading {
+    /// Титул лекции: предмет, тема и дата словами — одинаково для PDF, HTML и экспорта предмета.
+    init(_ meta: LectureMeta) {
+        self.init(subject: meta.subject, topic: meta.topic, date: meta.date.formatted)
+    }
+}
+
 /// PDF A4 из отрендеренного конспекта (SPEC, раздел 8). Печать начинается только после сигнала
 /// `rendered` из JS: KaTeX отрисовал формулы и загрузил шрифты. Печатается всегда светлая тема.
 /// Первая страница начинается с титула (предмет, тема, дата), внизу каждой — колонтитул.
 @MainActor
-final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-    private var webView: WKWebView?
+final class PDFExporter: NSObject {
     private var window: NSWindow?
-    private var markdown = ""
-    private var heading: PrintHeading?
     /// Заголовки и ссылки оглавления отрисованной страницы — для переходов в готовом PDF.
     private var outline: PDFNavigation.Outline?
-    private var rendered: CheckedContinuation<Void, Error>?
-
     /// A4 в пунктах.
     static let a4 = NSSize(width: 595.28, height: 841.89)
 
     func export(markdown: String, title: String, heading: PrintHeading? = nil, to url: URL) async throws {
-        self.markdown = markdown
-        self.heading = heading
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController.add(self, name: "rendered")
-        let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 794, height: 1123), configuration: configuration)
-        view.appearance = NSAppearance(named: .aqua)
-        view.navigationDelegate = self
+        let page = RenderedNotesPage(light: true)
+        let view = page.view
         // Печати WKWebView нужно окно; оно невидимое и за пределами экрана.
         let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 794, height: 1123),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: .aqua)
         window.contentView = view
         window.orderBack(nil)
-        self.webView = view
         self.window = window
         defer {
-            configuration.userContentController.removeScriptMessageHandler(forName: "rendered")
+            page.close()
             window.orderOut(nil)
             self.window = nil
-            self.webView = nil
         }
+        try await page.show(markdown: markdown, heading: heading, expandSolutions: true,
+                            timeoutError: PDFExportError.renderTimeout)
 
-        guard let folder = NotesWebView.webFolder else { throw PDFExportError.printFailed }
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            rendered = continuation
-            view.loadFileURL(folder.appendingPathComponent("notes.html"), allowingReadAccessTo: folder)
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(30))
-                self?.finishRender(.failure(PDFExportError.renderTimeout))
-            }
-        }
-
+        try Task.checkCancellation()
         if let json = try? await view.evaluateJavaScript(PDFNavigation.outlineScript) as? String {
             outline = try? JSONDecoder().decode(PDFNavigation.Outline.self, from: Data(json.utf8))
         }
@@ -85,63 +74,54 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
         info.verticalPagination = .automatic
         info.isHorizontallyCentered = false
         info.jobDisposition = .save
-        info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = url
+        // Печать идёт во временный файл рядом: прежний PDF заменяется только готовым новым, а при сбое остаётся.
+        let printed = url.deletingLastPathComponent().appending(path: ".\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: printed) }
+        info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = printed
         let operation = view.printOperation(with: info)
         operation.showsPrintPanel = false
         operation.showsProgressPanel = false
         operation.jobTitle = title
-        try? FileManager.default.removeItem(at: url)
         // WKWebView печатает асинхронно: синхронный run() зависает. Ждём завершения через делегат.
         let ok = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            printed.set(continuation)
+            printDone.set(continuation)
             operation.runModal(for: window, delegate: self,
                                didRun: #selector(printOperationDidRun(_:success:contextInfo:)), contextInfo: nil)
         }
-        guard ok, FileManager.default.fileExists(atPath: url.path) else { throw PDFExportError.printFailed }
+        guard ok, FileManager.default.fileExists(atPath: printed.path) else { throw PDFExportError.printFailed }
+        // Отменили во время печати — прежний PDF не заменяется.
+        try Task.checkCancellation()
         let label = heading.map { "\($0.subject) · \($0.topic)" } ?? title
         // Места ссылок ищутся в напечатанном файле, а ставятся при перерисовке с колонтитулами.
-        let navigation = outline.flatMap { PDFNavigation.plan($0, for: url) }
-        try PDFFooter.stamp(url, label: label, title: title, navigation: navigation)
+        let navigation = outline.flatMap { PDFNavigation.plan($0, for: printed) }
+        try PDFFooter.stamp(printed, label: label, title: title, navigation: navigation)
+        if FileManager.default.fileExists(atPath: url.path) {
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: printed)
+        } else {
+            try FileManager.default.moveItem(at: printed, to: url)
+        }
     }
 
-    private nonisolated let printed = OneShot()
+    private nonisolated let printDone = OneShot()
 
     /// AppKit вызывает это в фоновом потоке, поэтому метод не привязан к главному актору.
     @objc private nonisolated func printOperationDidRun(_ operation: NSPrintOperation, success: Bool,
                                                         contextInfo: UnsafeMutableRawPointer?) {
-        printed.resume(success)
+        printDone.resume(success)
     }
 
     /// Продолжение, которое можно безопасно возобновить из любого потока, ровно один раз.
-    private final class OneShot: @unchecked Sendable {
-        private let lock = NSLock()
-        private var continuation: CheckedContinuation<Bool, Never>?
+    private final class OneShot: Sendable {
+        private let continuation = Mutex<CheckedContinuation<Bool, Never>?>(nil)
 
-        func set(_ continuation: CheckedContinuation<Bool, Never>) { lock.withLock { self.continuation = continuation } }
+        func set(_ continuation: CheckedContinuation<Bool, Never>) { self.continuation.withLock { $0 = continuation } }
 
         func resume(_ value: Bool) {
-            let pending = lock.withLock { () -> CheckedContinuation<Bool, Never>? in
-                defer { continuation = nil }
-                return continuation
+            let pending = continuation.withLock { stored -> CheckedContinuation<Bool, Never>? in
+                defer { stored = nil }
+                return stored
             }
             pending?.resume(returning: value)
         }
-    }
-
-    private func finishRender(_ result: Result<Void, Error>) {
-        guard let continuation = rendered else { return }
-        rendered = nil
-        continuation.resume(with: result)
-    }
-
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        let json = (try? JSONEncoder().encode(markdown)).map { String(decoding: $0, as: UTF8.self) } ?? "\"\""
-        let headingJSON = heading.flatMap { try? JSONEncoder().encode($0) }.map { String(decoding: $0, as: UTF8.self) }
-        let setHeading = headingJSON.map { "window.inklingSetHeading(\($0));" } ?? ""
-        webView.evaluateJavaScript(setHeading + "InklingRender.options.collapseSolutions = false; window.inklingShow(\(json))")
-    }
-
-    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        finishRender(.success(()))
     }
 }

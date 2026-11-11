@@ -345,3 +345,30 @@ private struct LimitedEngine: AIEngine {
     func run(_ request: AIRequest) async throws(AIError) -> AIResponse { throw .rateLimited(resetAt: nil, details: "limit") }
     func checkConnection() async -> ConnectionReport { ConnectionReport() }
 }
+
+/// C26 (аудит 2026-11): при запуске подсказка, если основной движок не найден. Проверка без вызова модели.
+@Suite("Движок: проверка при запуске")
+@MainActor
+struct EngineSetupCheckTests {
+    private func locator(executables: Set<String>) -> BinaryLocator {
+        BinaryLocator(home: "/Users/u", isExecutable: { executables.contains($0) }, contentsOfDirectory: { _ in [] },
+                      fileHeader: { _ in "\u{CF}\u{FA}\u{ED}\u{FE}" }, shellLookup: { _ in nil })
+    }
+
+    @Test func missingClaudeIsReportedAndFoundClearsIt() async {
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "setup-tests-\(UUID().uuidString)")!)
+        let center = EngineCenter(settings: settings, secrets: MemorySecretStore())
+        await center.checkSetup(locator: locator(executables: []))
+        #expect(center.setupProblem?.contains("Claude Code") == true)
+        await center.checkSetup(locator: locator(executables: ["/opt/homebrew/bin/claude"]))
+        #expect(center.setupProblem == nil)
+    }
+
+    @Test func geminiWithoutKeyIsReported() async {
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "setup-tests-\(UUID().uuidString)")!)
+        settings.primaryEngine = .gemini
+        let center = EngineCenter(settings: settings, secrets: MemorySecretStore())
+        await center.checkSetup(locator: locator(executables: []))
+        #expect(center.setupProblem?.contains("ключ Gemini") == true)
+    }
+}

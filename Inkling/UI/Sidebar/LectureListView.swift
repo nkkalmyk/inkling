@@ -54,8 +54,8 @@ struct LectureListView: View {
                 Button("Новая лекция", systemImage: "square.and.pencil") {
                     library.sheet = .newLecture(subject: library.currentSubject)
                 }
+                // Без предметов кнопка тоже работает, как «Файл → Новая лекция…»: лист сам создаёт предмет.
                 .help("Новая лекция (⌘T)")
-                .disabled(library.subjects.isEmpty)
             }
         }
     }
@@ -118,6 +118,8 @@ struct LectureListView: View {
             LectureRow(lecture: lecture, snippet: snippets[lecture.id])
                 .tag(lecture.id)
                 .contextMenu { lectureMenu(lecture) }
+                // Лекцию можно перетащить на предмет в сайдбаре — она переедет туда.
+                .draggable(Library.lectureDragPrefix + lecture.id.uuidString)
         }
         ForEach(section.unavailable) { item in
             UnavailableRow(item: item)
@@ -158,6 +160,13 @@ struct LectureListView: View {
     @ViewBuilder
     private func lectureMenu(_ lecture: LectureRecord) -> some View {
         Button("Изменить…") { library.sheet = .editLecture(lecture.id) }
+        Menu("Переместить в предмет") {
+            ForEach(library.subjects.filter { $0.name != lecture.meta.subject }) { subject in
+                Button(subject.name) { library.moveLecture(lecture.id, toSubject: subject.name) }
+            }
+        }
+        .disabled(library.subjects.count < 2)
+        Button("Новая лекция в этом предмете…") { library.sheet = .newLecture(subject: lecture.meta.subject) }
         Button("Показать в Finder") { library.revealInFinder(lecture.folder) }
         Divider()
         Button("Удалить…", role: .destructive) { library.requestDeleteLecture(lecture.id) }
@@ -213,7 +222,7 @@ private struct LectureRow: View {
     private var details: String {
         var parts = [lecture.meta.date.date().formatted(.dateTime.day().month(.abbreviated).locale(UIFormat.locale))]
         let pages = lecture.meta.notes.count + lecture.meta.slides.count
-        if pages > 0 { parts.append("страниц: \(pages)") }
+        if pages > 0 { parts.append(UIFormat.count(pages, "страница", "страницы", "страниц")) }
         return parts.joined(separator: " · ")
     }
 
@@ -221,9 +230,14 @@ private struct LectureRow: View {
     @ViewBuilder
     private var status: some View {
         let id = lecture.id
-        if recognition.isBusy(id) || assembly.isRunning(id) || study.isRunning(id) {
+        if let work = work(id) {
             ProgressView().controlSize(.small)
-                .accessibilityLabel("Идёт работа")
+                .accessibilityLabel(work)
+                .help(work)
+        } else if let failure = failure(id) {
+            // Ошибка видна и из списка: иначе о ней узнаёшь, только открыв лекцию.
+            StatusSymbol(systemImage: "exclamationmark.triangle.fill", label: failure, tint: .statusError)
+                .help(failure)
         } else if lecture.hasConflict {
             StatusSymbol(systemImage: "exclamationmark.icloud", label: "Есть конфликтные копии iCloud")
         } else if lecture.meta.study != nil {
@@ -232,23 +246,47 @@ private struct LectureRow: View {
             StatusSymbol(systemImage: "doc.text", label: "Конспект собран")
         }
     }
+
+    /// Что именно идёт по лекции — для подсказки и VoiceOver вместо общего «Идёт работа».
+    private func work(_ id: UUID) -> String? {
+        if let batch = recognition.batches[id] {
+            return "Распознавание: \(batch.done + batch.failed) из \(batch.total)"
+        }
+        if assembly.isRunning(id) { return "Сборка конспекта" }
+        if study.isRunning(id) { return "Подготовка материалов" }
+        return nil
+    }
+
+    private func failure(_ id: UUID) -> String? {
+        if assembly.errors[id] != nil { return "Конспект не собран: ошибка" }
+        if study.errors[id] != nil { return "Материалы не подготовлены: ошибка" }
+        return nil
+    }
 }
 
 private struct UnavailableRow: View {
     let item: UnavailableLecture
+
+    private var helpText: String {
+        switch item.reason {
+        case .downloading: "Загружается из iCloud…"
+        case .unreadable(let message): "Не удалось прочитать описание лекции (meta.json): \(message)"
+        }
+    }
 
     var body: some View {
         HStack(spacing: Spacing.s) {
             switch item.reason {
             case .downloading:
                 ProgressView().controlSize(.small)
+                    .accessibilityLabel("Загружается из iCloud")
                 Text(item.name).lineLimit(1).foregroundStyle(.secondary)
-                    .help("Загружается из iCloud…")
-            case .unreadable(let message):
-                Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.statusError)
+            case .unreadable:
+                StatusSymbol(systemImage: "exclamationmark.triangle", label: "Не удалось прочитать лекцию", tint: .statusError)
                 Text(item.name).lineLimit(1).foregroundStyle(.secondary)
-                    .help("Не удалось прочитать meta.json: \(message)")
             }
         }
+        // Причина — на всю строку, а не только на текст; служебное имя файла — в подробностях.
+        .help(helpText)
     }
 }

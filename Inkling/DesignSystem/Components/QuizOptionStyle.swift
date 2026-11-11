@@ -58,7 +58,7 @@ struct QuizOptionStyle: ButtonStyle {
             }
         }
         .padding(Spacing.m)
-        .background(shape.fill(state.tint?.opacity(0.14) ?? Color.surfaceStudyRaised))
+        .background(shape.fill(state.tint?.opacity(Tint.medium) ?? Color.surfaceStudyRaised))
         .overlay(shape.strokeBorder(state.tint ?? .clear, lineWidth: 1.5))
         .opacity(state == .dimmed ? 0.55 : 1)
         .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)

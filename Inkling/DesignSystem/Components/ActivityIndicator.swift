@@ -97,7 +97,7 @@ private struct ActivityList: View {
             }
         }
         .padding(Spacing.l)
-        .frame(width: 320)
+        .frame(width: PopoverSize.width)
     }
 }
 

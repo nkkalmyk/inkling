@@ -25,10 +25,9 @@ enum ConceptExtractor {
         var result: [Concept] = []
         var headings = 0
         var section: String?
-        var inFence = false
+        var fence = MarkdownFence()
         for line in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
-            if line.hasPrefix("```") { inFence.toggle(); continue }
-            if inFence { continue }
+            if fence.consume(line) || fence.isInside { continue }
             if let heading = headingText(line) {
                 headings += 1
                 section = heading

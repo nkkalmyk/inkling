@@ -10,6 +10,9 @@ struct PageDetailView: View {
         if let pageID, let location = lecture.meta.page(pageID) {
             PageEditor(lecture: lecture, pageID: pageID, section: location.section, number: location.index + 1)
                 .id(pageID)
+        } else if lecture.meta.notes.isEmpty && lecture.meta.slides.isEmpty {
+            EmptyState("Страниц пока нет", systemImage: "photo.on.rectangle",
+                       description: "Перетащите сюда фото конспекта или PDF слайдов или выберите «Файл → Добавить файлы…» (⌘O).")
         } else {
             EmptyState("Выберите страницу", systemImage: "doc.viewfinder",
                        description: "Порядок меняется перетаскиванием в ленте, лишние страницы удаляются клавишей ⌫.")
@@ -30,6 +33,9 @@ private struct PageEditor: View {
     @State private var image: NSImage?
     @State private var zoom: ZoomableImageView.ZoomRequest?
     @State private var saveTask: Task<Void, Never>?
+    /// Текст страницы есть по описанию, но не прочитался: правка отключена, чтобы не затереть файл.
+    @State private var readFailed = false
+    @State private var editsID = UUID()
     @State private var confirmRerecognize = false
     @State private var rerecognizeDetailed = false
     @State private var showHistory = false
@@ -73,7 +79,11 @@ private struct PageEditor: View {
             image = await PageImageLoader.shared.image(imageSource, maxPixel: 2400, revision: revision)
         }
         .task(id: revision) { await loadText() }
-        .onDisappear(perform: flushSave)
+        .onAppear { PendingEdits.register(editsID, flush: flushSave) }
+        .onDisappear {
+            flushSave()
+            PendingEdits.unregister(editsID)
+        }
         .confirmationDialog("Текст правился вручную", isPresented: $confirmRerecognize) {
             Button("Распознать заново") {
                 recognition.recognize(lectureID: lecture.id, pageIDs: [pageID], detailed: rerecognizeDetailed)
@@ -152,7 +162,8 @@ private struct PageEditor: View {
             let textLayer = slide.map { !$0.usesImage } ?? false
             Button("Распознать заново") { rerecognize(detailed: false) }
                 .disabled(isRunning || textLayer)
-                .help(textLayer ? "Слайд берётся из текстового слоя; переключите режим на «Картинка»" : "")
+                .help(textLayer ? "Слайд берётся из текстового слоя; переключите режим на «Картинка»"
+                      : isRunning ? "Страница уже распознаётся" : "Распознать слайд ещё раз")
         }
     }
 
@@ -278,10 +289,17 @@ private struct PageEditor: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            PageTextEditor(text: Binding(get: { text }, set: { newValue in
-                text = newValue
-                scheduleSave()
-            }), onIllegibleClick: { zoom = .init(relativeY: $0) })
+            VStack(spacing: 0) {
+                if readFailed {
+                    InlineNotice(.error, "Не удалось прочитать текст страницы. Правка отключена, чтобы не затереть его; "
+                                 + "если файл загружается из iCloud, подождите.", systemImage: "exclamationmark.triangle.fill")
+                    Divider()
+                }
+                PageTextEditor(text: Binding(get: { text }, set: { newValue in
+                    text = newValue
+                    scheduleSave()
+                }), isEditable: !readFailed && !isRunning, onIllegibleClick: { zoom = .init(relativeY: $0) })
+            }
         }
     }
 
@@ -303,18 +321,30 @@ private struct PageEditor: View {
     private func loadText() async {
         guard loadedRevision != revision || text.isEmpty else { return }
         let target = revision
-        let loaded = await Self.readText(PageTextStore(paths: paths), pageID: pageID, section: section)
+        let store = PageTextStore(paths: paths)
+        var loaded = await Self.readText(store, pageID: pageID, section: section)
+        // Файл мог ещё качаться из iCloud: пробуем снова, пока страница открыта.
+        var attempts = 0
+        while loaded == nil, info != nil, attempts < 40, !Task.isCancelled {
+            readFailed = true
+            attempts += 1
+            try? await Task.sleep(for: .seconds(3))
+            loaded = await Self.readText(store, pageID: pageID, section: section)
+        }
         guard !Task.isCancelled else { return }
+        readFailed = loaded == nil && info != nil
+        guard !readFailed else { return }
         loadedRevision = target
-        text = loaded
+        text = loaded ?? ""
     }
 
     @concurrent
-    private static func readText(_ store: PageTextStore, pageID: String, section: SourceSection) async -> String {
-        store.read(pageID, in: section) ?? ""
+    private static func readText(_ store: PageTextStore, pageID: String, section: SourceSection) async -> String? {
+        store.read(pageID, in: section)
     }
 
     private func scheduleSave() {
+        guard !readFailed else { return }
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(800))

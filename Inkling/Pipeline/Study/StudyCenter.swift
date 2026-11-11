@@ -21,8 +21,7 @@ final class StudyCenter {
     @ObservationIgnored private let router: @MainActor () -> EngineRouter
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
     private var konspektHashes: [UUID: String?] = [:]
-    @ObservationIgnored private var hashKeys: [UUID: HashKey] = [:]
-    @ObservationIgnored private var hashTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private let hashRefresh = BackgroundRefresh<HashKey>()
 
     init(library: Library, router: @escaping @MainActor () -> EngineRouter) {
         self.library = library
@@ -51,7 +50,7 @@ final class StudyCenter {
     func knownStale(_ lecture: LectureRecord) -> Bool {
         guard let info = lecture.meta.study else { return false }
         let key = HashKey(konspekt: lecture.meta.konspekt, revision: library.konspektRevision[lecture.id] ?? 0)
-        if hashKeys[lecture.id] != key { refreshHash(lecture, key: key) }
+        refreshHash(lecture, key: key)
         guard let hash = konspektHashes[lecture.id] ?? nil else { return false }
         return info.inputHash != hash
     }
@@ -63,12 +62,10 @@ final class StudyCenter {
 
     private func refreshHash(_ lecture: LectureRecord, key: HashKey) {
         let id = lecture.id, folder = lecture.folder, info = lecture.meta.konspekt
-        hashKeys[id] = key
-        hashTasks[id]?.cancel()
-        hashTasks[id] = Task {
+        hashRefresh.refresh(id, key: key) { [weak self] in
             let hash = await Self.konspektHash(folder: folder, info: info)
             guard !Task.isCancelled else { return }
-            konspektHashes[id] = .some(hash)
+            self?.konspektHashes[id] = .some(hash)
         }
     }
 
@@ -84,42 +81,47 @@ final class StudyCenter {
     func generate(_ lectureID: UUID) {
         guard runs[lectureID] == nil, let lecture = library.lecture(id: lectureID) else { return }
         errors[lectureID] = nil
-        // Учебные материалы строятся по авторскому тексту: блоки кнопки «Дополнить» в них и в хеш не входят.
-        let raw = Enrichment.baseText(KonspektStore(folder: lecture.folder).read() ?? "", info: lecture.meta.konspekt)
-        let konspekt = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !konspekt.isEmpty else {
-            errors[lectureID] = .invalidOutput("Сначала соберите конспект: материалы готовятся только по нему.")
-            return
-        }
-        let prompt: String
-        do {
-            let prompts = library.prompts
-            prompt = PromptLibrary.render(try prompts.template("study.md"), values: [
-                "предмет": lecture.meta.subject, "тема": lecture.meta.topic,
-                "вставка_предмета": prompts.subjectInsert(lecture.meta.subject), "конспект": konspekt,
-            ])
-        } catch {
-            errors[lectureID] = .invalidOutput(error.localizedDescription)
-            return
-        }
+        let folder = lecture.folder, info = lecture.meta.konspekt
+        let subject = lecture.meta.subject, topic = lecture.meta.topic
+        let prompts = library.prompts
         let router = router()
-        let hash = FileHash.sha256(raw)
+        // Конспект читается в фоне: в iCloud он может быть выгружен, и чтение на главном потоке подвешивало окно
+        // (аудит 2026-11, A20). Подготовка считается идущей сразу, чтобы повторное нажатие отсекалось.
         runs[lectureID] = Run()
         tasks[lectureID] = Task {
             defer {
                 runs[lectureID] = nil
                 tasks[lectureID] = nil
             }
+            // Учебные материалы строятся по авторскому тексту: блоки прежней кнопки «Дополнить» (в старых конспектах)
+            // в них и в хеш не входят.
+            let raw = await Self.readBaseText(folder: folder, info: info)
+            guard !Task.isCancelled else { return }
+            let konspekt = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !konspekt.isEmpty else {
+                errors[lectureID] = .invalidOutput("Сначала соберите конспект: материалы готовятся только по нему.")
+                return
+            }
             do {
+                let prompt = PromptLibrary.render(try prompts.template("study.md"), values: [
+                    "предмет": subject, "тема": topic,
+                    "вставка_предмета": prompts.subjectInsert(subject), "конспект": konspekt,
+                ])
+                let hash = FileHash.sha256(raw)
                 let (study, response) = try await request(prompt: prompt, konspektChars: konspekt.count, router: router,
                                                           lectureID: lectureID)
-                try save(study, response: response, inputHash: hash, lectureID: lectureID)
+                try AIError.storing { try save(study, response: response, inputHash: hash, lectureID: lectureID) }
             } catch let error as AIError {
                 if error != .cancelled { errors[lectureID] = error }
             } catch {
                 errors[lectureID] = .invalidOutput(error.localizedDescription)
             }
         }
+    }
+
+    @concurrent
+    private static func readBaseText(folder: URL, info: ArtifactInfo?) async -> String {
+        Enrichment.baseText(KonspektStore(folder: folder).read() ?? "", info: info)
     }
 
     private func request(prompt: String, konspektChars: Int, router: EngineRouter,
@@ -164,13 +166,8 @@ final class StudyCenter {
 
     private func note(_ event: EngineRouter.Event, lectureID: UUID) {
         guard runs[lectureID] != nil else { return }
-        switch event {
-        case .started(let engine): runs[lectureID]?.engine = engine
-        case .retrying(_, let error): runs[lectureID]?.note = "Повтор после ошибки: \(error.userMessage)"
-        case .switchedToFallback(_, let to, let error):
-            runs[lectureID]?.engine = to
-            runs[lectureID]?.note = "\(error.userMessage) Переход на \(to.title)."
-        }
+        if let engine = event.engine { runs[lectureID]?.engine = engine }
+        if let note = event.note { runs[lectureID]?.note = note }
     }
 
     // MARK: Правка и прогресс
@@ -196,12 +193,13 @@ final class StudyCenter {
     func updateProgress(_ lectureID: UUID, _ change: (inout StudyProgress) -> Void) {
         guard let lecture = library.lecture(id: lectureID) else { return }
         let store = StudyStore(folder: lecture.folder)
-        var progress = store.readProgress()
-        change(&progress)
         do {
+            var progress = try store.readProgressForUpdate()
+            change(&progress)
             try store.writeProgress(progress)
         } catch {
-            library.errorMessage = "Не удалось сохранить прогресс: \(error.localizedDescription)"
+            library.errorMessage = "Не удалось сохранить прогресс: \(error.localizedDescription). "
+                + "Прежний прогресс не тронут."
         }
         revisions[lectureID, default: 0] += 1
     }

@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(Library.self) private var library
+    @Environment(EngineCenter.self) private var engines
+    @Environment(\.openSettings) private var openSettings
+    @AppStorage(ClassicInterface.key) private var classicInterface = false
     @AppStorage(ReadingScale.key) private var readingScale = 1.0
     @State private var dropTargeted = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -29,6 +32,19 @@ struct ContentView: View {
             }
         }
         .environment(\.readingScale, readingScale)
+        // Движок не найден — сказать сразу при запуске, а не после первого упавшего распознавания (C26).
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !classicInterface, let problem = engines.setupProblem {
+                VStack(spacing: 0) {
+                    InlineNotice(.error, problem, systemImage: "exclamationmark.triangle.fill",
+                                 dismiss: { engines.dismissSetupProblem() }) {
+                        Button("Настройки…") { openSettings() }
+                    }
+                    Divider()
+                }
+            }
+        }
+        .task { if !InklingApp.isRunningTests { await engines.checkSetup() } }
         // Фото и PDF можно бросить или вставить в любое место окна; «Источники» принимают их в свой раздел сами.
         .onDrop(of: ImportStaging.acceptedTypes, isTargeted: $dropTargeted) { providers in
             library.importIntoWindow(providers)
@@ -90,7 +106,7 @@ struct ContentView: View {
                  : "В PDF нет текстового слоя, обычно так выглядит скан тетради.")
         }
         .alert("Ошибка", isPresented: errorBinding) {
-            Button("OK") { library.errorMessage = nil }
+            Button("ОК") { library.errorMessage = nil }
         } message: {
             Text(library.errorMessage ?? "")
         }
@@ -136,6 +152,8 @@ struct ContentView: View {
         switch library.pendingDeletion {
         case .lecture(_, let title): "Удалить лекцию «\(title)»?"
         case .subject(let name, _): "Удалить предмет «\(name)»?"
+        case .pages(let ids, _, _):
+            ids.count == 1 ? "Удалить страницу?" : "Удалить \(UIFormat.count(ids.count, "страницу", "страницы", "страниц"))?"
         case nil: ""
         }
     }
@@ -147,7 +165,11 @@ struct ContentView: View {
         case .subject(_, let count):
             return count == 0
                 ? "Папка предмета уйдёт в корзину."
-                : "Папка предмета и все его лекции (\(count)) уйдут в корзину."
+                : "Папка предмета и все его лекции (\(count)) с фото, конспектами и материалами уйдут в корзину."
+        case .pages(_, _, let edited):
+            return edited
+                ? "Фото и распознанный текст, в том числе правленный вручную, уйдут в корзину."
+                : "Фото и распознанный текст уйдут в корзину."
         }
     }
 }

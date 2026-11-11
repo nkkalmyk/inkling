@@ -339,4 +339,66 @@ struct KonspektCheckTests {
         #expect(center.lastFixed[env.lectureID] == 1)
         #expect(store.history.entries().count == 1)
     }
+
+    /// Регресс A11 (аудит 2026-11): правка во время вызова меняла нумерацию проверки, и исправление первой
+    /// отправленной формулы подставлялось вместо другой.
+    @Test func editDuringFixDoesNotMisplaceFixes() async throws {
+        let env = try AssemblyCenterTests.Env(pages: ["x"])
+        let store = KonspektStore(folder: env.lecture.folder)
+        try store.write("A $\\frac{a}{$ конец.\n", previous: nil)
+        env.library.mutate(env.lectureID) {
+            $0.konspekt = ArtifactInfo(createdAt: Date(), updatedAt: Date(), inputHash: "x")
+        }
+        let engine = EngineRouterTests.FakeEngine([.success(#"{"fixes":[{"id":1,"tex":"\\frac{a}{b}"}]}"#)],
+                                                  delay: .milliseconds(300))
+        let router = EngineRouter(primary: engine, fallback: nil, settings: .init())
+        let center = KonspektCheckCenter(library: env.library, router: { router })
+        center.refresh(env.lecture)
+        for _ in 0..<250 where center.checks[env.lectureID] == nil { try await Task.sleep(for: .milliseconds(20)) }
+        center.fixFormulas(env.lectureID)
+
+        env.library.saveKonspektEdit("B $\\sqrt{$ A $\\frac{a}{$ конец.\n", lectureID: env.lectureID)
+        // Время правки округляется до секунды и может совпасть с прежним: новую проверку запускает ревизия.
+        env.library.konspektRevision[env.lectureID, default: 0] += 1
+        center.refresh(env.lecture)
+        for _ in 0..<250 where center.checks[env.lectureID]?.brokenFormulas.count != 2 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        for _ in 0..<250 where center.isFixing(env.lectureID) { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(store.read() == "B $\\sqrt{$ A $\\frac{a}{b}$ конец.\n")
+    }
+}
+
+/// B19 (аудит 2026-11): блоки кода — по правилам CommonMark (как markdown-it в рендере) во всех разборах.
+@Suite("Markdown: блоки кода")
+struct MarkdownFenceTests {
+    private func inside(_ markdown: String) -> [Bool] {
+        var fence = MarkdownFence()
+        return markdown.components(separatedBy: "\n").map { line in
+            let boundary = fence.consume(line)
+            return boundary || fence.isInside
+        }
+    }
+
+    @Test func backticksAndTildesOpenAndCloseWithTheSameMarker() {
+        #expect(inside("a\n```\n# код\n```\nb") == [false, true, true, true, false])
+        #expect(inside("a\n~~~plot\nx\n~~~\nb") == [false, true, true, true, false])
+        // ``` внутри ~~~ не закрывает блок, короткая граница не закрывает длинную.
+        #expect(inside("~~~\n```\n~~~\nb") == [true, true, true, false])
+        #expect(inside("````\n```\n````\nb") == [true, true, true, false])
+        #expect(inside("``не блок``\nb") == [false, false])
+    }
+
+    @Test func headingInsideCodeDoesNotSatisfyStructure() {
+        let text = "# Конспект\n\n```\n## Оглавление\n## Примеры\n```\n"
+        #expect(KonspektChecker.missingStructure(text, expectSources: false) == ["«Оглавление»", "раздела примеров"])
+        #expect(KonspektChecker.missingStructure("## Оглавление\n## Примеры решения\n", expectSources: false).isEmpty)
+    }
+
+    @Test func definitionsInsideTildeFenceAreIgnored() {
+        let text = "# Тема\n\n## 1. Раздел\n\n~~~\n**Матрица** — таблица чисел.\n~~~\n\n**Определитель** — число матрицы.\n"
+        let names = ConceptExtractor.concepts(in: text).map(\.name)
+        #expect(names.contains("Определитель"))
+        #expect(!names.contains("Матрица"))
+    }
 }

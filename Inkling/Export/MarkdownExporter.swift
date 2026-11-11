@@ -24,11 +24,10 @@ enum MarkdownExporter {
     static func normalized(_ text: String) -> String {
         var lines: [Substring] = []
         var blank = 0
-        var inFence = false
+        var fence = MarkdownFence()
         for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            let isFence = line.trimmingPrefix(while: \.isWhitespace).hasPrefix("```")
-            if inFence || isFence {
-                if isFence { inFence.toggle() }
+            let wasInside = fence.isInside
+            if fence.consume(line) || wasInside {
                 blank = 0
                 lines.append(line)
                 continue

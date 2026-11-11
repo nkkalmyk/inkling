@@ -24,6 +24,9 @@ struct KonspektSearchText: Sendable {
 
     let plain: String
     private let words: [Word]
+    /// Номера слов по первым двум буквам: `contains` проверяет только места, где может начаться понятие, а не весь текст.
+    /// Расчёт ссылок понятий на предмете из 30 лекций шёл больше секунды на главном потоке (аудит 2026-11, D1.2).
+    private let positions: [Substring: [Int]]
     /// Понятия, определённые в этом конспекте (`ConceptExtractor`), для ссылок между лекциями.
     let concepts: [Concept]
 
@@ -50,6 +53,9 @@ struct KonspektSearchText: Sendable {
         }
         flush(plain.endIndex)
         self.words = words
+        var positions: [Substring: [Int]] = [:]
+        for (offset, word) in words.enumerated() { positions[word.token.prefix(2), default: []].append(offset) }
+        self.positions = positions
     }
 
     /// Основы слов запроса (`queryStems`) для `snippet(for:)`: без служебных слов и повторов, окончание отрезано
@@ -78,10 +84,13 @@ struct KonspektSearchText: Sendable {
 
     /// Есть ли в тексте подряд слова с этими основами (понятие из нескольких слов).
     func contains(_ stems: [String]) -> Bool {
-        guard !stems.isEmpty, words.count >= stems.count else { return false }
-        return (0...(words.count - stems.count)).contains { start in
-            stems.indices.allSatisfy { words[start + $0].token.hasPrefix(stems[$0]) }
+        guard let first = stems.first, words.count >= stems.count else { return false }
+        func matches(at start: Int) -> Bool {
+            start + stems.count <= words.count && stems.indices.allSatisfy { words[start + $0].token.hasPrefix(stems[$0]) }
         }
+        // Слово начинается с основы только при тех же первых двух буквах; короче двух — проверяем всё.
+        guard first.count >= 2 else { return (0...(words.count - stems.count)).contains(where: matches) }
+        return (positions[first.prefix(2)] ?? []).contains(where: matches)
     }
 
     /// Фрагмент вокруг первого найденного слова, если в конспекте есть все слова запроса.
@@ -139,8 +148,11 @@ struct KonspektSearchText: Sendable {
 @MainActor
 @Observable
 final class KonspektSearchCenter {
-    private(set) var texts: [UUID: KonspektSearchText] = [:]
+    private(set) var texts: [UUID: KonspektSearchText] = [:] { didSet { textsVersion &+= 1 } }
     @ObservationIgnored private var keys: [UUID: String] = [:]
+    /// Меняется при каждом изменении `texts`: по нему кэш связей понятий понимает, что пора пересчитать.
+    @ObservationIgnored private var textsVersion = 0
+    @ObservationIgnored private var linksCache: [UUID: (key: Int, links: ConceptLinks)] = [:]
 
     /// От чего зависит текст конспекта: правка в окне меняет `konspektRevision`, сборка — `updatedAt`.
     nonisolated static func key(_ lecture: LectureRecord, revision: Int) -> String? {
@@ -171,8 +183,21 @@ final class KonspektSearchCenter {
     }
 
     /// Ссылки по понятиям для конспекта лекции среди лекций её предмета (`ConceptLinks`).
+    /// Вызывается из `body` конспекта при каждой перерисовке, поэтому результат кэшируется: пересчёт — только когда
+    /// изменились конспекты или лекции предмета (D1.2, аудит 2026-11).
     func conceptLinks(for id: UUID, among lectures: [LectureRecord]) -> ConceptLinks {
-        ConceptLinks.build(for: id, lectures: lectures, texts: texts)
+        var hasher = Hasher()
+        hasher.combine(textsVersion)
+        for lecture in lectures {
+            hasher.combine(lecture.id)
+            hasher.combine(lecture.meta.topic)
+            hasher.combine(lecture.meta.date)
+        }
+        let key = hasher.finalize()
+        if let cached = linksCache[id], cached.key == key { return cached.links }
+        let links = ConceptLinks.build(for: id, lectures: lectures, texts: texts)
+        linksCache[id] = (key, links)
+        return links
     }
 
     /// Фрагменты лекций, в конспекте которых есть все слова запроса.

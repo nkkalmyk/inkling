@@ -27,6 +27,30 @@ final class EngineCenter {
         self.secrets = secrets
     }
 
+    /// Основной движок не готов на этом Mac: нет программы или ключа. Для подсказки при запуске (C26, аудит 2026-11):
+    /// раньше об этом узнавали, только когда распознавание первых фото падало. Вход в аккаунт так не проверить —
+    /// для этого нужен вызов модели, а он тратит лимит.
+    private(set) var setupProblem: String?
+
+    /// Дешёвая проверка: поиск программы (или ключа Gemini), без вызова модели.
+    func checkSetup(locator: BinaryLocator = .live) async {
+        let primary = routing.primary
+        let found: Bool
+        switch primary {
+        case .claude: found = (try? await locator.locate("claude", manualPath: settings.claudePathOverride)) != nil
+        case .codex: found = (try? await locator.locate("codex", manualPath: settings.codexPathOverride)) != nil
+        case .ollama: found = (try? await locator.locate("ollama", manualPath: settings.ollamaPathOverride)) != nil
+        case .gemini:
+            refreshGeminiKey()
+            found = geminiKeyStored
+        }
+        setupProblem = found ? nil : primary == .gemini
+            ? "Не задан ключ Gemini: распознавание и сборка не заработают. Вставьте ключ в настройках (вкладка «Движок»)."
+            : "Не найден \(primary.title): распознавание и сборка не заработают. Установите его или укажите путь в настройках (вкладка «Движок»)."
+    }
+
+    func dismissSetupProblem() { setupProblem = nil }
+
     func refreshGeminiKey() {
         geminiKeyStored = secrets.read(account: Self.geminiKeyAccount) != nil
     }
@@ -86,7 +110,11 @@ final class EngineCenter {
         routing.primary == .ollama ? min(settings.chunkThresholdChars, Self.localChunkThreshold) : settings.chunkThresholdChars
     }
 
-    /// Маршрутизатор с текущими настройками. Пересоздаётся при их изменении (пометки «лимит до …» при этом сбрасываются).
+    /// Один на всё приложение: при пересоздании маршрутизатора ограничение вызовов и пометки лимита сохраняются.
+    @ObservationIgnored private let gate = EngineGate()
+
+    /// Маршрутизатор с текущими настройками. Пересоздаётся при их изменении; счётчик вызовов и пометки «лимит до …»
+    /// общие (`gate`).
     var router: EngineRouter {
         let routing = routing
         let key = [routing.primary.rawValue, routing.fallback?.rawValue ?? "-", "\(settings.autoFallback)",
@@ -97,7 +125,8 @@ final class EngineCenter {
         let router = EngineRouter(primary: engine(routing.primary),
                                   fallback: routing.fallback.map(engine),
                                   settings: .init(autoFallback: settings.autoFallback,
-                                                  maxParallel: settings.maxParallelCalls))
+                                                  maxParallel: settings.maxParallelCalls),
+                                  gate: gate)
         cachedRouter = (key, router)
         return router
     }

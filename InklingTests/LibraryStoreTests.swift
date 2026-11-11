@@ -57,6 +57,7 @@ struct LibraryStoreTests {
         let renamed = try #require(subjects.first { $0.name == "Алгебра и геометрия" })
         #expect(renamed.lectures.map(\.id) == [lecture.id])
         #expect(renamed.lectures[0].meta.subject == "Алгебра и геометрия")
+        #expect(try store.readMeta(in: renamed.lectures[0].folder).subject == "Алгебра и геометрия")
     }
 
     @Test func renameSubjectCaseOnly() throws {
@@ -140,6 +141,26 @@ struct LibraryStoreTests {
         #expect(!FileManager.default.fileExists(atPath: original.folder.path))
         #expect(FileManager.default.fileExists(atPath: updated.folder.appendingPathComponent("page.md").path))
         #expect(try store.readMeta(in: updated.folder).topic == "Определители")
+    }
+
+    /// Регресс A7 (аудит 2026-11): после переименования папки предмета в Finder первое же изменение лекции
+    /// создавало папку со старым названием и переносило лекцию туда. Главное — папка на диске.
+    @Test func subjectRenamedInFinderIsTakenFromFolder() throws {
+        try store.bootstrap()
+        let lecture = try store.createLecture(subject: "Высшая алгебра", topic: "Матрицы", date: .d("2026-10-14"))
+        let oldSubject = lecture.folder.deletingLastPathComponent()
+        let newSubject = oldSubject.deletingLastPathComponent().appendingPathComponent("Алгебра и геометрия")
+        try FileManager.default.moveItem(at: oldSubject, to: newSubject)
+
+        let updated = try store.mutateLecture(id: lecture.id) { $0.notes = [] }
+        #expect(updated.folder.deletingLastPathComponent().lastPathComponent == "Алгебра и геометрия")
+        #expect(updated.meta.subject == "Алгебра и геометрия")
+        #expect(try store.readMeta(in: updated.folder).subject == "Алгебра и геометрия")
+        #expect(!FileManager.default.fileExists(atPath: oldSubject.path))
+
+        // Явная смена предмета по-прежнему переносит лекцию.
+        let moved = try store.updateLecture(id: lecture.id, subject: "Высшая алгебра", topic: "Матрицы", date: .d("2026-10-14"))
+        #expect(moved.folder.deletingLastPathComponent().lastPathComponent == "Высшая алгебра")
     }
 
     @Test func updateWithoutNameChangeKeepsSuffixedFolder() throws {

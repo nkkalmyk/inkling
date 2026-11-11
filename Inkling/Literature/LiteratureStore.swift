@@ -62,7 +62,17 @@ actor LiteratureStore {
     // MARK: Книги
 
     /// Находит или создаёт запись книги. Если файл изменился (размер или дата), прежние страницы удаляются.
+    /// Одной транзакцией: падение между удалением страниц и обновлением книги не оставляет строк `fts` без `pages`.
     func upsertBook(path: String, title: String, subject: String, size: Int64, mtime: Double, pages: Int) throws -> Int64 {
+        var id: Int64 = 0
+        try database.transaction {
+            id = try upsertBookInTransaction(path: path, title: title, subject: subject, size: size, mtime: mtime, pages: pages)
+        }
+        return id
+    }
+
+    private func upsertBookInTransaction(path: String, title: String, subject: String, size: Int64, mtime: Double,
+                                         pages: Int) throws -> Int64 {
         var existing: (id: Int64, size: Int64, mtime: Double, version: Int64)?
         try database.run("SELECT id, size, mtime, version FROM books WHERE path = ?", [.text(path)]) { row in
             existing = (row.int(0), row.int(1), row.double(2), row.int(3))
@@ -95,12 +105,14 @@ actor LiteratureStore {
         var id: Int64?
         try database.run("SELECT id FROM books WHERE path = ?", [.text(path)]) { id = $0.int(0) }
         guard let id else { return }
-        try removePages(book: id)
-        try database.run("DELETE FROM books WHERE id = ?", [.int(id)])
+        try database.transaction {
+            try removePages(book: id)
+            try database.run("DELETE FROM books WHERE id = ?", [.int(id)])
+        }
     }
 
     func clear() throws {
-        try database.execute("DELETE FROM pages; DELETE FROM fts; DELETE FROM books;")
+        try database.transaction { try database.execute("DELETE FROM pages; DELETE FROM fts; DELETE FROM books;") }
     }
 
     private func removePages(book: Int64, method: String? = nil) throws {
@@ -139,12 +151,24 @@ actor LiteratureStore {
     // MARK: Страницы
 
     /// Записывает пачку страниц одной транзакцией: так прогресс сохраняется и выход приложения ничего не ломает.
+    /// Книгу могли убрать из индекса, пока шла её индексация: тогда пачка не записывается, иначе страницы остались бы
+    /// навсегда без книги и искажали бы частоты слов.
     func add(pages: [(number: Int, text: String, method: String)], book: Int64) throws {
         try database.transaction {
+            var exists = false
+            try database.run("SELECT 1 FROM books WHERE id = ?", [.int(book)]) { _ in exists = true }
+            guard exists else { return }
             for page in pages {
+                // `book` и `page` в FTS не индексированы: удаление по ним — полный просмотр таблицы, и запись индекса
+                // становилась квадратичной. Почти всегда страницы ещё нет — тогда и удалять нечего (аудит 2026-11).
+                var existed = false
+                try database.run("SELECT 1 FROM pages WHERE book = ? AND page = ?",
+                                 [.int(book), .int(Int64(page.number))]) { _ in existed = true }
                 try database.run("INSERT OR REPLACE INTO pages(book, page, text, method) VALUES(?, ?, ?, ?)",
                                  [.int(book), .int(Int64(page.number)), .text(page.text), .text(page.method)])
-                try database.run("DELETE FROM fts WHERE book = ? AND page = ?", [.int(book), .int(Int64(page.number))])
+                if existed {
+                    try database.run("DELETE FROM fts WHERE book = ? AND page = ?", [.int(book), .int(Int64(page.number))])
+                }
                 try database.run("INSERT INTO fts(norm, book, page) VALUES(?, ?, ?)",
                                  [.text(RussianNormalizer.indexText(page.text)), .int(book), .int(Int64(page.number))])
             }
