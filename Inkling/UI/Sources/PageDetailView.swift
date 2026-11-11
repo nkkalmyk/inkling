@@ -10,6 +10,9 @@ struct PageDetailView: View {
         if let pageID, let location = lecture.meta.page(pageID) {
             PageEditor(lecture: lecture, pageID: pageID, section: location.section, number: location.index + 1)
                 .id(pageID)
+        } else if lecture.meta.notes.isEmpty && lecture.meta.slides.isEmpty {
+            EmptyState("Страниц пока нет", systemImage: "photo.on.rectangle",
+                       description: "Перетащите сюда фото конспекта или PDF слайдов или выберите «Файл → Добавить файлы…» (⌘O).")
         } else {
             EmptyState("Выберите страницу", systemImage: "doc.viewfinder",
                        description: "Порядок меняется перетаскиванием в ленте, лишние страницы удаляются клавишей ⌫.")

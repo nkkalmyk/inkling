@@ -8,6 +8,8 @@ struct NotesView: View {
     @Environment(KonspektCheckCenter.self) private var checker
     @Environment(RecognitionCenter.self) private var recognition
     let lecture: LectureRecord
+    /// Переход на «Источники» из пустого состояния, когда собирать ещё не из чего.
+    var showSources: () -> Void = {}
 
     @State private var editing = false
     /// `konspekt.md` есть по описанию, но не прочитался (выгружен в iCloud без сети, нет доступа): правка отключена,
@@ -142,6 +144,8 @@ struct NotesView: View {
                 Button("Собрать конспект") { start(force: false) }
                     .prominentAction()
                     .disabled(recognition.isBusy(lecture.id))
+            } else if readiness != nil, readiness?.plan == nil {
+                Button("Перейти к источникам", action: showSources)
             }
             if recognition.isBusy(lecture.id) {
                 Text("Дождитесь окончания распознавания.").font(.caption).foregroundStyle(.secondary)
