@@ -196,12 +196,13 @@ final class StudyCenter {
     func updateProgress(_ lectureID: UUID, _ change: (inout StudyProgress) -> Void) {
         guard let lecture = library.lecture(id: lectureID) else { return }
         let store = StudyStore(folder: lecture.folder)
-        var progress = store.readProgress()
-        change(&progress)
         do {
+            var progress = try store.readProgressForUpdate()
+            change(&progress)
             try store.writeProgress(progress)
         } catch {
-            library.errorMessage = "Не удалось сохранить прогресс: \(error.localizedDescription)"
+            library.errorMessage = "Не удалось сохранить прогресс: \(error.localizedDescription). "
+                + "Прежний прогресс не тронут."
         }
         revisions[lectureID, default: 0] += 1
     }
