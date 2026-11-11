@@ -304,6 +304,28 @@ struct RecognitionCenterTests {
         #expect(await engine.calls == 1)
     }
 
+    /// Регресс A13 (аудит 2026-11): удаление лекции или предмета не останавливало их задачи.
+    @Test func deletingLecturesReportsTheirIDs() async throws {
+        let env = try Env(photos: 1)
+        #expect(env.library.createLecture(subject: "Общая и неорганическая химия", topic: "Кислоты", date: .d("2026-10-15")))
+        let second = try #require(env.library.selection)
+        var reported: [[UUID]] = []
+        let engine = FakeEngine([], delay: .seconds(5))
+        let center = env.center(engine, parallel: 1)
+        env.library.onLecturesDeleted = { ids in
+            reported.append(ids)
+            for id in ids { center.cancel(lectureID: id) }
+        }
+        center.recognize(lectureID: env.lectureID, pageIDs: env.pages)
+        try await Task.sleep(for: .milliseconds(100))
+        env.library.confirmDeletion(.lecture(env.lectureID, title: "ОВР"))
+        #expect(reported == [[env.lectureID]])
+        #expect(!center.isBusy(env.lectureID))
+
+        env.library.confirmDeletion(.subject("Общая и неорганическая химия", lectureCount: 1))
+        #expect(reported.last == [second])
+    }
+
     @Test func respectsParallelLimit() async throws {
         let env = try Env(photos: 3)
         let engine = FakeEngine([], delay: .milliseconds(80))

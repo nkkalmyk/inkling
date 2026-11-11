@@ -44,7 +44,16 @@ struct InklingApp: App {
         }
         _assembly = State(initialValue: assembly)
         _study = State(initialValue: study)
-        _konspektCheck = State(initialValue: KonspektCheckCenter(library: library, router: { engines.router }))
+        let konspektCheck = KonspektCheckCenter(library: library, router: { engines.router })
+        _konspektCheck = State(initialValue: konspektCheck)
+        library.onLecturesDeleted = { ids in
+            for id in ids {
+                recognition.cancel(lectureID: id)
+                assembly.cancel(id)
+                study.cancel(id)
+                konspektCheck.cancelFix(id)
+            }
+        }
         _subjectExport = State(initialValue: SubjectExportCenter(library: library))
     }
 

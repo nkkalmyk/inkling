@@ -79,6 +79,9 @@ final class Library {
     var pendingImport: PendingImport?
     /// Очередь распознавания; задаётся приложением.
     @ObservationIgnored weak var recognition: RecognitionCenter?
+    /// Лекции ушли в корзину: их распознавание, сборку и материалы нужно остановить, иначе вызовы модели
+    /// тратят лимит до конца, а результат выбрасывается. Задаёт приложение, где известны все центры.
+    @ObservationIgnored var onLecturesDeleted: @MainActor ([UUID]) -> Void = { _ in }
 
     var prompts: PromptLibrary { PromptLibrary(root: root) }
 
@@ -204,9 +207,13 @@ final class Library {
     func confirmDeletion(_ deletion: Deletion) {
         switch deletion {
         case .lecture(let id, _):
-            if perform({ try store.deleteLecture(id: id) }) != nil, selection == id { selection = nil }
+            guard perform({ try store.deleteLecture(id: id) }) != nil else { return }
+            if selection == id { selection = nil }
+            onLecturesDeleted([id])
         case .subject(let name, _):
-            perform { try store.deleteSubject(name) }
+            let ids = subjects.first { $0.name == name }?.lectures.map(\.id) ?? []
+            guard perform({ try store.deleteSubject(name) }) != nil else { return }
+            onLecturesDeleted(ids)
         }
     }
 
