@@ -130,8 +130,9 @@ final class Library {
         watcher?.stop()
         watcher = nil
         store = LibraryStore(root: newRoot, trasher: customTrasher ?? SystemTrasher(fallbackRoot: newRoot))
-        perform { try store.bootstrap() }
-        perform { try prompts.installMissingDefaults() }
+        // Одно чтение библиотеки на запуск: через `perform` каждый шаг перечитывал бы все `meta.json` (аудит 2026-11).
+        do { try store.bootstrap() } catch { errorMessage = error.localizedDescription }
+        do { try prompts.installMissingDefaults() } catch { errorMessage = error.localizedDescription }
         reload()
         watcher = DirectoryWatcher(url: newRoot) { [weak self] in self?.reloadInBackground() }
     }
@@ -144,7 +145,9 @@ final class Library {
         Task {
             let loaded = await Task.detached(priority: .utility) { try? store.loadSubjects() }.value
             guard generation == reloadGeneration, let loaded else { return }
-            subjects = loaded
+            // Без изменений не трогаем наблюдаемое свойство: иначе каждое событие FSEvents перерисовывало бы
+            // сайдбар, список лекций и вкладки.
+            if loaded != subjects { subjects = loaded }
             if let selection, lecture(id: selection) == nil { self.selection = nil }
             scheduleDownloadPollIfNeeded()
         }
@@ -153,7 +156,8 @@ final class Library {
     func reload() {
         reloadGeneration &+= 1
         do {
-            subjects = try store.loadSubjects()
+            let loaded = try store.loadSubjects()
+            if loaded != subjects { subjects = loaded }
         } catch {
             errorMessage = "Не удалось прочитать папку «\(store.root.path)»: \(error.localizedDescription)"
             subjects = []
