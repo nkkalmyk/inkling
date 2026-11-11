@@ -50,7 +50,7 @@ struct SourcesView: View {
         if selection.count > 1 {
             EmptyState("Выбрано страниц: \(selection.count)", systemImage: "square.stack",
                        description: "Перетащите их в ленте, чтобы изменить порядок, или удалите клавишей ⌫.") {
-                Button("Удалить выбранные", role: .destructive) { deletePages(selection) }
+                Button("Удалить выбранные…", role: .destructive) { deletePages(selection) }
             }
         } else {
             PageDetailView(lecture: lecture, pageID: selection.first)
@@ -79,10 +79,7 @@ struct SourcesView: View {
     }
 
     private func deletePages(_ ids: Set<String>) {
-        for section in SourceSection.allCases {
-            let inSection = ids.filter { lecture.meta.page($0)?.section == section }
-            if !inSection.isEmpty { library.deletePages(inSection, in: section, lectureID: lecture.id) }
-        }
+        library.requestDeletePages(ids, lectureID: lecture.id)
     }
 }
 
@@ -131,12 +128,7 @@ private struct ThumbnailStrip: View {
         .contextMenu(forSelectionType: String.self) { ids in
             menu(for: ids)
         }
-        .onDeleteCommand {
-            for section in SourceSection.allCases {
-                let ids = selection.filter { lecture.meta.page($0)?.section == section }
-                if !ids.isEmpty { library.deletePages(ids, in: section, lectureID: lecture.id) }
-            }
-        }
+        .onDeleteCommand { library.requestDeletePages(selection, lectureID: lecture.id) }
     }
 
     private func pageIDs(_ section: SourceSection) -> [String] {
@@ -191,11 +183,8 @@ private struct ThumbnailStrip: View {
                 SlidePageMenu(page: slide, lecture: lecture)
             }
         } else if ids.count > 1 {
-            Button("Удалить страницы (\(ids.count))", role: .destructive) {
-                for section in SourceSection.allCases {
-                    let inSection = ids.filter { lecture.meta.page($0)?.section == section }
-                    if !inSection.isEmpty { library.deletePages(inSection, in: section, lectureID: lecture.id) }
-                }
+            Button("Удалить страницы (\(ids.count))…", role: .destructive) {
+                library.requestDeletePages(ids, lectureID: lecture.id)
             }
         }
     }
@@ -350,7 +339,7 @@ struct NotePageMenu: View {
             library.revealInFinder(LecturePaths(folder: lecture.folder).original(page.source, in: .notes))
         }
         Button("Удалить страницу", role: .destructive) {
-            library.deletePages([page.id], in: .notes, lectureID: lecture.id)
+            library.requestDeletePages([page.id], lectureID: lecture.id)
         }
     }
 }
@@ -382,7 +371,7 @@ struct SlidePageMenu: View {
         }
         Divider()
         Button("Удалить слайд", role: .destructive) {
-            library.deletePages([page.id], in: .slides, lectureID: lecture.id)
+            library.requestDeletePages([page.id], lectureID: lecture.id)
         }
     }
 

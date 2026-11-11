@@ -436,3 +436,36 @@ struct CurrentSubjectTests {
         #expect(library.currentSubject == names[0])
     }
 }
+
+/// Регресс C17 (аудит 2026-11): удаление страниц шло без вопроса, а распознанный и правленный текст стирался навсегда.
+@Suite("Удаление страниц")
+@MainActor
+struct PageDeletionTests {
+    @Test func textGoesToTrashAndSeveralOrEditedPagesAsk() throws {
+        let env = try RecognitionCenterTests.Env(photos: 3)
+        let trasher = try #require(env.library.store.trasher as? FakeTrasher)
+        let (first, second, third) = (env.pages[0], env.pages[1], env.pages[2])
+        try env.textStore.write("текст модели", id: first, in: .notes, previous: nil)
+
+        // Одна нетронутая страница — сразу, текст и картинка в корзине.
+        env.library.requestDeletePages([first], lectureID: env.lectureID)
+        #expect(env.library.pendingDeletion == nil)
+        #expect(env.lecture.meta.notes.map(\.id) == [second, third])
+        #expect(trasher.trashed.contains("\(first).md"))
+        #expect(trasher.trashed.contains("\(first).jpg"))
+
+        // Ручная правка — даже одна страница через подтверждение.
+        env.library.saveEditedText("моя правка", pageID: second, lectureID: env.lectureID)
+        env.library.requestDeletePages([second], lectureID: env.lectureID)
+        #expect(env.library.pendingDeletion == .pages([second], lectureID: env.lectureID, edited: true))
+        #expect(env.lecture.meta.notes.count == 2)
+
+        // Несколько страниц — через подтверждение; после него удалены обе.
+        env.library.requestDeletePages([second, third], lectureID: env.lectureID)
+        let pending = try #require(env.library.pendingDeletion)
+        #expect(pending == .pages([second, third], lectureID: env.lectureID, edited: true))
+        env.library.confirmDeletion(pending)
+        #expect(env.lecture.meta.notes.isEmpty)
+        #expect(trasher.trashed.contains("\(second).md"))
+    }
+}

@@ -32,11 +32,14 @@ final class Library {
     enum Deletion: Identifiable, Equatable {
         case lecture(UUID, title: String)
         case subject(String, lectureCount: Int)
+        /// Страницы лекции; `edited` — среди них есть текст, правленный вручную.
+        case pages(Set<String>, lectureID: UUID, edited: Bool)
 
         var id: String {
             switch self {
             case .lecture(let id, _): "lecture-\(id)"
             case .subject(let name, _): "subject-\(name)"
+            case .pages(let ids, let lectureID, _): "pages-\(lectureID)-\(ids.sorted().joined(separator: ","))"
             }
         }
     }
@@ -199,6 +202,19 @@ final class Library {
         pendingDeletion = .lecture(id, title: lecture.meta.topic)
     }
 
+    /// Удаление страниц из интерфейса (⌫, меню, «Удалить выбранные»). Одна страница без ручной правки удаляется сразу:
+    /// её текст можно распознать заново, и всё равно всё уходит в корзину. Несколько страниц или ручная правка —
+    /// после подтверждения (решение владельца, аудит 2026-11).
+    func requestDeletePages(_ ids: Set<String>, lectureID: UUID) {
+        guard !ids.isEmpty, let lecture = lecture(id: lectureID) else { return }
+        let edited = ids.contains { lecture.meta.pageText($0)?.manuallyEdited == true }
+        if ids.count == 1 && !edited {
+            deletePages(ids, lectureID: lectureID)
+        } else {
+            pendingDeletion = .pages(ids, lectureID: lectureID, edited: edited)
+        }
+    }
+
     func requestDeleteSubject(_ name: String) {
         let count = subjects.first { $0.name == name }?.lectures.count ?? 0
         pendingDeletion = .subject(name, lectureCount: count)
@@ -214,6 +230,8 @@ final class Library {
             let ids = subjects.first { $0.name == name }?.lectures.map(\.id) ?? []
             guard perform({ try store.deleteSubject(name) }) != nil else { return }
             onLecturesDeleted(ids)
+        case .pages(let ids, let lectureID, _):
+            deletePages(ids, lectureID: lectureID)
         }
     }
 

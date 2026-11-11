@@ -164,7 +164,17 @@ extension Library {
         mutate(lectureID) { $0.movePages(ids, before: target, in: section) }
     }
 
-    /// Удаляет страницы: обработанные копии стираются (их можно пересоздать), оригиналы уходят в корзину.
+    /// Удаляет страницы обоих разделов.
+    func deletePages(_ ids: Set<String>, lectureID: UUID) {
+        guard let lecture = lecture(id: lectureID) else { return }
+        for section in SourceSection.allCases {
+            let inSection = ids.filter { lecture.meta.page($0)?.section == section }
+            if !inSection.isEmpty { deletePages(inSection, in: section, lectureID: lectureID) }
+        }
+    }
+
+    /// Удаляет страницы раздела: оригиналы, обработанные картинки и тексты уходят в корзину. Текст раньше стирался
+    /// безвозвратно, а ручную правку заново не распознаешь (аудит 2026-11).
     func deletePages(_ ids: Set<String>, in section: SourceSection, lectureID: UUID) {
         var removed: [PageSource: [String]] = [:]
         var remaining: [PageSource] = []
@@ -174,8 +184,7 @@ extension Library {
         }) else { return }
         let importer = SourceImporter(paths: LecturePaths(folder: record.folder))
         let files = importer.filesToRemove(removed: removed, section: section, remainingSources: remaining)
-        for url in files.derived { try? FileManager.default.removeItem(at: url) }
-        for url in files.originals where FileManager.default.fileExists(atPath: url.path) {
+        for url in files.derived + files.originals where FileManager.default.fileExists(atPath: url.path) {
             do { try store.trasher.trash(url) } catch { errorMessage = error.localizedDescription }
         }
     }

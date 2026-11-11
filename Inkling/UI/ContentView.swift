@@ -136,6 +136,8 @@ struct ContentView: View {
         switch library.pendingDeletion {
         case .lecture(_, let title): "Удалить лекцию «\(title)»?"
         case .subject(let name, _): "Удалить предмет «\(name)»?"
+        case .pages(let ids, _, _):
+            ids.count == 1 ? "Удалить страницу?" : "Удалить \(UIFormat.count(ids.count, "страницу", "страницы", "страниц"))?"
         case nil: ""
         }
     }
@@ -148,6 +150,10 @@ struct ContentView: View {
             return count == 0
                 ? "Папка предмета уйдёт в корзину."
                 : "Папка предмета и все его лекции (\(count)) уйдут в корзину."
+        case .pages(_, _, let edited):
+            return edited
+                ? "Фото и распознанный текст, в том числе правленный вручную, уйдут в корзину."
+                : "Фото и распознанный текст уйдут в корзину."
         }
     }
 }
