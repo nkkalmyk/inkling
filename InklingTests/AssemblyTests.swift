@@ -644,13 +644,16 @@ struct AssemblyCenterTests {
         #expect(env.lecture.meta.konspekt == nil)
     }
 
-    @Test func nothingToAssemble() throws {
+    /// Тексты читаются в фоне (A20, аудит 2026-11): ошибка появляется, когда чтение закончилось.
+    @Test func nothingToAssemble() async throws {
         let env = try Env(pages: [])
-        let center = env.center(FakeEngine([]))
+        let engine = FakeEngine([])
+        let center = env.center(engine)
         #expect(center.readiness(env.lecture).plan == nil)
         center.assemble(env.lectureID)
-        #expect(!center.isRunning(env.lectureID))
+        try await waitIdle(center, env.lectureID)
         #expect(center.errors[env.lectureID] != nil)
+        #expect(await engine.calls == 0)
     }
 }
 

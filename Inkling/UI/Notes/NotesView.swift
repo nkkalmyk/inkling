@@ -281,7 +281,8 @@ struct NotesView: View {
     private func start(force: Bool, style: AssemblyStyle? = nil) {
         flushSave()
         if !force {
-            let missing = assembly.readiness(lecture).input
+            // Из кэша, без чтения файлов на главном потоке; пока сводки нет — читаем сейчас (редкий случай).
+            let missing = (assembly.knownReadiness(lecture) ?? assembly.readiness(lecture)).input
             let skipped = missing.unrecognizedNotes + missing.unrecognizedSlides
             if info?.manuallyEdited == true { confirm = .overwriteManual(skipped: skipped); return }
             if skipped > 0 { confirm = .skipUnrecognized(skipped); return }

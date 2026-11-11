@@ -117,26 +117,32 @@ final class AssemblyCenter {
         guard runs[lectureID] == nil, let lecture = library.lecture(id: lectureID) else { return }
         errors[lectureID] = nil
         let paths = LecturePaths(folder: lecture.folder)
-        let input = AssemblyInput.collect(meta: lecture.meta, texts: PageTextStore(paths: paths))
-        guard let plan = AssemblyPlanner.plan(input, threshold: threshold()) else {
-            errors[lectureID] = .invalidOutput("Нет распознанных страниц: собирать не из чего.")
-            return
-        }
+        let meta = lecture.meta
+        let threshold = threshold()
         let router = router()
         // Локальная модель с десятком фотографий не справляется: при «Только локальная» остаётся точная сборка.
         let style = router.primaryID.isCloud ? (style ?? defaultStyle()) : .faithful
-        let studyPlan = style == .study
-            ? StudyAssemblyPlanner.plan(meta: lecture.meta, input: input, paths: paths, textThreshold: threshold()) : nil
-        let subject = lecture.meta.subject, topic = lecture.meta.topic
+        let subject = meta.subject, topic = meta.topic
         let prompts = library.prompts
         let model = assemblyModel().trimmingCharacters(in: .whitespaces)
-        runs[lectureID] = Run(totalCalls: studyPlan?.calls ?? plan.calls)
+        // Сборка считается идущей сразу (повторное «Собрать» отсекается), а тексты страниц читаются уже в фоне:
+        // в iCloud они могут быть выгружены, и чтение на главном потоке подвешивало окно (аудит 2026-11, A20).
+        runs[lectureID] = Run(totalCalls: 1)
 
         tasks[lectureID] = Task {
             defer {
                 runs[lectureID] = nil
                 tasks[lectureID] = nil
             }
+            let input = await Self.collectInBackground(meta: meta, paths: paths)
+            guard !Task.isCancelled else { return }
+            guard let plan = AssemblyPlanner.plan(input, threshold: threshold) else {
+                errors[lectureID] = .invalidOutput("Нет распознанных страниц: собирать не из чего.")
+                return
+            }
+            let studyPlan = style == .study
+                ? StudyAssemblyPlanner.plan(meta: meta, input: input, paths: paths, textThreshold: threshold) : nil
+            runs[lectureID]?.totalCalls = studyPlan?.calls ?? plan.calls
             do {
                 let result: (text: String, response: AIResponse)
                 var passages: [LiteraturePassage] = []
