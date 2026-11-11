@@ -162,7 +162,8 @@ private struct PageEditor: View {
             let textLayer = slide.map { !$0.usesImage } ?? false
             Button("Распознать заново") { rerecognize(detailed: false) }
                 .disabled(isRunning || textLayer)
-                .help(textLayer ? "Слайд берётся из текстового слоя; переключите режим на «Картинка»" : "")
+                .help(textLayer ? "Слайд берётся из текстового слоя; переключите режим на «Картинка»"
+                      : isRunning ? "Страница уже распознаётся" : "Распознать слайд ещё раз")
         }
     }
 

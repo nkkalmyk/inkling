@@ -270,7 +270,8 @@ struct NotesView: View {
                     .help(style.hint)
             }
             Divider()
-            Picker("Модель Claude", selection: $settings.assemblyModel) {
+            // Это общая настройка сборки, а не выбор на один запуск: подпись говорит об этом прямо.
+            Picker("Модель Claude (для всех сборок)", selection: $settings.assemblyModel) {
                 Text("Как в настройках").tag("")
                 ForEach(AppSettings.claudeModels, id: \.id) { Text($0.title).tag($0.id) }
             }
@@ -279,7 +280,9 @@ struct NotesView: View {
         }
         .fixedSize()
         .disabled(disabled)
-        .help("\(settings.assemblyStyle.title). Стрелка — выбрать стиль и модель.")
+        .help(recognition.isBusy(lecture.id) ? "Дождитесь окончания распознавания"
+              : assembly.isRunning(lecture.id) ? "Конспект уже собирается"
+              : "\(settings.assemblyStyle.title). Стрелка — выбрать стиль и модель.")
     }
 
     private func start(force: Bool, style: AssemblyStyle? = nil) {
