@@ -556,3 +556,24 @@ struct ImportCancellationTests {
         #expect(images.count == result.notes.count)
     }
 }
+
+/// C12 (аудит 2026-11): перетаскивание лекции на предмет переносит её туда, тема и дата прежние.
+@Suite("Перенос лекции в другой предмет")
+@MainActor
+struct MoveLectureTests {
+    @Test func moveKeepsTopicAndDate() throws {
+        let dir = try TempDir()
+        let library = Library(root: dir.url.appendingPathComponent("Inkling"),
+                              trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: library.root)
+        #expect(library.createLecture(subject: "Высшая алгебра", topic: "Матрицы", date: .d("2026-10-14")))
+        let id = try #require(library.selection)
+        #expect(library.moveLecture(id, toSubject: "Математический анализ"))
+        let moved = try #require(library.lecture(id: id))
+        #expect(moved.meta.subject == "Математический анализ")
+        #expect(moved.meta.topic == "Матрицы" && moved.meta.date == .d("2026-10-14"))
+        #expect(moved.folder.deletingLastPathComponent().lastPathComponent == "Математический анализ")
+        // В тот же предмет — ничего не делает.
+        #expect(!library.moveLecture(id, toSubject: "Математический анализ"))
+    }
+}

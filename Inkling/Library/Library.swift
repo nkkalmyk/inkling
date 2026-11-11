@@ -204,6 +204,17 @@ final class Library {
         perform { try store.updateLecture(id: id, subject: subject, topic: topic, date: date) } != nil
     }
 
+    /// Строка перетаскивания лекции из списка на предмет в сайдбаре.
+    static let lectureDragPrefix = "inkling-lecture:"
+
+    /// Перенос лекции в другой предмет перетаскиванием (C12, аудит 2026-11): тема и дата прежние, папка переезжает.
+    /// Идущие задачи лекции перед записью ищут её папку заново по `id`.
+    @discardableResult
+    func moveLecture(_ id: UUID, toSubject name: String) -> Bool {
+        guard let lecture = lecture(id: id), lecture.meta.subject != name else { return false }
+        return updateLecture(id: id, subject: name, topic: lecture.meta.topic, date: lecture.meta.date)
+    }
+
     func requestDeleteLecture(_ id: UUID) {
         guard let lecture = lecture(id: id) else { return }
         pendingDeletion = .lecture(id, title: lecture.meta.topic)

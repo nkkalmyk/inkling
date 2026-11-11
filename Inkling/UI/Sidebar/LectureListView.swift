@@ -118,6 +118,8 @@ struct LectureListView: View {
             LectureRow(lecture: lecture, snippet: snippets[lecture.id])
                 .tag(lecture.id)
                 .contextMenu { lectureMenu(lecture) }
+                // Лекцию можно перетащить на предмет в сайдбаре — она переедет туда.
+                .draggable(Library.lectureDragPrefix + lecture.id.uuidString)
         }
         ForEach(section.unavailable) { item in
             UnavailableRow(item: item)

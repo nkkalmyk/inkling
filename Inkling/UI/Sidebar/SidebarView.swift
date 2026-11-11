@@ -3,6 +3,7 @@ import SwiftUI
 /// Первая колонка: «Все лекции» и предметы. Лекции выбранного — в средней колонке (`LectureListView`).
 struct SidebarView: View {
     @Environment(Library.self) private var library
+    @AppStorage(ClassicInterface.key) private var classicInterface = false
     @Environment(SubjectExportCenter.self) private var subjectExport
 
     var body: some View {
@@ -16,6 +17,12 @@ struct SidebarView: View {
                         .badge(subject.lectures.count)
                         .tag(LibraryScope.subject(subject.name))
                         .contextMenu { subjectMenu(subject) }
+                        .dropDestination(for: String.self) { items, _ in
+                            guard !classicInterface else { return false }
+                            let ids = items.filter { $0.hasPrefix(Library.lectureDragPrefix) }
+                                .compactMap { UUID(uuidString: String($0.dropFirst(Library.lectureDragPrefix.count))) }
+                            return ids.map { library.moveLecture($0, toSubject: subject.name) }.contains(true)
+                        }
                 }
             }
         }
