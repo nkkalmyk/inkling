@@ -40,6 +40,24 @@ enum ExportLocation {
         let folder = documents.appendingPathComponent(pdfFolderName, isDirectory: true)
             .appendingPathComponent(subjectFolderName(subject), isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent("\(baseName).\(ext)")
+        return folder.appendingPathComponent("\(fitted(baseName, extension: ext)).\(ext)")
     }
+
+    /// Предел имени файла в APFS — 255 байт UTF-8, а кириллица занимает по 2 байта: длинная тема с названием предмета
+    /// не помещалась, и экспорт падал без объяснения. Укорачивается начало (тема), хвост «— Предмет — дата» остаётся.
+    /// Имена папок лекций (`FolderNaming`) не меняются: иначе существующие папки переименовались бы при следующей записи.
+    static func fitted(_ baseName: String, extension ext: String) -> String {
+        let limit = maxFileNameBytes - ext.utf8.count - 1
+        guard baseName.utf8.count > limit else { return baseName }
+        let separator = " — "
+        let parts = baseName.components(separatedBy: separator)
+        var head = parts.count >= 3 ? parts.dropLast(2).joined(separator: separator) : baseName
+        let tail = parts.count >= 3 ? separator + parts.suffix(2).joined(separator: separator) : ""
+        while !head.isEmpty, head.utf8.count + "…".utf8.count + tail.utf8.count > limit { head.removeLast() }
+        var result = head.trimmingCharacters(in: .whitespaces) + "…" + tail
+        while result.utf8.count > limit { result.removeLast() }
+        return result
+    }
+
+    static let maxFileNameBytes = 255
 }

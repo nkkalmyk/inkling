@@ -99,6 +99,23 @@ struct ExportLocationTests {
             .lastPathComponent == "x.pdf")
     }
 
+    /// Регресс A9 (аудит 2026-11): тема в 120 кириллических букв с предметом давала имя длиннее 255 байт.
+    @Test func longCyrillicNameFitsFileSystemLimit() throws {
+        let dir = try TempDir()
+        let topic = String(repeating: "я", count: 120)
+        let base = ExportLocation.cheatSheetBaseName(subject: "Общая и неорганическая химия", topic: topic, date: .d("2026-10-14"))
+        #expect(base.utf8.count > 255)
+        for url in [try ExportLocation.pdfURL(baseName: base, subject: "Общая и неорганическая химия", documents: dir.url),
+                    try ExportLocation.htmlURL(baseName: base, subject: "Общая и неорганическая химия", documents: dir.url)] {
+            #expect(url.lastPathComponent.utf8.count <= 255)
+            #expect(url.lastPathComponent.contains("… — Общая и неорганическая химия — 2026-10-14."))
+            #expect(url.lastPathComponent.hasPrefix("Шпаргалка — Я"))
+            #expect(FileManager.default.createFile(atPath: url.path, contents: Data()))
+        }
+        // Короткие имена не меняются.
+        #expect(ExportLocation.fitted("Пределы — Матанализ — 2026-10-09", extension: "pdf") == "Пределы — Матанализ — 2026-10-09")
+    }
+
     @Test func subjectFolderIsLowercasedAndSafe() {
         #expect(ExportLocation.subjectFolderName("Общая и неорганическая химия") == "общая и неорганическая химия")
         #expect(ExportLocation.subjectFolderName("ВЫСШАЯ Алгебра") == "высшая алгебра")
