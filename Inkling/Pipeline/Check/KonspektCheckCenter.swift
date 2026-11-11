@@ -15,7 +15,7 @@ final class KonspektCheckCenter {
     @ObservationIgnored private let library: Library
     @ObservationIgnored private let router: @MainActor () -> EngineRouter
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
-    @ObservationIgnored private var keys: [UUID: String] = [:]
+    @ObservationIgnored private let checkRefresh = BackgroundRefresh<String>()
 
     init(library: Library, router: @escaping @MainActor () -> EngineRouter) {
         self.library = library
@@ -35,12 +35,12 @@ final class KonspektCheckCenter {
         guard lecture.meta.konspekt != nil else { checks[lecture.id] = nil; return }
         let revision = library.konspektRevision[lecture.id] ?? 0
         let key = "\(revision)|\(lecture.meta.konspekt?.updatedAt.timeIntervalSince1970 ?? 0)"
-        guard keys[lecture.id] != key else { return }
-        keys[lecture.id] = key
         let id = lecture.id, folder = lecture.folder, info = lecture.meta.konspekt
-        Task {
+        // Прежнюю проверку не отменяем: она дешёвая, а результат всё равно берётся только при том же ключе.
+        checkRefresh.refresh(id, key: key, cancelPrevious: false) { [weak self] in
             let result = await Self.run(folder: folder, study: info?.style == .study, expectSources: info?.literature != nil)
-            if keys[id] == key { checks[id] = result }
+            guard let self, checkRefresh.isCurrent(id, key: key) else { return }
+            checks[id] = result
         }
     }
 
@@ -67,7 +67,7 @@ final class KonspektCheckCenter {
                 let fixed = try await requestFixes(broken, router: router, prompts: prompts)
                 let applied = try await apply(fixed, for: broken, to: lecture)
                 lastFixed[lectureID] = applied
-                keys[lectureID] = nil
+                checkRefresh.invalidate(lectureID)
                 if let current = library.lecture(id: lectureID) { refresh(current) }
             } catch let error as AIError {
                 if error != .cancelled { errors[lectureID] = error }

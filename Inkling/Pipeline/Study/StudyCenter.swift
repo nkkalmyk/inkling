@@ -21,8 +21,7 @@ final class StudyCenter {
     @ObservationIgnored private let router: @MainActor () -> EngineRouter
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
     private var konspektHashes: [UUID: String?] = [:]
-    @ObservationIgnored private var hashKeys: [UUID: HashKey] = [:]
-    @ObservationIgnored private var hashTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private let hashRefresh = BackgroundRefresh<HashKey>()
 
     init(library: Library, router: @escaping @MainActor () -> EngineRouter) {
         self.library = library
@@ -51,7 +50,7 @@ final class StudyCenter {
     func knownStale(_ lecture: LectureRecord) -> Bool {
         guard let info = lecture.meta.study else { return false }
         let key = HashKey(konspekt: lecture.meta.konspekt, revision: library.konspektRevision[lecture.id] ?? 0)
-        if hashKeys[lecture.id] != key { refreshHash(lecture, key: key) }
+        refreshHash(lecture, key: key)
         guard let hash = konspektHashes[lecture.id] ?? nil else { return false }
         return info.inputHash != hash
     }
@@ -63,12 +62,10 @@ final class StudyCenter {
 
     private func refreshHash(_ lecture: LectureRecord, key: HashKey) {
         let id = lecture.id, folder = lecture.folder, info = lecture.meta.konspekt
-        hashKeys[id] = key
-        hashTasks[id]?.cancel()
-        hashTasks[id] = Task {
+        hashRefresh.refresh(id, key: key) { [weak self] in
             let hash = await Self.konspektHash(folder: folder, info: info)
             guard !Task.isCancelled else { return }
-            konspektHashes[id] = .some(hash)
+            self?.konspektHashes[id] = .some(hash)
         }
     }
 

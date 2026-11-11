@@ -42,8 +42,7 @@ final class AssemblyCenter {
     /// или другой движок дают новый ключ. Только в памяти, на диск ничего не пишется.
     @ObservationIgnored private var partCache: [UUID: [String: AIResponse]] = [:]
     private var cachedReadiness: [UUID: Readiness] = [:]
-    @ObservationIgnored private var readinessKeys: [UUID: ReadinessKey] = [:]
-    @ObservationIgnored private var readinessTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private let readinessRefresh = BackgroundRefresh<ReadinessKey>()
 
     init(library: Library, router: @escaping @MainActor () -> EngineRouter, threshold: @escaping @MainActor () -> Int,
          style: @escaping @MainActor () -> AssemblyStyle = { .faithful },
@@ -65,7 +64,7 @@ final class AssemblyCenter {
     /// (`nil`, пока его ещё не было).
     func knownReadiness(_ lecture: LectureRecord) -> Readiness? {
         let key = ReadinessKey(meta: lecture.meta, texts: library.textRevision[lecture.id] ?? 0, threshold: threshold())
-        if readinessKeys[lecture.id] != key { refreshReadiness(lecture, key: key) }
+        refreshReadiness(lecture, key: key)
         return cachedReadiness[lecture.id]
     }
 
@@ -83,14 +82,13 @@ final class AssemblyCenter {
 
     private func refreshReadiness(_ lecture: LectureRecord, key: ReadinessKey) {
         let id = lecture.id, meta = lecture.meta, paths = LecturePaths(folder: lecture.folder)
-        readinessKeys[id] = key
-        readinessTasks[id]?.cancel()
-        readinessTasks[id] = Task {
+        readinessRefresh.refresh(id, key: key) { [weak self] in
             let input = await Self.collectInBackground(meta: meta, paths: paths)
             guard !Task.isCancelled else { return }
-            cachedReadiness[id] = Self.readiness(meta: meta, input: input, threshold: key.threshold)
+            self?.cachedReadiness[id] = Self.readiness(meta: meta, input: input, threshold: key.threshold)
         }
     }
+
 
     @concurrent
     private static func collectInBackground(meta: LectureMeta, paths: LecturePaths) async -> AssemblyInput {
