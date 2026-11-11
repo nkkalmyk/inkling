@@ -148,8 +148,11 @@ struct KonspektSearchText: Sendable {
 @MainActor
 @Observable
 final class KonspektSearchCenter {
-    private(set) var texts: [UUID: KonspektSearchText] = [:]
+    private(set) var texts: [UUID: KonspektSearchText] = [:] { didSet { textsVersion &+= 1 } }
     @ObservationIgnored private var keys: [UUID: String] = [:]
+    /// Меняется при каждом изменении `texts`: по нему кэш связей понятий понимает, что пора пересчитать.
+    @ObservationIgnored private var textsVersion = 0
+    @ObservationIgnored private var linksCache: [UUID: (key: Int, links: ConceptLinks)] = [:]
 
     /// От чего зависит текст конспекта: правка в окне меняет `konspektRevision`, сборка — `updatedAt`.
     nonisolated static func key(_ lecture: LectureRecord, revision: Int) -> String? {
@@ -180,8 +183,21 @@ final class KonspektSearchCenter {
     }
 
     /// Ссылки по понятиям для конспекта лекции среди лекций её предмета (`ConceptLinks`).
+    /// Вызывается из `body` конспекта при каждой перерисовке, поэтому результат кэшируется: пересчёт — только когда
+    /// изменились конспекты или лекции предмета (D1.2, аудит 2026-11).
     func conceptLinks(for id: UUID, among lectures: [LectureRecord]) -> ConceptLinks {
-        ConceptLinks.build(for: id, lectures: lectures, texts: texts)
+        var hasher = Hasher()
+        hasher.combine(textsVersion)
+        for lecture in lectures {
+            hasher.combine(lecture.id)
+            hasher.combine(lecture.meta.topic)
+            hasher.combine(lecture.meta.date)
+        }
+        let key = hasher.finalize()
+        if let cached = linksCache[id], cached.key == key { return cached.links }
+        let links = ConceptLinks.build(for: id, lectures: lectures, texts: texts)
+        linksCache[id] = (key, links)
+        return links
     }
 
     /// Фрагменты лекций, в конспекте которых есть все слова запроса.
