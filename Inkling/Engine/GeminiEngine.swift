@@ -1,4 +1,3 @@
-import CoreImage
 import Foundation
 
 /// Gemini через HTTP API Google AI Studio по ключу пользователя (SPEC, раздел 13).

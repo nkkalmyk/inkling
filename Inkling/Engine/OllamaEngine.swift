@@ -1,4 +1,3 @@
-import CoreImage
 import Foundation
 
 /// Локальная модель через HTTP API Ollama (SPEC, раздел 13, этап 8). Сервер при необходимости запускает `OllamaServer`.
