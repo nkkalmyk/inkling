@@ -88,6 +88,35 @@ struct PerformanceTests {
         Self.report("Library.open, 300 лекций", duration)
     }
 
+    // MARK: Связи понятий
+
+    /// `ConceptLinks.build` считается при каждом показе конспекта (в `body`). Предмет из 30 лекций,
+    /// в каждой 40 определений и ~3000 слов.
+    @Test(.enabled(if: PerformanceTests.enabled))
+    func conceptLinksForSubject() async throws {
+        let lexicon = ["матрица", "определитель", "ранг", "базис", "вектор", "оператор", "собственный", "линейный",
+                       "пространство", "отображение", "уравнение", "система", "решение", "преобразование"]
+        var lectures: [LectureRecord] = []
+        var texts: [UUID: KonspektSearchText] = [:]
+        for l in 0..<30 {
+            var markdown = "# Лекция \(l)\n\n"
+            for c in 0..<40 {
+                markdown += "## \(c + 1). Раздел\n\n**\(lexicon[(l + c) % lexicon.count].capitalized) \(lexicon[(c * 3 + l) % lexicon.count]) \(l)-\(c)** — "
+                markdown += (0..<70).map { lexicon[($0 * 5 + c + l) % lexicon.count] }.joined(separator: " ") + ".\n\n"
+            }
+            var meta = LectureMeta(subject: "Высшая алгебра", topic: "Лекция \(l)", date: .d("2026-10-14"), now: Date())
+            meta.konspekt = ArtifactInfo(createdAt: Date(), updatedAt: Date(), inputHash: "x")
+            let record = LectureRecord(meta: meta, folder: URL(fileURLWithPath: "/tmp/\(l)"))
+            lectures.append(record)
+            texts[record.id] = KonspektSearchText(markdown: markdown)
+        }
+        let target = lectures[15].id
+        var links = ConceptLinks()
+        let duration = await Self.median(5) { links = ConceptLinks.build(for: target, lectures: lectures, texts: texts) }
+        Self.report("ConceptLinks.build, предмет из 30 лекций", duration)
+        _ = links
+    }
+
     // MARK: Индекс учебников
 
     @Test(.enabled(if: PerformanceTests.enabled))

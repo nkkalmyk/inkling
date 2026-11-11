@@ -24,6 +24,9 @@ struct KonspektSearchText: Sendable {
 
     let plain: String
     private let words: [Word]
+    /// Номера слов по первым двум буквам: `contains` проверяет только места, где может начаться понятие, а не весь текст.
+    /// Расчёт ссылок понятий на предмете из 30 лекций шёл больше секунды на главном потоке (аудит 2026-11, D1.2).
+    private let positions: [Substring: [Int]]
     /// Понятия, определённые в этом конспекте (`ConceptExtractor`), для ссылок между лекциями.
     let concepts: [Concept]
 
@@ -50,6 +53,9 @@ struct KonspektSearchText: Sendable {
         }
         flush(plain.endIndex)
         self.words = words
+        var positions: [Substring: [Int]] = [:]
+        for (offset, word) in words.enumerated() { positions[word.token.prefix(2), default: []].append(offset) }
+        self.positions = positions
     }
 
     /// Основы слов запроса (`queryStems`) для `snippet(for:)`: без служебных слов и повторов, окончание отрезано
@@ -78,10 +84,13 @@ struct KonspektSearchText: Sendable {
 
     /// Есть ли в тексте подряд слова с этими основами (понятие из нескольких слов).
     func contains(_ stems: [String]) -> Bool {
-        guard !stems.isEmpty, words.count >= stems.count else { return false }
-        return (0...(words.count - stems.count)).contains { start in
-            stems.indices.allSatisfy { words[start + $0].token.hasPrefix(stems[$0]) }
+        guard let first = stems.first, words.count >= stems.count else { return false }
+        func matches(at start: Int) -> Bool {
+            start + stems.count <= words.count && stems.indices.allSatisfy { words[start + $0].token.hasPrefix(stems[$0]) }
         }
+        // Слово начинается с основы только при тех же первых двух буквах; короче двух — проверяем всё.
+        guard first.count >= 2 else { return (0...(words.count - stems.count)).contains(where: matches) }
+        return (positions[first.prefix(2)] ?? []).contains(where: matches)
     }
 
     /// Фрагмент вокруг первого найденного слова, если в конспекте есть все слова запроса.
