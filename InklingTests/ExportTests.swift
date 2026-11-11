@@ -32,6 +32,8 @@ struct AnkiExportTests {
         #expect(AnkiExporter.field("<b>не тег</b> & **жирный** и *курсив*")
             == "&lt;b&gt;не тег&lt;/b&gt; &amp; <b>жирный</b> и <i>курсив</i>")
         #expect(AnkiExporter.field("$x$*$y$") == "\\(x\\)*\\(y\\)")
+        // Регресс A8 (аудит 2026-11): сырая кавычка в начале поля ломала разбор строк в Anki.
+        #expect(AnkiExporter.field("\"Закон Гесса\" — тепловой эффект") == "&quot;Закон Гесса&quot; — тепловой эффект")
     }
 
     @Test func segmentsFollowRendererRules() {

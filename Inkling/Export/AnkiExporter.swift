@@ -113,10 +113,13 @@ enum AnkiExporter {
         return nil
     }
 
+    /// Кавычка тоже экранируется: поле, начинающееся с `"`, Anki читает как закавыченное (кавычки пропадают,
+    /// а непарная склеивает следующие поля и строки).
     private static func escapeHTML(_ s: String) -> String {
         s.replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
     }
 
     /// Минимум Markdown внутри строки: **жирный** и *курсив*.
