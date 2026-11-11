@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import PDFKit
 import Testing
 @testable import Inkling
 
@@ -467,5 +468,36 @@ struct PageDeletionTests {
         env.library.confirmDeletion(pending)
         #expect(env.lecture.meta.notes.isEmpty)
         #expect(trasher.trashed.contains("\(second).md"))
+    }
+}
+
+/// Регресс A17 (аудит 2026-11): PDF, у которого страница не обработалась, попадал в «пропущенные», а его копия
+/// и уже созданные картинки страниц оставались в папке лекции без записи в `meta.json`.
+@Suite("Импорт: сбойный PDF")
+struct FailedPDFImportTests {
+    @Test func failedPDFLeavesNothingBehind() throws {
+        let dir = try TempDir()
+        let pdf = dir.url.appendingPathComponent("скан.pdf")
+        var box = CGRect(x: 0, y: 0, width: 200, height: 300)
+        let context = try #require(CGContext(pdf as CFURL, mediaBox: &box, nil))
+        for _ in 0..<2 {
+            context.beginPDFPage(nil)
+            context.setFillColor(gray: 0.2, alpha: 1)
+            context.fill(CGRect(x: 20, y: 20, width: 100, height: 100))
+            context.endPDFPage()
+        }
+        context.closePDF()
+
+        let paths = LecturePaths(folder: dir.url.appendingPathComponent("lecture"))
+        // Папка картинок страниц занята обычным файлом: запись первой же страницы падает.
+        let photos = paths.notePhoto("x").deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: photos.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: photos)
+
+        let result = SourceImporter(paths: paths).importFiles([pdf], into: .notes)
+        #expect(result.notes.isEmpty)
+        #expect(result.skipped.map(\.name) == ["скан.pdf"])
+        let originals = (try? FileManager.default.contentsOfDirectory(atPath: paths.originalsFolder(.notes).path)) ?? []
+        #expect(originals.isEmpty)
     }
 }

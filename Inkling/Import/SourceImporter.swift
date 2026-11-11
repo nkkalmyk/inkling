@@ -97,20 +97,38 @@ struct SourceImporter: Sendable {
 
     private func importNotesPDF(_ url: URL, step: () -> Void) throws -> [NotePage] {
         let count = try PDFTools.pageCount(url)
+        guard count > 0 else { throw PDFToolsError.empty(url.lastPathComponent) }
         let source = "\(PageID.make()).pdf"
         let original = paths.originalsFolder(.notes).appendingPathComponent(source)
         try copy(url, to: original)
         var pages: [NotePage] = []
-        for index in 0..<count {
-            // Скан уже плоский: автообрезка по умолчанию выключена, её можно включить вручную.
-            var page = NotePage(id: PageID.make(), source: .pdfPage(file: source, index: index), captureDate: nil,
-                                crop: .original, addedAt: now())
-            try renderNotePhoto(page)
-            page.imageHash = FileHash.sha256(paths.notePhoto(page.id))
-            pages.append(page)
-            step()
+        do {
+            for index in 0..<count {
+                // Скан уже плоский: автообрезка по умолчанию выключена, её можно включить вручную.
+                var page = NotePage(id: PageID.make(), source: .pdfPage(file: source, index: index), captureDate: nil,
+                                    crop: .original, addedAt: now())
+                pages.append(page)
+                try renderNotePhoto(page)
+                page.imageHash = FileHash.sha256(paths.notePhoto(page.id))
+                pages[pages.count - 1] = page
+                step()
+            }
+        } catch {
+            removeLeftovers(original: original, pages: pages.map(\.id), section: .notes)
+            throw error
         }
         return pages
+    }
+
+    /// PDF попал в «пропущенные»: убрать его копию и уже созданные файлы страниц, иначе они остались бы в папке
+    /// лекции (и в iCloud) без записи в `meta.json`.
+    private func removeLeftovers(original: URL, pages: [String], section: SourceSection) {
+        var urls = [original]
+        for id in pages {
+            urls.append(section == .notes ? paths.notePhoto(id) : paths.slideImage(id))
+            urls.append(paths.pageText(id, in: section))
+        }
+        for url in urls { try? FileManager.default.removeItem(at: url) }
     }
 
     /// Пересоздаёт `notes/photos/<id>.jpg` из оригинала. Возвращает режим обрезки с найденным документом.
@@ -133,18 +151,25 @@ struct SourceImporter: Sendable {
 
     private func importSlidesPDF(_ url: URL, step: () -> Void) throws -> [SlidePage] {
         let texts = try PDFTools.pageTexts(url)
+        guard !texts.isEmpty else { throw PDFToolsError.empty(url.lastPathComponent) }
         let file = uniqueOriginalName(for: url, in: .slides)
         let original = paths.originalsFolder(.slides).appendingPathComponent(file)
         try copy(url, to: original)
         var pages: [SlidePage] = []
-        for (index, text) in texts.enumerated() {
-            let verdict = SlideTextHeuristic.analyze(text)
-            var page = SlidePage(id: PageID.make(), source: .pdfPage(file: file, index: index),
-                                 heuristicNeedsImage: verdict.needsImage, heuristicReason: verdict.reason,
-                                 addedAt: now())
-            page.text = try syncSlideFiles(page, textLayer: text)
-            pages.append(page)
-            step()
+        do {
+            for (index, text) in texts.enumerated() {
+                let verdict = SlideTextHeuristic.analyze(text)
+                var page = SlidePage(id: PageID.make(), source: .pdfPage(file: file, index: index),
+                                     heuristicNeedsImage: verdict.needsImage, heuristicReason: verdict.reason,
+                                     addedAt: now())
+                pages.append(page)
+                page.text = try syncSlideFiles(page, textLayer: text)
+                pages[pages.count - 1] = page
+                step()
+            }
+        } catch {
+            removeLeftovers(original: original, pages: pages.map(\.id), section: .slides)
+            throw error
         }
         return pages
     }
