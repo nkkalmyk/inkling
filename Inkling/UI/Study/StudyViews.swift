@@ -94,8 +94,11 @@ struct StudyContainer<Content: View>: View {
     }
 
     private var emptyState: some View {
-        EmptyState("Учебных материалов пока нет", systemImage: "graduationcap",
-                   description: hasKonspekt
+        EmptyState(study.isRunning(lecture.id) ? "Материалы готовятся…" : "Учебных материалов пока нет",
+                   systemImage: "graduationcap",
+                   description: study.isRunning(lecture.id)
+                       ? "Вопросы, тест и карточки появятся здесь; ход работы — в индикаторе на панели."
+                       : hasKonspekt
                        ? "Вопросы, тест и карточки готовятся по конспекту. Проверьте конспект перед запуском, "
                            + "чтобы ошибки распознавания не попали в карточки."
                        : "Сначала соберите конспект на вкладке «Конспект».",

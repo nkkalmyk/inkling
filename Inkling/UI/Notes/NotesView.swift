@@ -135,11 +135,14 @@ struct NotesView: View {
     // MARK: Состояния
 
     private func emptyState(_ readiness: AssemblyCenter.Readiness?) -> some View {
-        EmptyState("Конспекта пока нет", systemImage: "doc.richtext",
-                   description: readiness.map { readiness in
-                       readiness.plan.map { planDescription($0, readiness.input) }
-                           ?? "Сначала добавьте и распознайте страницы на вкладке «Источники»."
-                   }) {
+        EmptyState(assembly.isRunning(lecture.id) ? "Конспект собирается…" : "Конспекта пока нет",
+                   systemImage: "doc.text",
+                   description: assembly.isRunning(lecture.id)
+                       ? "Он появится здесь; ход сборки — в индикаторе на панели."
+                       : readiness.map { readiness in
+                           readiness.plan.map { planDescription($0, readiness.input) }
+                               ?? "Сначала добавьте и распознайте страницы на вкладке «Источники»."
+                       }) {
             if readiness?.plan != nil, !assembly.isRunning(lecture.id) {
                 Button("Собрать конспект") { start(force: false) }
                     .prominentAction()
