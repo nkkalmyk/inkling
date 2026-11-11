@@ -133,15 +133,15 @@ Inkling/
 xcodegen generate && xcodebuild -scheme Inkling -destination 'platform=macOS' build test
 ```
 
-Живые тесты с настоящим Claude и Ollama по умолчанию выключены, потому что тратят лимит и память. Как их включить, написано в [`CLAUDE.md`](CLAUDE.md).
+Живые тесты с настоящими Claude, Codex, Gemini и Ollama по умолчанию выключены, потому что тратят лимит и память. Как их включить, написано в [`CLAUDE.md`](CLAUDE.md).
 
 | Папка | Что внутри |
 |---|---|
 | `Inkling/App` | точка входа, `AppDelegate`, настройки, центр движков |
 | `Inkling/Library` | состояние библиотеки для интерфейса, импорт и правка источников, поиск по тексту, понятия и соседние лекции |
-| `Inkling/Pipeline` | конвейер: `Recognition` (страницы), `Assembly` (конспект: учебный и точный), `Study` (учебные материалы), `Enrichment` («Дополнить»), `Prompts` (шаблоны запросов) |
+| `Inkling/Pipeline` | конвейер: `Recognition` (страницы), `Assembly` (конспект: учебный и точный), `Study` (учебные материалы), `Enrichment` (разбор блоков прежней «Дополнить» в старых конспектах), `Check` (проверка конспекта и «Исправить формулы»), `Prompts` (шаблоны запросов) |
 | `Inkling/Literature` | индекс учебников: распознавание сканов (Vision), SQLite FTS5, выдержки для сборки |
-| `Inkling/Engine` | `AIEngine`, Claude Code, Codex, Ollama, поиск бинарников, запуск процессов, распознавание лимитов |
+| `Inkling/Engine` | `AIEngine`, Claude Code, Codex, Gemini (ключ в связке ключей — `SecretStore`), Ollama, маршрутизатор с общим ограничителем вызовов, поиск бинарников, запуск процессов, распознавание лимитов |
 | `Inkling/Import` | импорт файлов, буфер обмена, Камера непрерывности |
 | `Inkling/Processing` | обработка фото и PDF, загрузка картинок страниц |
 | `Inkling/Storage` | файловое хранилище, атомарная запись, iCloud, история, `konspekt.md` |

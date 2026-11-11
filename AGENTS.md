@@ -16,9 +16,9 @@
 | `Inkling/Engine` | `AIEngine` (протокол), `ClaudeCodeEngine`, `CodexEngine`, `GeminiEngine` (HTTPS, ключ из `SecretStore`), `OllamaEngine`, `EngineRouter` (основной → запасной), `ProcessRunner` (`posix_spawn`), `BinaryLocator`, `RateLimitDetector` |
 | `Inkling/Pipeline` | `Recognition` (страница → Markdown, режим «Подробно»), `Assembly` (сборка `konspekt.md`: «Учебный конспект» по фото страниц — `StudyAssembly`, «Точная сборка» по тексту), `Study` (вопросы, тест, карточки), `Enrichment` (разбор блоков прежней функции «Дополнить» в старых конспектах), `Check` (локальная проверка конспекта и «Исправить формулы»), `Prompts/PromptLibrary` |
 | `Inkling/Literature` | индекс учебников: `LiteratureIndexer` (PDFKit-слой или Vision OCR сканов), `LiteratureStore` (SQLite FTS5 в Application Support), `RussianNormalizer`, `LiteratureRetrieval` (выдержки по словам лекции), `LiteratureCenter` (состояние для UI) |
-| `Inkling/Library`, `Inkling/Storage` | состояние библиотеки для UI; файловое хранилище (`AtomicFile`, `LectureMeta`, `KonspektStore`, `HistoryStore`, iCloud) |
+| `Inkling/Library`, `Inkling/Storage` | состояние библиотеки для UI, поиск по тексту конспектов (`KonspektSearch`), связи понятий (`Concepts`), соседние лекции (`LectureNeighbors`); файловое хранилище (`AtomicFile`, `LectureMeta`, `KonspektStore`, `HistoryStore`, iCloud) |
 | `Inkling/Import`, `Inkling/Processing` | импорт файлов, буфера, Камеры непрерывности; обработка фото и PDF |
-| `Inkling/Export` | Markdown, PDF, Anki CSV, шпаргалка (`CheatSheet`) |
+| `Inkling/Export` | Markdown, PDF (`PDFExporter`, колонтитулы и переходы — `PDFFooter`, `PDFNavigation`, `PDFLinkInliner`), HTML (`HTMLExporter`), Anki CSV, шпаргалка (`CheatSheet`), предмет целиком (`SubjectExport`) |
 | `Inkling/UI` | экраны: `Sidebar`, `Lecture`, `Sources`, `Notes`, `Study`, `Settings` |
 | `Inkling/DesignSystem` | токены (`Tokens/`) и общие компоненты (`Components/`) |
 | `Inkling/Resources` | `Prompts/` (промпты), `Web/` (рендер конспекта: KaTeX, mhchem, markdown-it в `vendor/`), `Assets.xcassets`, `Inkling.icon`, `ru.lproj` |
@@ -34,7 +34,7 @@
 ```bash
 brew install xcodegen                                        # один раз
 xcodegen generate                                            # после любого изменения project.yml, добавления/удаления файлов
-xcodebuild -scheme Inkling -destination 'platform=macOS' build test   # сборка и тесты (~390), ~1–2 мин
+xcodebuild -scheme Inkling -destination 'platform=macOS' build test   # сборка и тесты (~490), ~1–2 мин
 xcodebuild -scheme Inkling -destination 'platform=macOS' analyze      # статический анализ (отдельного линтера нет)
 scripts/release.sh                                           # публичный zip в build/release/ (ad-hoc, без личных путей)
 ```
@@ -55,6 +55,12 @@ Gemini (тратит квоту ключа, отправляет синтети�
 ```bash
 TEST_RUNNER_INKLING_LIVE_GEMINI=1 TEST_RUNNER_INKLING_LIVE_GEMINI_KEY=<ключ> xcodebuild -scheme Inkling -destination 'platform=macOS' test \
   -only-testing:InklingTests/GeminiLiveTests   # ~3,5 мин; модель — INKLING_LIVE_GEMINI_MODEL
+```
+
+Замеры скорости на синтетике (не тратят лимит, ~10 с; печатают строки «ЗАМЕР …», порогов нет — цифры сравнивай до и после правки):
+
+```bash
+TEST_RUNNER_INKLING_PERF=1 xcodebuild -scheme Inkling -destination 'platform=macOS' test -only-testing:InklingTests/PerformanceTests
 ```
 
 Учебная сборка на копии реальной лекции: `TEST_RUNNER_INKLING_LIVE_CLAUDE=1 TEST_RUNNER_INKLING_LIVE_LECTURE=<папка лекции> TEST_RUNNER_INKLING_LIVE_OUT=<файл> xcodebuild -scheme Inkling -destination 'platform=macOS' test -only-testing:InklingTests/StudyAssemblyLiveTests` (модель — `INKLING_LIVE_MODEL`, по умолчанию opus). Индексация реальных учебников (долго, греет процессор): `TEST_RUNNER_INKLING_LIVE_INDEX=1 TEST_RUNNER_INKLING_LIVE_BOOKS=<файл строк «коллекция|путь к PDF»> TEST_RUNNER_INKLING_LIVE_LOG=<лог> xcodebuild … test -only-testing:InklingTests/LiteratureIndexLiveTests`; пишет в настоящий индекс приложения. Сравнение обычного и подробного распознавания: `INKLING_LIVE_PAGE`, `INKLING_LIVE_OUT_DIR`, `INKLING_LIVE_VARIANTS` (`DetailedRecognitionLiveTests`).
