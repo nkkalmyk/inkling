@@ -163,7 +163,8 @@ final class RecognitionCenter {
             fail(job, error as? AIError ?? .invalidOutput(error.localizedDescription))
             return
         }
-        let imageHash = FileHash.sha256(image)
+        // SHA-256 картинки в фоне: файл может качаться из iCloud (аудит 2026-11, A20).
+        let imageHash = await Self.hash(image)
 
         let lectureID = job.lectureID
         states[job.pageID] = .running(engine: router().primaryID, startedAt: Date())
@@ -190,6 +191,9 @@ final class RecognitionCenter {
             fail(job, error)
         }
     }
+
+    @concurrent
+    private static func hash(_ url: URL) async -> String? { FileHash.sha256(url) }
 
     /// Нарезает оригинал страницы на фрагменты для режима «Подробно» (вне главного потока) и пишет их во временную папку.
     nonisolated private static func writeBands(of page: NotePage, original: URL) async throws -> URL {

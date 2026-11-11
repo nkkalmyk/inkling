@@ -209,12 +209,15 @@ struct StudyCenterTests {
         #expect(StudyStore(folder: env.lecture.folder).readStudy() == nil)
     }
 
-    @Test func needsKonspekt() throws {
+    /// Конспект читается в фоне (A20, аудит 2026-11): ошибка появляется, когда чтение закончилось.
+    @Test func needsKonspekt() async throws {
         let env = try env(konspekt: nil)
-        let center = center(env, FakeEngine([]))
+        let engine = FakeEngine([])
+        let center = center(env, engine)
         center.generate(env.lectureID)
-        #expect(!center.isRunning(env.lectureID))
+        try await waitIdle(center, env.lectureID)
         #expect(center.errors[env.lectureID] != nil)
+        #expect(await engine.calls == 0)
     }
 
     @Test func regenerationMovesProgressToHistory() async throws {

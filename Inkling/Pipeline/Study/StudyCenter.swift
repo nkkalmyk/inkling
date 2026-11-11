@@ -84,33 +84,32 @@ final class StudyCenter {
     func generate(_ lectureID: UUID) {
         guard runs[lectureID] == nil, let lecture = library.lecture(id: lectureID) else { return }
         errors[lectureID] = nil
-        // Учебные материалы строятся по авторскому тексту: блоки кнопки «Дополнить» в них и в хеш не входят.
-        let raw = Enrichment.baseText(KonspektStore(folder: lecture.folder).read() ?? "", info: lecture.meta.konspekt)
-        let konspekt = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !konspekt.isEmpty else {
-            errors[lectureID] = .invalidOutput("Сначала соберите конспект: материалы готовятся только по нему.")
-            return
-        }
-        let prompt: String
-        do {
-            let prompts = library.prompts
-            prompt = PromptLibrary.render(try prompts.template("study.md"), values: [
-                "предмет": lecture.meta.subject, "тема": lecture.meta.topic,
-                "вставка_предмета": prompts.subjectInsert(lecture.meta.subject), "конспект": konspekt,
-            ])
-        } catch {
-            errors[lectureID] = .invalidOutput(error.localizedDescription)
-            return
-        }
+        let folder = lecture.folder, info = lecture.meta.konspekt
+        let subject = lecture.meta.subject, topic = lecture.meta.topic
+        let prompts = library.prompts
         let router = router()
-        let hash = FileHash.sha256(raw)
+        // Конспект читается в фоне: в iCloud он может быть выгружен, и чтение на главном потоке подвешивало окно
+        // (аудит 2026-11, A20). Подготовка считается идущей сразу, чтобы повторное нажатие отсекалось.
         runs[lectureID] = Run()
         tasks[lectureID] = Task {
             defer {
                 runs[lectureID] = nil
                 tasks[lectureID] = nil
             }
+            // Учебные материалы строятся по авторскому тексту: блоки кнопки «Дополнить» в них и в хеш не входят.
+            let raw = await Self.readBaseText(folder: folder, info: info)
+            guard !Task.isCancelled else { return }
+            let konspekt = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !konspekt.isEmpty else {
+                errors[lectureID] = .invalidOutput("Сначала соберите конспект: материалы готовятся только по нему.")
+                return
+            }
             do {
+                let prompt = PromptLibrary.render(try prompts.template("study.md"), values: [
+                    "предмет": subject, "тема": topic,
+                    "вставка_предмета": prompts.subjectInsert(subject), "конспект": konspekt,
+                ])
+                let hash = FileHash.sha256(raw)
                 let (study, response) = try await request(prompt: prompt, konspektChars: konspekt.count, router: router,
                                                           lectureID: lectureID)
                 try AIError.storing { try save(study, response: response, inputHash: hash, lectureID: lectureID) }
@@ -120,6 +119,11 @@ final class StudyCenter {
                 errors[lectureID] = .invalidOutput(error.localizedDescription)
             }
         }
+    }
+
+    @concurrent
+    private static func readBaseText(folder: URL, info: ArtifactInfo?) async -> String {
+        Enrichment.baseText(KonspektStore(folder: folder).read() ?? "", info: info)
     }
 
     private func request(prompt: String, konspektChars: Int, router: EngineRouter,
