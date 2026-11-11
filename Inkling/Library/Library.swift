@@ -66,6 +66,9 @@ final class Library {
 
     // Источники (Library+Sources.swift).
     var importProgress: ImportProgress?
+    /// Импорты одной лекции идут по очереди: первый может переименовать папку (дата по фото), и второй,
+    /// запомнивший старый путь, писал бы в папку-призрак без `meta.json` (аудит 2026-11).
+    @ObservationIgnored var importChains: [UUID: Task<Void, Never>] = [:]
     var pdfQuestion: PDFSectionQuestion?
     /// Страницы, которые сейчас пересоздаются.
     var busyPages: Set<String> = []

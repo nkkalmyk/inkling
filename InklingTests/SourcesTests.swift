@@ -501,3 +501,36 @@ struct FailedPDFImportTests {
         #expect(originals.isEmpty)
     }
 }
+
+/// Регресс A6 (аудит 2026-11): второй импорт, начатый до конца первого, писал в старый путь лекции,
+/// а первый тем временем переименовывал папку (дата по фото): появлялась папка-призрак и страницы без картинок.
+@Suite("Импорт: два подряд")
+@MainActor
+struct ConsecutiveImportTests {
+    @Test func secondImportFollowsRenamedFolder() async throws {
+        let dir = try TempDir()
+        let library = Library(root: dir.url.appendingPathComponent("Inkling"),
+                              trasher: try FakeTrasher(bin: dir.url.appendingPathComponent("_bin")))
+        library.open(root: library.root)
+        #expect(library.createLecture(subject: "Высшая алгебра", topic: "Матрицы", date: .today))
+        let lectureID = try #require(library.selection)
+        let photos = (0..<16).map { i in
+            Fixtures.write(Fixtures.halfRed(), to: dir.url.appendingPathComponent("p\(i).jpg"),
+                           dateTimeOriginal: String(format: "2026:10:14 09:%02d:00", i))
+        }
+        // Первый импорт короткий и успевает переименовать папку, пока второй, длинный, ещё пишет страницы.
+        library.importFiles([photos[0]], into: .notes, lectureID: lectureID)
+        library.importFiles(Array(photos[1...]), into: .notes, lectureID: lectureID)
+        for _ in 0..<500 where (library.lecture(id: lectureID)?.meta.notes.count ?? 0) < 16 || library.importProgress != nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let lecture = try #require(library.lecture(id: lectureID))
+        #expect(lecture.meta.notes.count == 16)
+        #expect(lecture.meta.date == .d("2026-10-14"))
+        let paths = LecturePaths(folder: lecture.folder)
+        for page in lecture.meta.notes { #expect(FileManager.default.fileExists(atPath: paths.notePhoto(page.id).path)) }
+        let subjectFolders = try FileManager.default.contentsOfDirectory(atPath: lecture.folder.deletingLastPathComponent().path)
+            .filter { !$0.hasPrefix(".") }
+        #expect(subjectFolders == [lecture.folder.lastPathComponent])
+    }
+}

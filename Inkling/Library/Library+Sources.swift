@@ -125,36 +125,52 @@ extension Library {
 
     private func runImport(_ groups: [(SourceSection, [URL])], lectureID: UUID, staging: URL?) {
         let groups = groups.filter { !$0.1.isEmpty }
-        guard !groups.isEmpty, let lecture = (try? store.findLecture(id: lectureID, hint: lecture(id: lectureID)?.folder)) ?? nil else {
+        guard !groups.isEmpty else {
+            if let staging { try? FileManager.default.removeItem(at: staging) }
+            return
+        }
+        let previous = importChains[lectureID]
+        let task = Task {
+            await previous?.value
+            await performImport(groups, lectureID: lectureID, staging: staging)
+        }
+        importChains[lectureID] = task
+        Task {
+            await task.value
+            if importChains[lectureID] == task { importChains[lectureID] = nil }
+        }
+    }
+
+    /// Папка лекции ищется только сейчас, после предыдущего импорта: тот мог её переименовать.
+    private func performImport(_ groups: [(SourceSection, [URL])], lectureID: UUID, staging: URL?) async {
+        guard let lecture = (try? store.findLecture(id: lectureID, hint: lecture(id: lectureID)?.folder)) ?? nil else {
             if let staging { try? FileManager.default.removeItem(at: staging) }
             return
         }
         let importer = SourceImporter(paths: LecturePaths(folder: lecture.folder))
         importProgress = ImportProgress(lectureID: lectureID, done: 0, total: 0)
-        Task {
-            var combined = ImportResult()
-            for (section, urls) in groups {
-                let result = await Task.detached(priority: .userInitiated) {
-                    importer.importFiles(urls, into: section) { done, total in
-                        Task { @MainActor in
-                            self.importProgress = ImportProgress(lectureID: lectureID, done: done, total: total)
-                        }
+        var combined = ImportResult()
+        for (section, urls) in groups {
+            let result = await Task.detached(priority: .userInitiated) {
+                importer.importFiles(urls, into: section) { done, total in
+                    Task { @MainActor in
+                        self.importProgress = ImportProgress(lectureID: lectureID, done: done, total: total)
                     }
-                }.value
-                combined.notes += result.notes
-                combined.slides += result.slides
-                combined.skipped += result.skipped
-            }
-            if let staging { try? FileManager.default.removeItem(at: staging) }
-            importProgress = nil
-            mutate(lectureID) { $0.appendImported(combined) }
-            // Новые страницы распознаются сразу после импорта (SPEC, раздел 13).
-            let toRecognize = combined.notes.map(\.id) + combined.slides.filter(\.needsRecognition).map(\.id)
-            if !toRecognize.isEmpty { recognition?.recognize(lectureID: lectureID, pageIDs: toRecognize) }
-            if !combined.skipped.isEmpty {
-                errorMessage = "Не всё удалось импортировать:\n"
-                    + combined.skipped.map { "• \($0.name): \($0.reason)" }.joined(separator: "\n")
-            }
+                }
+            }.value
+            combined.notes += result.notes
+            combined.slides += result.slides
+            combined.skipped += result.skipped
+        }
+        if let staging { try? FileManager.default.removeItem(at: staging) }
+        importProgress = nil
+        mutate(lectureID) { $0.appendImported(combined) }
+        // Новые страницы распознаются сразу после импорта (SPEC, раздел 13).
+        let toRecognize = combined.notes.map(\.id) + combined.slides.filter(\.needsRecognition).map(\.id)
+        if !toRecognize.isEmpty { recognition?.recognize(lectureID: lectureID, pageIDs: toRecognize) }
+        if !combined.skipped.isEmpty {
+            errorMessage = "Не всё удалось импортировать:\n"
+                + combined.skipped.map { "• \($0.name): \($0.reason)" }.joined(separator: "\n")
         }
     }
 
