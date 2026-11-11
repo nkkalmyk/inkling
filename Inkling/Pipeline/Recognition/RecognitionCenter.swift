@@ -35,6 +35,9 @@ final class RecognitionCenter {
     private(set) var batches: [UUID: Batch] = [:]
     /// Последняя ошибка, из-за которой очередь остановлена (нет входа, лимит и т. п.).
     var blockingError: AIError?
+    /// Сетка фрагментов режима «Подробно». Меняет её только живой тест сравнения вариантов; раньше для этого
+    /// служила изменяемая глобальная `nonisolated(unsafe)` (аудит 2026-11, B26).
+    @ObservationIgnored var detailedLayout = ImageProcessor.detailedLayout
 
     @ObservationIgnored private let library: Library
     @ObservationIgnored private let router: @MainActor () -> EngineRouter
@@ -143,11 +146,12 @@ final class RecognitionCenter {
             if job.detailed, location.section == .notes {
                 let page = lecture.meta.notes[location.index]
                 let original = paths.original(page.source, in: .notes)
-                let folder = try await Self.writeBands(of: page, original: original)
+                let layout = detailedLayout
+                let folder = try await Self.writeBands(of: page, original: original, layout: layout)
                 bandsFolder = folder
                 let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.sorted() ?? []
                 let prompt = try library.prompts.detailedRecognitionPrompt(subject: lecture.meta.subject, topic: lecture.meta.topic,
-                                                                           imageNames: names)
+                                                                           imageNames: names, layout: layout.description)
                 var detailedRequest = AIRequest(prompt: prompt, systemPrompt: PromptLibrary.recognitionSystemPrompt,
                                                 images: names.map { folder.appendingPathComponent($0) }, format: .text,
                                                 timeout: timeout() * 2)
@@ -196,14 +200,15 @@ final class RecognitionCenter {
     private static func hash(_ url: URL) async -> String? { FileHash.sha256(url) }
 
     /// Нарезает оригинал страницы на фрагменты для режима «Подробно» (вне главного потока) и пишет их во временную папку.
-    nonisolated private static func writeBands(of page: NotePage, original: URL) async throws -> URL {
+    nonisolated private static func writeBands(of page: NotePage, original: URL,
+                                               layout: ImageProcessor.DetailedLayout) async throws -> URL {
         try await Task.detached(priority: .userInitiated) {
             let image: CIImage
             switch page.source {
             case .image: image = try ImageProcessor.loadOriented(original)
             case .pdfPage(_, let index): image = try PDFTools.renderPage(original, index: index)
             }
-            let bands = try ImageProcessor.detailedBands(image, crop: page.crop, rotation: page.rotation)
+            let bands = try ImageProcessor.detailedBands(image, crop: page.crop, rotation: page.rotation, layout: layout)
             let folder = FileManager.default.temporaryDirectory
                 .appendingPathComponent("Inkling-bands-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

@@ -453,7 +453,7 @@ struct DetailedRecognitionLiveTests {
         let variants = (environment["INKLING_LIVE_VARIANTS"] ?? "normal,rows3").split(separator: ",").map(String.init)
         for name in variants {
             let detailed = name != "normal"
-            if let layout = layouts[name] { ImageProcessor.detailedLayout = layout }
+            if let layout = layouts[name] { center.detailedLayout = layout }
             let started = Date()
             center.recognize(lectureID: lectureID, pageIDs: [pageID], detailed: detailed)
             for _ in 0..<1500 where center.isBusy(lectureID) { try await Task.sleep(for: .milliseconds(200)) }
