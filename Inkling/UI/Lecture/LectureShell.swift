@@ -115,12 +115,13 @@ enum LecturePrimaryAction: Equatable {
 
 // MARK: Активность
 
-/// Что сейчас идёт по лекции: импорт, распознавание, сборка, подготовка материалов, экспорт PDF.
+/// Что сейчас идёт по лекции: импорт, распознавание, сборка, подготовка материалов, исправление формул, экспорт.
 struct LectureActivityIndicator: View {
     @Environment(Library.self) private var library
     @Environment(RecognitionCenter.self) private var recognition
     @Environment(AssemblyCenter.self) private var assembly
     @Environment(StudyCenter.self) private var study
+    @Environment(KonspektCheckCenter.self) private var checker
     let lecture: LectureRecord
     var exportingPDFSince: Date?
     var exportingHTMLSince: Date?
@@ -159,6 +160,9 @@ struct LectureActivityIndicator: View {
         if let run = study.runs[id] {
             result.append(Activity(id: "study", title: "Подготовка материалов", detail: run.engine?.title,
                                    startedAt: run.startedAt, note: run.note, cancel: { study.cancel(id) }))
+        }
+        if checker.isFixing(id) {
+            result.append(Activity(id: "fix", title: "Исправление формул", cancel: { checker.cancelFix(id) }))
         }
         if let exportingPDFSince {
             result.append(Activity(id: "pdf", title: "Экспорт в PDF", startedAt: exportingPDFSince))

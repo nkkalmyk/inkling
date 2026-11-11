@@ -162,6 +162,8 @@ struct NotesView: View {
                 if checker.checks[lecture.id]?.brokenFormulas.isEmpty == false {
                     if checker.isFixing(lecture.id) {
                         ProgressView().controlSize(.small)
+                            .accessibilityLabel("Исправление формул")
+                            .help("Идёт исправление формул; отменить можно в индикаторе работы на панели")
                     } else {
                         Button("Исправить формулы") { flushSave(); checker.fixFormulas(lecture.id) }
                             .help("Один короткий вызов модели: исправляется только синтаксис формул, смысл не меняется. Прежняя версия уйдёт в историю.")
