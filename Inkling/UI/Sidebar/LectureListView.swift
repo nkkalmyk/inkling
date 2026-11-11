@@ -213,7 +213,7 @@ private struct LectureRow: View {
     private var details: String {
         var parts = [lecture.meta.date.date().formatted(.dateTime.day().month(.abbreviated).locale(UIFormat.locale))]
         let pages = lecture.meta.notes.count + lecture.meta.slides.count
-        if pages > 0 { parts.append("страниц: \(pages)") }
+        if pages > 0 { parts.append(UIFormat.count(pages, "страница", "страницы", "страниц")) }
         return parts.joined(separator: " · ")
     }
 
@@ -221,9 +221,14 @@ private struct LectureRow: View {
     @ViewBuilder
     private var status: some View {
         let id = lecture.id
-        if recognition.isBusy(id) || assembly.isRunning(id) || study.isRunning(id) {
+        if let work = work(id) {
             ProgressView().controlSize(.small)
-                .accessibilityLabel("Идёт работа")
+                .accessibilityLabel(work)
+                .help(work)
+        } else if let failure = failure(id) {
+            // Ошибка видна и из списка: иначе о ней узнаёшь, только открыв лекцию.
+            StatusSymbol(systemImage: "exclamationmark.triangle.fill", label: failure, tint: .statusError)
+                .help(failure)
         } else if lecture.hasConflict {
             StatusSymbol(systemImage: "exclamationmark.icloud", label: "Есть конфликтные копии iCloud")
         } else if lecture.meta.study != nil {
@@ -231,6 +236,22 @@ private struct LectureRow: View {
         } else if lecture.meta.konspekt != nil {
             StatusSymbol(systemImage: "doc.text", label: "Конспект собран")
         }
+    }
+
+    /// Что именно идёт по лекции — для подсказки и VoiceOver вместо общего «Идёт работа».
+    private func work(_ id: UUID) -> String? {
+        if let batch = recognition.batches[id] {
+            return "Распознавание: \(batch.done + batch.failed) из \(batch.total)"
+        }
+        if assembly.isRunning(id) { return "Сборка конспекта" }
+        if study.isRunning(id) { return "Подготовка материалов" }
+        return nil
+    }
+
+    private func failure(_ id: UUID) -> String? {
+        if assembly.errors[id] != nil { return "Конспект не собран: ошибка" }
+        if study.errors[id] != nil { return "Материалы не подготовлены: ошибка" }
+        return nil
     }
 }
 
