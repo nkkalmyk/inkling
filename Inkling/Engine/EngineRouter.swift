@@ -58,6 +58,24 @@ actor EngineRouter {
         case started(EngineID)
         case retrying(EngineID, AIError)
         case switchedToFallback(from: EngineID, to: EngineID, AIError)
+
+        /// Движок, который теперь работает; `nil`, если он не сменился.
+        var engine: EngineID? {
+            switch self {
+            case .started(let engine): engine
+            case .switchedToFallback(_, let to, _): to
+            case .retrying: nil
+            }
+        }
+
+        /// Примечание для индикатора работы — одно на все центры (распознавание, сборка, материалы).
+        var note: String? {
+            switch self {
+            case .started: nil
+            case .retrying(_, let error): "Повтор после ошибки: \(error.userMessage)"
+            case .switchedToFallback(_, let to, let error): "\(error.userMessage) Переход на \(to.title)."
+            }
+        }
     }
 
     private let primary: any AIEngine

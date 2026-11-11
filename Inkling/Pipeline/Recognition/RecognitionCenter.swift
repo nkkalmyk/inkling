@@ -237,15 +237,10 @@ final class RecognitionCenter {
 
     private func note(_ event: EngineRouter.Event, lectureID: UUID, pageID: String) {
         guard var batch = batches[lectureID] else { return }
-        switch event {
-        case .started(let engine):
-            batch.engine = engine
-            if case .running(_, let startedAt) = states[pageID] { states[pageID] = .running(engine: engine, startedAt: startedAt) }
-        case .retrying(_, let error):
-            batch.note = "Повтор после ошибки: \(error.userMessage)"
-        case .switchedToFallback(_, let to, let error):
-            batch.engine = to
-            batch.note = "\(error.userMessage) Переход на \(to.title)."
+        if let engine = event.engine { batch.engine = engine }
+        if let note = event.note { batch.note = note }
+        if case .started(let engine) = event, case .running(_, let startedAt) = states[pageID] {
+            states[pageID] = .running(engine: engine, startedAt: startedAt)
         }
         batches[lectureID] = batch
     }

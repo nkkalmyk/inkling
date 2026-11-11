@@ -388,6 +388,17 @@ struct EngineRouterTests {
         #expect(await fresh.isLimited(.claude))
     }
 
+    /// B14 (аудит 2026-11): текст примечаний один на все центры.
+    @Test func eventNotes() {
+        #expect(EngineRouter.Event.started(.claude).note == nil)
+        #expect(EngineRouter.Event.started(.claude).engine == .claude)
+        #expect(EngineRouter.Event.retrying(.claude, .timeout).note == "Повтор после ошибки: \(AIError.timeout.userMessage)")
+        #expect(EngineRouter.Event.retrying(.claude, .timeout).engine == nil)
+        let switched = EngineRouter.Event.switchedToFallback(from: .claude, to: .ollama, .timeout)
+        #expect(switched.engine == .ollama)
+        #expect(switched.note == "\(AIError.timeout.userMessage) Переход на \(EngineID.ollama.title).")
+    }
+
     @Test func cancelledBeforeStart() async {
         let router = EngineRouter(primary: FakeEngine([]), fallback: nil, settings: .init())
         let task = Task { () async throws -> AIResponse in

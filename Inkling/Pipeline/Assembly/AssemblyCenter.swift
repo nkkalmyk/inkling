@@ -304,15 +304,8 @@ final class AssemblyCenter {
 
     private func note(_ event: EngineRouter.Event, lectureID: UUID) {
         guard runs[lectureID] != nil else { return }
-        switch event {
-        case .started(let engine):
-            runs[lectureID]?.engine = engine
-        case .retrying(_, let error):
-            runs[lectureID]?.note = "Повтор после ошибки: \(error.userMessage)"
-        case .switchedToFallback(_, let to, let error):
-            runs[lectureID]?.engine = to
-            runs[lectureID]?.note = "\(error.userMessage) Переход на \(to.title)."
-        }
+        if let engine = event.engine { runs[lectureID]?.engine = engine }
+        if let note = event.note { runs[lectureID]?.note = note }
     }
 }
 
