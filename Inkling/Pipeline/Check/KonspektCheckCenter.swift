@@ -65,7 +65,7 @@ final class KonspektCheckCenter {
             }
             do {
                 let fixed = try await requestFixes(broken, router: router, prompts: prompts)
-                let applied = try await apply(fixed, to: lecture)
+                let applied = try await apply(fixed, for: broken, to: lecture)
                 lastFixed[lectureID] = applied
                 keys[lectureID] = nil
                 if let current = library.lecture(id: lectureID) { refresh(current) }
@@ -98,12 +98,13 @@ final class KonspektCheckCenter {
     }
 
     /// Подставляет исправления в конспект. Принимаются только те, что теперь разбираются; прежний текст уходит в историю.
-    private func apply(_ fixes: [Int: String], to lecture: LectureRecord) async throws -> Int {
-        guard let check = checks[lecture.id] else { return 0 }
+    /// Номера исправлений относятся к списку `broken`, отправленному модели: пока шёл вызов, конспект могли поправить,
+    /// и новая проверка нумерует формулы иначе. Формула, которой в тексте уже нет, пропускается.
+    private func apply(_ fixes: [Int: String], for broken: [BrokenFormula], to lecture: LectureRecord) async throws -> Int {
         let store = KonspektStore(folder: lecture.folder)
         guard var text = store.read() else { return 0 }
         var applied = 0
-        for (index, formula) in check.brokenFormulas.enumerated() {
+        for (index, formula) in broken.enumerated() {
             guard let fixedTex = fixes[index + 1], fixedTex != formula.tex else { continue }
             let delimiter = formula.display ? "$$" : "$"
             guard KonspektChecker.check(delimiter + fixedTex + delimiter, study: false, expectSources: false).brokenFormulas.isEmpty,

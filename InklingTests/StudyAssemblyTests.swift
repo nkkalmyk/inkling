@@ -339,4 +339,32 @@ struct KonspektCheckTests {
         #expect(center.lastFixed[env.lectureID] == 1)
         #expect(store.history.entries().count == 1)
     }
+
+    /// Регресс A11 (аудит 2026-11): правка во время вызова меняла нумерацию проверки, и исправление первой
+    /// отправленной формулы подставлялось вместо другой.
+    @Test func editDuringFixDoesNotMisplaceFixes() async throws {
+        let env = try AssemblyCenterTests.Env(pages: ["x"])
+        let store = KonspektStore(folder: env.lecture.folder)
+        try store.write("A $\\frac{a}{$ конец.\n", previous: nil)
+        env.library.mutate(env.lectureID) {
+            $0.konspekt = ArtifactInfo(createdAt: Date(), updatedAt: Date(), inputHash: "x")
+        }
+        let engine = EngineRouterTests.FakeEngine([.success(#"{"fixes":[{"id":1,"tex":"\\frac{a}{b}"}]}"#)],
+                                                  delay: .milliseconds(300))
+        let router = EngineRouter(primary: engine, fallback: nil, settings: .init())
+        let center = KonspektCheckCenter(library: env.library, router: { router })
+        center.refresh(env.lecture)
+        for _ in 0..<250 where center.checks[env.lectureID] == nil { try await Task.sleep(for: .milliseconds(20)) }
+        center.fixFormulas(env.lectureID)
+
+        env.library.saveKonspektEdit("B $\\sqrt{$ A $\\frac{a}{$ конец.\n", lectureID: env.lectureID)
+        // Время правки округляется до секунды и может совпасть с прежним: новую проверку запускает ревизия.
+        env.library.konspektRevision[env.lectureID, default: 0] += 1
+        center.refresh(env.lecture)
+        for _ in 0..<250 where center.checks[env.lectureID]?.brokenFormulas.count != 2 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        for _ in 0..<250 where center.isFixing(env.lectureID) { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(store.read() == "B $\\sqrt{$ A $\\frac{a}{b}$ конец.\n")
+    }
 }
