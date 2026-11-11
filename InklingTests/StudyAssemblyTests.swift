@@ -368,3 +368,37 @@ struct KonspektCheckTests {
         #expect(store.read() == "B $\\sqrt{$ A $\\frac{a}{b}$ конец.\n")
     }
 }
+
+/// B19 (аудит 2026-11): блоки кода — по правилам CommonMark (как markdown-it в рендере) во всех разборах.
+@Suite("Markdown: блоки кода")
+struct MarkdownFenceTests {
+    private func inside(_ markdown: String) -> [Bool] {
+        var fence = MarkdownFence()
+        return markdown.components(separatedBy: "\n").map { line in
+            let boundary = fence.consume(line)
+            return boundary || fence.isInside
+        }
+    }
+
+    @Test func backticksAndTildesOpenAndCloseWithTheSameMarker() {
+        #expect(inside("a\n```\n# код\n```\nb") == [false, true, true, true, false])
+        #expect(inside("a\n~~~plot\nx\n~~~\nb") == [false, true, true, true, false])
+        // ``` внутри ~~~ не закрывает блок, короткая граница не закрывает длинную.
+        #expect(inside("~~~\n```\n~~~\nb") == [true, true, true, false])
+        #expect(inside("````\n```\n````\nb") == [true, true, true, false])
+        #expect(inside("``не блок``\nb") == [false, false])
+    }
+
+    @Test func headingInsideCodeDoesNotSatisfyStructure() {
+        let text = "# Конспект\n\n```\n## Оглавление\n## Примеры\n```\n"
+        #expect(KonspektChecker.missingStructure(text, expectSources: false) == ["«Оглавление»", "раздела примеров"])
+        #expect(KonspektChecker.missingStructure("## Оглавление\n## Примеры решения\n", expectSources: false).isEmpty)
+    }
+
+    @Test func definitionsInsideTildeFenceAreIgnored() {
+        let text = "# Тема\n\n## 1. Раздел\n\n~~~\n**Матрица** — таблица чисел.\n~~~\n\n**Определитель** — число матрицы.\n"
+        let names = ConceptExtractor.concepts(in: text).map(\.name)
+        #expect(names.contains("Определитель"))
+        #expect(!names.contains("Матрица"))
+    }
+}

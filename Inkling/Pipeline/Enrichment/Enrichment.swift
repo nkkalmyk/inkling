@@ -63,16 +63,12 @@ enum Enrichment {
     }
 
     private static func fenceMarker(_ line: String) -> String? {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        for marker in ["```", "~~~"] where trimmed.hasPrefix(marker) {
-            return String(trimmed.prefix { $0 == marker.first })
-        }
-        return nil
+        MarkdownFence.marker(line).map { String(repeating: $0.character, count: $0.count) }
     }
 
     private static func isFenceClose(_ line: String, marker: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        return trimmed.hasPrefix(marker) && trimmed.allSatisfy { $0 == marker.first }
+        guard let character = marker.first else { return false }
+        return MarkdownFence.closes(line, character: character, count: marker.count)
     }
 
     private static func isSummaryHeading(_ line: String) -> Bool {

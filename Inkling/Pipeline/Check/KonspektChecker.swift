@@ -40,7 +40,9 @@ enum KonspektChecker {
     }
 
     static func missingStructure(_ markdown: String, expectSources: Bool) -> [String] {
-        let headings = markdown.components(separatedBy: "\n").filter { $0.hasPrefix("#") }
+        var fence = MarkdownFence()
+        let headings = markdown.components(separatedBy: "\n")
+            .filter { line in !fence.consume(line) && !fence.isInside && line.hasPrefix("#") }
             .map { $0.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces).lowercased() }
         var missing: [String] = []
         if !headings.contains(where: { $0.hasPrefix("оглавление") }) { missing.append("«Оглавление»") }
