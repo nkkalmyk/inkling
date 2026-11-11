@@ -117,6 +117,26 @@ struct ProcessRunnerTests {
     }
 }
 
+/// Регресс A15 (аудит 2026-11): пропавшее фото страницы давало повторяемый «код -1», повтор и переход на запасной движок.
+@Suite("CLI-движки: недоступные входные файлы")
+struct MissingInputTests {
+    @Test func missingImageIsNotRetryable() async throws {
+        let missing = URL(fileURLWithPath: "/nonexistent/inkling/photo.jpg")
+        let request = AIRequest(prompt: "p", systemPrompt: "s", images: [missing])
+        let engines: [any AIEngine] = [ClaudeCodeEngine(config: .init(manualPath: "/bin/echo")),
+                                       CodexEngine(config: .init(manualPath: "/bin/echo"))]
+        for engine in engines {
+            do {
+                _ = try await engine.run(request)
+                Issue.record("Ожидалась ошибка у \(engine.id)")
+            } catch {
+                guard case .inputUnavailable = error else { Issue.record("\(engine.id): \(error)"); continue }
+                #expect(!error.isRetryable && !EngineRouter.shouldFallBack(after: error))
+            }
+        }
+    }
+}
+
 @Suite("BinaryLocator")
 struct BinaryLocatorTests {
     final class FakeFS: @unchecked Sendable {

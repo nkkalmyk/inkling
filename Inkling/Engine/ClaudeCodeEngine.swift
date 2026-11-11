@@ -144,7 +144,7 @@ struct ClaudeCodeEngine: AIEngine {
                 try FileManager.default.copyItem(at: image, to: workdir.appendingPathComponent(image.lastPathComponent))
             }
         } catch {
-            throw .processFailed(exitCode: -1, stderr: "Не удалось подготовить временную папку: \(error.localizedDescription)")
+            throw .inputUnavailable(error.localizedDescription)
         }
 
         let model = request.model ?? config.model
