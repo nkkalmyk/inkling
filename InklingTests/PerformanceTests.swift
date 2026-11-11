@@ -117,6 +117,24 @@ struct PerformanceTests {
         _ = links
     }
 
+    /// Поиск по тексту конспектов идёт на каждый набранный символ (в `body` списка лекций): 300 конспектов по ~3000 слов.
+    @Test(.enabled(if: PerformanceTests.enabled))
+    func snippetSearchOver300Konspekts() async throws {
+        let lexicon = ["матрица", "определитель", "ранг", "базис", "вектор", "оператор", "собственный", "линейный",
+                       "пространство", "отображение", "уравнение", "система", "решение", "преобразование", "предел"]
+        let texts = (0..<300).map { l in
+            KonspektSearchText(markdown: (0..<3000).map { lexicon[($0 * 7 + l) % lexicon.count] }.joined(separator: " "))
+        }
+        let queries = ["о", "оп", "опр", "опред", "определ", "определит", "определител ранг", "щёлк"]
+        let duration = await Self.median(5) {
+            for query in queries {
+                let stems = KonspektSearchText.queryStems(query)
+                for text in texts { _ = text.snippet(for: stems) }
+            }
+        }
+        Self.report("поиск по 300 конспектам, 8 запросов подряд (набор слова)", duration)
+    }
+
     // MARK: Индекс учебников
 
     @Test(.enabled(if: PerformanceTests.enabled))
