@@ -217,6 +217,17 @@ extension EnvironmentValues {
     @Entry var notesFlush: NotesFlush?
 }
 
+/// Отложенные сохранения всех открытых редакторов (конспект, текст страницы). При выходе приложения их дописывает
+/// `AppDelegate`: иначе правка, сделанная меньше чем за 0,8 с до ⌘Q, терялась молча.
+@MainActor
+enum PendingEdits {
+    private static var flushes: [UUID: () -> Void] = [:]
+
+    static func register(_ id: UUID, flush: @escaping () -> Void) { flushes[id] = flush }
+    static func unregister(_ id: UUID) { flushes[id] = nil }
+    static func flushAll() { for flush in flushes.values { flush() } }
+}
+
 extension FocusedValues {
     @Entry var lectureCommands: LectureCommands?
     /// Режим «Правка» конспекта, когда открыта вкладка «Конспект».

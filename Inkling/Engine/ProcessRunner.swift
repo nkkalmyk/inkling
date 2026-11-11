@@ -34,6 +34,8 @@ enum ProcessRunner {
             throw .launchFailed(error.message)
         }
         let control = KillControl(pid: child.pid, grace: killGrace)
+        LiveGroups.shared.insert(child.pid)
+        defer { LiveGroups.shared.remove(child.pid) }
 
         child.feedStdin(stdin)
         let readers = child.startReaders()
@@ -71,6 +73,40 @@ enum ProcessRunner {
     }
 
     private static let ignoreSIGPIPE: Void = { signal(SIGPIPE, SIG_IGN) }()
+
+    /// Гасит все запущенные группы процессов: SIGTERM, через `grace` секунд SIGKILL оставшимся. Вызывается при выходе
+    /// приложения: дочерние `claude` и `codex` живут в своей группе и сами сигнал не получат — продолжили бы работать
+    /// и тратить лимит, хотя результат принять уже некому. Блокирует вызывающего не дольше `grace`.
+    static func terminateAll(grace: TimeInterval = 1) {
+        terminate(LiveGroups.shared.all, grace: grace)
+    }
+
+    /// То же для выбранных групп (тесты гасят только свой процесс, а не процессы параллельных тестов).
+    static func terminate(_ groups: [pid_t], grace: TimeInterval) {
+        guard !groups.isEmpty else { return }
+        for pid in groups { Darwin.kill(-pid, SIGTERM) }
+        let deadline = Date().addingTimeInterval(grace)
+        var alive = groups
+        while !alive.isEmpty, Date() < deadline {
+            usleep(20_000)
+            alive = alive.filter { Darwin.kill(-$0, 0) == 0 }
+        }
+        for pid in alive { Darwin.kill(-pid, SIGKILL) }
+    }
+
+    /// Запущен ли сейчас процесс с таким лидером группы (для тестов).
+    static func isLive(_ pid: pid_t) -> Bool { LiveGroups.shared.all.contains(pid) }
+}
+
+/// Лидеры групп процессов, запущенных `ProcessRunner` и ещё не завершённых.
+private final class LiveGroups: @unchecked Sendable {
+    static let shared = LiveGroups()
+    private let lock = NSLock()
+    private var pids: Set<pid_t> = []
+
+    func insert(_ pid: pid_t) { lock.withLock { _ = pids.insert(pid) } }
+    func remove(_ pid: pid_t) { lock.withLock { _ = pids.remove(pid) } }
+    var all: [pid_t] { lock.withLock { Array(pids) } }
 }
 
 // MARK: Запуск

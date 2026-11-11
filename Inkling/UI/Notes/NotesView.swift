@@ -13,6 +13,7 @@ struct NotesView: View {
     @State private var text = ""
     @State private var loadedRevision: Int?
     @State private var saveTask: Task<Void, Never>?
+    @State private var editsID = UUID()
     @State private var confirm: Confirmation?
     @State private var showHistory = false
     @State private var katexErrors = 0
@@ -96,8 +97,14 @@ struct NotesView: View {
         }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { await load() }
         .task(id: LoadKey(revision: revision, konspekt: lecture.meta.konspekt)) { checker.refresh(lecture) }
-        .onAppear { notesFlush?.action = flushSave }
-        .onDisappear(perform: flushSave)
+        .onAppear {
+            notesFlush?.action = flushSave
+            PendingEdits.register(editsID, flush: flushSave)
+        }
+        .onDisappear {
+            flushSave()
+            PendingEdits.unregister(editsID)
+        }
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
                             presenting: confirm) { _ in
             Button("Собрать") { start(force: true) }

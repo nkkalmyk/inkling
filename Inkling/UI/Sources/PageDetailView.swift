@@ -30,6 +30,7 @@ private struct PageEditor: View {
     @State private var image: NSImage?
     @State private var zoom: ZoomableImageView.ZoomRequest?
     @State private var saveTask: Task<Void, Never>?
+    @State private var editsID = UUID()
     @State private var confirmRerecognize = false
     @State private var rerecognizeDetailed = false
     @State private var showHistory = false
@@ -73,7 +74,11 @@ private struct PageEditor: View {
             image = await PageImageLoader.shared.image(imageSource, maxPixel: 2400, revision: revision)
         }
         .task(id: revision) { await loadText() }
-        .onDisappear(perform: flushSave)
+        .onAppear { PendingEdits.register(editsID, flush: flushSave) }
+        .onDisappear {
+            flushSave()
+            PendingEdits.unregister(editsID)
+        }
         .confirmationDialog("Текст правился вручную", isPresented: $confirmRerecognize) {
             Button("Распознать заново") {
                 recognition.recognize(lectureID: lecture.id, pageIDs: [pageID], detailed: rerecognizeDetailed)

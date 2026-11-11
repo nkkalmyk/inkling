@@ -16,8 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @preconcurrency NSServ
         ImportStaging.removeStale()
     }
 
-    /// Сервер Ollama, запущенный приложением, гасится вместе с ним (SPEC, раздел 13, этап 8).
+    /// При выходе: дописать отложенные правки, погасить вызовы `claude`/`codex` (они в своей группе процессов
+    /// и сами не завершатся) и сервер Ollama, если его запускало приложение (SPEC, раздел 13, этап 8).
     func applicationWillTerminate(_ notification: Notification) {
+        PendingEdits.flushAll()
+        ProcessRunner.terminateAll()
         OllamaServer.shared.stopIfOwned()
     }
 

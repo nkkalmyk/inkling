@@ -85,6 +85,36 @@ struct ProcessRunnerTests {
         }
         #expect(Date().timeIntervalSince(started) < 5)
     }
+
+    /// Регресс A3 (аудит 2026-11): при выходе приложения запущенные CLI оставались работать сиротами.
+    @Test func terminateStopsRegisteredGroupWithGrandchildren() async throws {
+        let dir = try TempDir()
+        let leaderFile = dir.url.appendingPathComponent("leader.pid").path
+        let childFile = dir.url.appendingPathComponent("child.pid").path
+        let task = Task { () async throws -> ProcessRunner.Output in
+            try await sh("echo $$ > '\(leaderFile)'; sleep 60 & echo $! > '\(childFile)'; wait", timeout: 120)
+        }
+        var leader: pid_t?
+        for _ in 0..<100 where leader == nil {
+            try await Task.sleep(for: .milliseconds(20))
+            leader = (try? String(contentsOfFile: childFile, encoding: .utf8)).flatMap { _ in
+                (try? String(contentsOfFile: leaderFile, encoding: .utf8))
+                    .flatMap { pid_t($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            }
+        }
+        let pid = try #require(leader)
+        #expect(ProcessRunner.isLive(pid))
+        let started = Date()
+        ProcessRunner.terminate([pid], grace: 0.5)
+        let output = try await task.value
+        #expect(output.signal == SIGTERM)
+        #expect(Date().timeIntervalSince(started) < 5)
+        let child = try #require(pid_t(try String(contentsOfFile: childFile, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)))
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(kill(child, 0) != 0, "Внук должен быть убит вместе с группой")
+        #expect(!ProcessRunner.isLive(pid))
+    }
 }
 
 @Suite("BinaryLocator")
