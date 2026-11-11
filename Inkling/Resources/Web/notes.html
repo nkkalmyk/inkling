@@ -65,7 +65,7 @@
   // Ссылки по понятиям (первое упоминание понятия из другой лекции) и «Связанные лекции». Приходят из приложения
   // отдельно от текста и накладываются после каждой отрисовки.
   var concepts = { links: [], related: [] };
-  var lastMarkdown = null;
+  var lastHTML = null;
   function lectureHref(id, anchor) { return 'inkling-lecture://' + id + (anchor ? '#' + anchor : ''); }
   function showRelated() {
     var box = document.getElementById('related-lectures');
@@ -93,9 +93,11 @@
     box.appendChild(list);
     box.hidden = false;
   }
+  // Ссылки понятий приходят вторым вызовом после текста: разметка не разбирается заново, а берётся готовой
+  // (раньше markdown-it и KaTeX проходили по всему конспекту дважды на каждое открытие; аудит 2026-11).
   window.inklingSetConcepts = function (value) {
     concepts = { links: value.links || [], related: value.related || [] };
-    if (lastMarkdown !== null) window.inklingShow(lastMarkdown); else showRelated();
+    if (lastHTML !== null) present(); else showRelated();
   };
   // Прокрутка к разделу после перехода по ссылке на понятие. Только что созданная страница ещё не разложена,
   // поэтому прокручиваем после отрисовки (шрифты KaTeX загружены) или с небольшой задержкой, если она уже была.
@@ -109,9 +111,12 @@
     setTimeout(applyScroll, 200);
   };
   window.inklingShow = function (markdown) {
-    lastMarkdown = markdown;
+    lastHTML = InklingRender.toHTML(markdown);
+    present();
+  };
+  function present() {
     var content = document.getElementById('content');
-    content.innerHTML = InklingRender.toHTML(markdown);
+    content.innerHTML = lastHTML;
     InklingRender.linkConcepts(content, concepts.links.map(function (link) {
       return { stems: link.stems, href: lectureHref(link.lecture, link.anchor), title: link.title };
     }));
@@ -123,7 +128,7 @@
         window.webkit.messageHandlers.rendered.postMessage({ errors: errors });
       }
     });
-  };
+  }
 </script>
 </body>
 </html>
