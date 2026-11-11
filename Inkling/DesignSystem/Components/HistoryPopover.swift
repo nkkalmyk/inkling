@@ -38,6 +38,7 @@ struct HistoryPopover: View {
                 }
                 .onChange(of: selection) { text = selected.map(load) ?? "" }
                 HStack {
+                    Text("Текущая версия сохранится в истории.").font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button("Восстановить эту версию") { if let selected { restore(selected) } }
                         .disabled(selected == nil)

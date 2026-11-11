@@ -29,7 +29,8 @@ struct NotesView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Confirmation: Identifiable {
-        case overwriteManual, skipUnrecognized(Int)
+        /// `skipped` — сколько нераспознанных страниц не попадёт в конспект: второго вопроса после этого не будет.
+        case overwriteManual(skipped: Int), skipUnrecognized(Int)
         var id: String { if case .overwriteManual = self { "manual" } else { "skip" } }
     }
 
@@ -115,13 +116,16 @@ struct NotesView: View {
             PendingEdits.unregister(editsID)
         }
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
-                            presenting: confirm) { _ in
-            Button("Собрать") { start(force: true) }
+                            presenting: confirm) { which in
+            Button(which.id == "manual" ? "Пересобрать" : "Собрать") { start(force: true) }
             Button("Отмена", role: .cancel) {}
         } message: { which in
             switch which {
-            case .overwriteManual: Text("Конспект правился вручную. Ваша версия сохранится в истории.")
-            case .skipUnrecognized(let n): Text("Не распознано страниц: \(n). Они не попадут в конспект.")
+            case .overwriteManual(let skipped):
+                Text("Конспект правился вручную. Ваша версия сохранится в истории."
+                     + (skipped > 0 ? " Не распознано: \(UIFormat.count(skipped, "страница", "страницы", "страниц")) — они не попадут в конспект." : ""))
+            case .skipUnrecognized(let n):
+                Text("Не распознано: \(UIFormat.count(n, "страница", "страницы", "страниц")). Они не попадут в конспект.")
             }
         }
     }
@@ -279,7 +283,7 @@ struct NotesView: View {
         if !force {
             let missing = assembly.readiness(lecture).input
             let skipped = missing.unrecognizedNotes + missing.unrecognizedSlides
-            if info?.manuallyEdited == true { confirm = .overwriteManual; return }
+            if info?.manuallyEdited == true { confirm = .overwriteManual(skipped: skipped); return }
             if skipped > 0 { confirm = .skipUnrecognized(skipped); return }
         }
         editing = false
