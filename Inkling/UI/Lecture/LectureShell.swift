@@ -79,7 +79,7 @@ enum LecturePrimaryAction: Equatable {
 
     var title: String {
         switch self {
-        case .recognize(let pages): "Распознать (\(pages.count))"
+        case .recognize(let pages): "Распознать \(UIFormat.count(pages.count, "страницу", "страницы", "страниц"))"
         case .assemble(let rebuild): rebuild ? "Пересобрать конспект" : "Собрать конспект"
         case .prepareStudy(let rebuild): rebuild ? "Подготовить заново" : "Подготовить материалы"
         }

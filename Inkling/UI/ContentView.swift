@@ -90,7 +90,7 @@ struct ContentView: View {
                  : "В PDF нет текстового слоя, обычно так выглядит скан тетради.")
         }
         .alert("Ошибка", isPresented: errorBinding) {
-            Button("OK") { library.errorMessage = nil }
+            Button("ОК") { library.errorMessage = nil }
         } message: {
             Text(library.errorMessage ?? "")
         }
