@@ -2,8 +2,10 @@ import CoreServices
 import Foundation
 
 /// Следит за папкой хранения (включая вложенные) через FSEvents и сообщает об изменениях
-/// на главном потоке, с задержкой, чтобы пачка событий давала один вызов.
-final class DirectoryWatcher: @unchecked Sendable {
+/// на главном потоке, с задержкой, чтобы пачка событий давала один вызов. Целиком на главном акторе: события
+/// приходят в главную очередь, а `stream` меняется только там — компилятор это проверяет (раньше `@unchecked Sendable`).
+@MainActor
+final class DirectoryWatcher {
     private var stream: FSEventStreamRef?
     private let onChange: @MainActor () -> Void
 
@@ -33,5 +35,5 @@ final class DirectoryWatcher: @unchecked Sendable {
         self.stream = nil
     }
 
-    deinit { stop() }
+    isolated deinit { stop() }
 }
