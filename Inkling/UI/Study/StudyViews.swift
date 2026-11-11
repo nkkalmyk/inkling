@@ -293,9 +293,15 @@ struct QuestionsView: View {
                     VStack(alignment: .leading, spacing: Spacing.xxs) {
                         Text(MathText.preview(question.question))
                             .lineLimit(2)
-                        Text("\(question.type.title) · \(question.difficulty.title)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: Spacing.xxs) {
+                            // Пометка видна не только прозрачностью: значок и подпись для VoiceOver.
+                            if flagged {
+                                Image(systemName: "flag.fill").accessibilityLabel("Помечен как ошибочный")
+                            }
+                            Text("\(question.type.title) · \(question.difficulty.title)")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, Spacing.xxs)
                     .opacity(flagged ? 0.5 : 1)
