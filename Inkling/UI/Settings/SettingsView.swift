@@ -429,7 +429,7 @@ private struct LiteratureSettings: View {
                     Button(literature.isIndexing ? "Остановить" : "Обновить индекс") {
                         literature.isIndexing ? literature.cancel() : literature.startIndexing()
                     }
-                    Button("Очистить индекс", role: .destructive) { literature.clearIndex() }
+                    Button("Очистить индекс", role: .destructive) { Task { await literature.clearIndex() } }
                         .disabled(literature.isIndexing)
                 }
                 if let progress = literature.progress {
