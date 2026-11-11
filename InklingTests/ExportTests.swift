@@ -72,6 +72,19 @@ struct PDFExportTests {
             try? FileManager.default.copyItem(at: url, to: URL(fileURLWithPath: out))
         }
     }
+
+    /// Регресс A18 (аудит 2026-11): прежний PDF удалялся до печати нового. Теперь печать идёт во временный файл,
+    /// повторный экспорт заменяет файл, временных файлов в папке не остаётся.
+    @Test func reexportReplacesFileAndLeavesNoTemporaries() async throws {
+        let dir = try TempDir()
+        let url = dir.url.appendingPathComponent("konspekt.pdf")
+        try Data("старый".utf8).write(to: url)
+        try await PDFExporter().export(markdown: "# Первая\n\nТекст.", title: "Т", to: url)
+        try await PDFExporter().export(markdown: "# Вторая версия\n\nТекст.", title: "Т", to: url)
+        let text = try #require(PDFDocument(url: url)?.page(at: 0)?.string)
+        #expect(text.contains("Вторая версия"))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.url.path) == ["konspekt.pdf"])
+    }
 }
 
 @Suite("Куда сохраняется PDF")

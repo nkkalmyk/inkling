@@ -52,14 +52,14 @@ final class SubjectExportCenter {
         task = Task {
             defer { run = nil; task = nil }
             do {
-                let (parts, skipped) = await Self.read(ordered)
+                var (parts, skipped) = await Self.read(ordered)
                 guard !parts.isEmpty else {
                     library.errorMessage = "В предмете «\(subject.name)» нет лекций с собранным конспектом."
                     return
                 }
                 run?.total = parts.count
                 switch kind {
-                case .pdf: try await exportPDF(parts, subject: subject.name, to: url)
+                case .pdf: skipped += try await exportPDF(parts, subject: subject.name, to: url)
                 case .html: try await exportHTML(parts, subject: subject.name, to: url)
                 }
                 result = Result(subject: subject.name, url: url, skipped: skipped)
@@ -115,20 +115,31 @@ final class SubjectExportCenter {
 
     /// Каждая лекция печатается отдельно (во временную папку), затем файлы склеиваются: одно большое окно печати
     /// на десятки лекций держало бы в памяти всю вёрстку сразу.
-    private func exportPDF(_ parts: [Part], subject: String, to url: URL) async throws {
+    /// Лекция, которую не удалось напечатать (например, рендер не уложился в таймаут), пропускается и попадает в список
+    /// пропущенных, а не обрывает экспорт всего предмета. Возвращает темы таких лекций.
+    private func exportPDF(_ parts: [Part], subject: String, to url: URL) async throws -> [String] {
         let temp = FileManager.default.temporaryDirectory.appendingPathComponent("Inkling-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: temp) }
         var files: [(title: String, url: URL)] = []
+        var failed: [String] = []
+        var firstError: Error?
         for (index, part) in parts.enumerated() {
             try Task.checkCancellation()
             let file = temp.appendingPathComponent("\(index + 1).pdf")
-            try await PDFExporter().export(markdown: part.markdown, title: part.lecture.meta.topic,
-                                           heading: heading(part.lecture), to: file)
-            files.append((part.lecture.meta.topic, file))
+            do {
+                try await PDFExporter().export(markdown: part.markdown, title: part.lecture.meta.topic,
+                                               heading: heading(part.lecture), to: file)
+                files.append((part.lecture.meta.topic, file))
+            } catch {
+                failed.append("\(part.lecture.meta.topic) (не удалось напечатать)")
+                firstError = firstError ?? error
+            }
             run?.done = index + 1
         }
+        if files.isEmpty, let firstError { throw firstError }
         try PDFMerger.merge(files, title: "\(subject) — все лекции", to: url)
+        return failed
     }
 }
 

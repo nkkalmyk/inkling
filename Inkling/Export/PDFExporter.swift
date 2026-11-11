@@ -85,31 +85,38 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
         info.verticalPagination = .automatic
         info.isHorizontallyCentered = false
         info.jobDisposition = .save
-        info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = url
+        // Печать идёт во временный файл рядом: прежний PDF заменяется только готовым новым, а при сбое остаётся.
+        let printed = url.deletingLastPathComponent().appending(path: ".\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: printed) }
+        info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = printed
         let operation = view.printOperation(with: info)
         operation.showsPrintPanel = false
         operation.showsProgressPanel = false
         operation.jobTitle = title
-        try? FileManager.default.removeItem(at: url)
         // WKWebView печатает асинхронно: синхронный run() зависает. Ждём завершения через делегат.
         let ok = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            printed.set(continuation)
+            printDone.set(continuation)
             operation.runModal(for: window, delegate: self,
                                didRun: #selector(printOperationDidRun(_:success:contextInfo:)), contextInfo: nil)
         }
-        guard ok, FileManager.default.fileExists(atPath: url.path) else { throw PDFExportError.printFailed }
+        guard ok, FileManager.default.fileExists(atPath: printed.path) else { throw PDFExportError.printFailed }
         let label = heading.map { "\($0.subject) · \($0.topic)" } ?? title
         // Места ссылок ищутся в напечатанном файле, а ставятся при перерисовке с колонтитулами.
-        let navigation = outline.flatMap { PDFNavigation.plan($0, for: url) }
-        try PDFFooter.stamp(url, label: label, title: title, navigation: navigation)
+        let navigation = outline.flatMap { PDFNavigation.plan($0, for: printed) }
+        try PDFFooter.stamp(printed, label: label, title: title, navigation: navigation)
+        if FileManager.default.fileExists(atPath: url.path) {
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: printed)
+        } else {
+            try FileManager.default.moveItem(at: printed, to: url)
+        }
     }
 
-    private nonisolated let printed = OneShot()
+    private nonisolated let printDone = OneShot()
 
     /// AppKit вызывает это в фоновом потоке, поэтому метод не привязан к главному актору.
     @objc private nonisolated func printOperationDidRun(_ operation: NSPrintOperation, success: Bool,
                                                         contextInfo: UnsafeMutableRawPointer?) {
-        printed.resume(success)
+        printDone.resume(success)
     }
 
     /// Продолжение, которое можно безопасно возобновить из любого потока, ровно один раз.
