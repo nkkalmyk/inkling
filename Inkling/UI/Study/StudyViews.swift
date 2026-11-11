@@ -49,7 +49,7 @@ struct StudyContainer<Content: View>: View {
                     Divider()
                 } else if materials != nil, study.knownStale(lecture) {
                     InlineNotice(.info, "Устарело: конспект изменился после подготовки материалов.",
-                                 systemImage: "clock.arrow.circlepath") {
+                                 systemImage: "exclamationmark.arrow.circlepath") {
                         Button("Подготовить заново", action: regenerate)
                     }
                     .transition(.notice(reduceMotion: reduceMotion))

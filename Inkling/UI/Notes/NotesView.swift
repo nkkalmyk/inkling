@@ -59,7 +59,7 @@ struct NotesView: View {
                     Divider()
                 } else if readiness?.isStale == true {
                     InlineNotice(.info, "Устарело: тексты или порядок страниц изменились после сборки.",
-                                 systemImage: "clock.arrow.circlepath") {
+                                 systemImage: "exclamationmark.arrow.circlepath") {
                         Button("Пересобрать") { start(force: false) }
                             .disabled(recognition.isBusy(lecture.id))
                     }
