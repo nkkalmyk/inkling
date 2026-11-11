@@ -182,7 +182,7 @@ final class RecognitionCenter {
                 try save(response, job: job, imageHash: imageHash)
                 finish(job, failed: false)
             } catch {
-                fail(job, .invalidOutput("Не удалось сохранить текст: \(error.localizedDescription)"))
+                fail(job, .storageFailed(error.localizedDescription))
             }
         case .failure(.cancelled):
             states[job.pageID] = nil

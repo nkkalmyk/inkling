@@ -77,6 +77,15 @@ enum AIError: Error, Equatable, Sendable {
     case geminiNotAuthenticated(String)
     /// Gemini: выбранной модели нет (404).
     case geminiModelUnavailable(model: String)
+    /// Ответ модели получен, но не записан (нет места, iCloud недоступен, лекцию удалили). Не повторяется:
+    /// новый вызов модели тут не поможет.
+    case storageFailed(String)
+
+    /// Ошибки записи результата отдельно от ошибок модели: раньше любая ошибка записи выглядела как
+    /// «модель вернула пустой ответ», и настоящая причина пряталась в подробностях (аудит 2026-11).
+    static func storing<T>(_ body: () throws -> T) throws(AIError) -> T {
+        do { return try body() } catch let error as AIError { throw error } catch { throw .storageFailed(error.localizedDescription) }
+    }
 
     /// Повтор на том же движке имеет смысл (SPEC, раздел 2.6).
     var isRetryable: Bool {
@@ -126,6 +135,9 @@ enum AIError: Error, Equatable, Sendable {
             return "Gemini не принял ключ или отказал в доступе. Создайте ключ на aistudio.google.com/apikey и вставьте его в настройках (вкладка «Движок»)."
         case .geminiModelUnavailable(let model):
             return "Модель Gemini «\(model)» недоступна для вашего ключа. Выберите другую в настройках (вкладка «Движок»)."
+        case .storageFailed(let reason):
+            let reason = reason.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+            return "Ответ модели получен, но не сохранён (\(reason)). Проверьте место на диске и доступ к папке хранения."
         }
     }
 
@@ -133,7 +145,7 @@ enum AIError: Error, Equatable, Sendable {
     var details: String {
         switch self {
         case .binaryNotFound(let s), .notAuthenticated(let s), .invalidOutput(let s), .ollamaUnavailable(let s),
-             .codexUnavailable(let s), .codexNotAuthenticated(let s), .geminiNotAuthenticated(let s): s
+             .codexUnavailable(let s), .codexNotAuthenticated(let s), .geminiNotAuthenticated(let s), .storageFailed(let s): s
         case .modelNotInstalled(let model), .geminiModelUnavailable(let model): model
         case .rateLimited(_, let s): s
         case .processFailed(_, let stderr): stderr

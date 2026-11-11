@@ -537,6 +537,21 @@ struct AssemblyCenterTests {
         #expect(env.konspekt.read() == "ok\n")
     }
 
+    /// Регресс A5 (аудит 2026-11): ошибка записи показывалась как «модель вернула пустой ответ».
+    @Test func storageFailureIsReportedAsSuch() async throws {
+        let env = try Env(pages: ["Страница"])
+        let folder = env.lecture.folder
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+        let center = env.center(FakeEngine([.success("Конспект")]))
+        center.assemble(env.lectureID)
+        try await waitIdle(center, env.lectureID)
+        let error = try #require(center.errors[env.lectureID])
+        guard case .storageFailed = error else { Issue.record("Ожидалась ошибка записи, получено \(error)"); return }
+        #expect(error.userMessage.hasPrefix("Ответ модели получен, но не сохранён"))
+        #expect(!error.isRetryable)
+    }
+
     @Test func failureKeepsPreviousKonspekt() async throws {
         let env = try Env(pages: ["Страница"])
         let first = env.center(FakeEngine([.success("Первая версия")]))

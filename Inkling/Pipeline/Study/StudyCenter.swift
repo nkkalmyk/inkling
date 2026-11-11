@@ -113,7 +113,7 @@ final class StudyCenter {
             do {
                 let (study, response) = try await request(prompt: prompt, konspektChars: konspekt.count, router: router,
                                                           lectureID: lectureID)
-                try save(study, response: response, inputHash: hash, lectureID: lectureID)
+                try AIError.storing { try save(study, response: response, inputHash: hash, lectureID: lectureID) }
             } catch let error as AIError {
                 if error != .cancelled { errors[lectureID] = error }
             } catch {

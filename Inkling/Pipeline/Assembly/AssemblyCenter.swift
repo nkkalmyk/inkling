@@ -148,9 +148,11 @@ final class AssemblyCenter {
                     result = try await run(plan, input: input, subject: subject, topic: topic, prompts: prompts,
                                            router: router, lectureID: lectureID)
                 }
-                try save(result.text, response: result.response, plan: plan, input: input,
-                         style: studyPlan == nil ? .faithful : .study, parts: studyPlan?.parts.count ?? plan.parts.count,
-                         literature: passages.isEmpty ? nil : LiteratureRetrieval.references(passages), lectureID: lectureID)
+                try AIError.storing {
+                    try save(result.text, response: result.response, plan: plan, input: input,
+                             style: studyPlan == nil ? .faithful : .study, parts: studyPlan?.parts.count ?? plan.parts.count,
+                             literature: passages.isEmpty ? nil : LiteratureRetrieval.references(passages), lectureID: lectureID)
+                }
             } catch let error as AIError {
                 if error != .cancelled { errors[lectureID] = error }
             } catch {
