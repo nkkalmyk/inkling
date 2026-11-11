@@ -168,7 +168,7 @@ enum AIError: Error, Equatable, Sendable {
         }
     }
 
-    private static let timeFormat = Date.FormatStyle(date: .omitted, time: .shortened).locale(Locale(identifier: "ru_RU"))
+    private static let timeFormat = Date.FormatStyle(date: .omitted, time: .shortened).locale(UIFormat.locale)
 }
 
 /// Результат «Проверить подключение».

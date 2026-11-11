@@ -79,6 +79,6 @@ struct SidebarView: View {
 extension CalendarDate {
     /// «14 октября 2026 г.»
     var formatted: String {
-        date().formatted(.dateTime.day().month(.wide).year().locale(Locale(identifier: "ru_RU")))
+        date().formatted(.dateTime.day().month(.wide).year().locale(UIFormat.locale))
     }
 }

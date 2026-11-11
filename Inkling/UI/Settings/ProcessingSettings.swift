@@ -17,7 +17,7 @@ struct ProcessingSettings: View {
             .pickerStyle(.segmented)
             Stepper(value: $settings.chunkThresholdChars, in: 10_000...200_000, step: 5_000) {
                 LabeledContent("Сборка по частям, если текста больше",
-                               value: "\(settings.chunkThresholdChars.formatted(.number.locale(Locale(identifier: "ru_RU")))) симв.")
+                               value: "\(settings.chunkThresholdChars.formatted(.number.locale(UIFormat.locale))) симв.")
             }
             Toggle("Готовить учебные материалы сразу после сборки", isOn: $settings.autoStudyMaterials)
             Toggle("Сохранять временные папки при ошибке (для отладки)", isOn: $settings.keepTempFoldersOnError)

@@ -70,7 +70,7 @@ struct InklingApp: App {
                 .environment(konspektCheck)
                 .environment(konspektSearch)
                 .environment(subjectExport)
-                .environment(\.locale, Locale(identifier: "ru_RU"))
+                .environment(\.locale, UIFormat.locale)
                 .task {
                     appDelegate.library = library
                     if !Self.isRunningTests {
@@ -108,7 +108,7 @@ struct InklingApp: App {
                 .environment(engines)
                 .environment(library)
                 .environment(literature)
-                .environment(\.locale, Locale(identifier: "ru_RU"))
+                .environment(\.locale, UIFormat.locale)
         }
     }
 }

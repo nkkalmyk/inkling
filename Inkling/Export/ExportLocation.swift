@@ -23,7 +23,7 @@ enum ExportLocation {
 
     /// Папка предмета внутри «Конспекты»: название предмета с маленькой буквы («математический анализ»).
     static func subjectFolderName(_ subject: String) -> String {
-        FolderNaming.sanitize(subject).lowercased(with: Locale(identifier: "ru_RU"))
+        FolderNaming.sanitize(subject).lowercased(with: UIFormat.locale)
     }
 
     /// Путь PDF лекции: `Конспекты/<предмет>/<имя>.pdf`. Повторный экспорт той же лекции заменяет прежний файл.
