@@ -10,12 +10,12 @@
 по химии, математике и физике, собирает из них учебный конспект с формулами,
 связывает лекции между собой и готовит вопросы, тест и флеш-карточки.
 
-[![Скачать Inkling 1.0.0](https://img.shields.io/badge/Скачать-Inkling_1.0.0-F5B83D?style=for-the-badge&logo=apple&logoColor=white&labelColor=1C1C1E)](https://github.com/nkkalmyk/inkling/releases/latest)
+[![Скачать Inkling 1.1.0](https://img.shields.io/badge/Скачать-Inkling_1.1.0-F5B83D?style=for-the-badge&logo=apple&logoColor=white&labelColor=1C1C1E)](https://github.com/nkkalmyk/inkling/releases/latest)
 
 ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-111111?logo=apple&logoColor=white)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF)
-![Version](https://img.shields.io/badge/версия-1.0.0-F5B83D)
+![Version](https://img.shields.io/badge/версия-1.1.0-F5B83D)
 [![License: MIT](https://img.shields.io/badge/лицензия-MIT-555555)](LICENSE)
 <br>
 ![Claude Code](https://img.shields.io/badge/движок-Claude_Code-D97757)
