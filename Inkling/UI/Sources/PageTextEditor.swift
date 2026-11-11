@@ -5,6 +5,9 @@ import SwiftUI
 /// на какой доле высоты страницы (по номеру строки) находится место, чтобы приблизить фото.
 struct PageTextEditor: NSViewRepresentable {
     @Binding var text: String
+    /// Выключается, пока модель переписывает этот же файл (сборка, «Распознать заново») или файл не прочитался:
+    /// отложенное сохранение правки иначе легло бы поверх свежего результата или затёрло бы непрочитанный файл.
+    var isEditable = true
     var onIllegibleClick: (Double) -> Void = { _ in }
 
     static let illegible = "[неразборчиво]"
@@ -32,7 +35,9 @@ struct PageTextEditor: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
-        guard let textView = scroll.documentView as? NSTextView, textView.string != text else { return }
+        guard let textView = scroll.documentView as? NSTextView else { return }
+        if textView.isEditable != isEditable { textView.isEditable = isEditable }
+        guard textView.string != text else { return }
         textView.string = text
         context.coordinator.highlight(textView)
     }

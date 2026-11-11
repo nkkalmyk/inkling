@@ -30,6 +30,8 @@ private struct PageEditor: View {
     @State private var image: NSImage?
     @State private var zoom: ZoomableImageView.ZoomRequest?
     @State private var saveTask: Task<Void, Never>?
+    /// Текст страницы есть по описанию, но не прочитался: правка отключена, чтобы не затереть файл.
+    @State private var readFailed = false
     @State private var editsID = UUID()
     @State private var confirmRerecognize = false
     @State private var rerecognizeDetailed = false
@@ -283,10 +285,17 @@ private struct PageEditor: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            PageTextEditor(text: Binding(get: { text }, set: { newValue in
-                text = newValue
-                scheduleSave()
-            }), onIllegibleClick: { zoom = .init(relativeY: $0) })
+            VStack(spacing: 0) {
+                if readFailed {
+                    InlineNotice(.error, "Не удалось прочитать текст страницы. Правка отключена, чтобы не затереть его; "
+                                 + "если файл загружается из iCloud, подождите.", systemImage: "exclamationmark.triangle.fill")
+                    Divider()
+                }
+                PageTextEditor(text: Binding(get: { text }, set: { newValue in
+                    text = newValue
+                    scheduleSave()
+                }), isEditable: !readFailed && !isRunning, onIllegibleClick: { zoom = .init(relativeY: $0) })
+            }
         }
     }
 
@@ -308,18 +317,30 @@ private struct PageEditor: View {
     private func loadText() async {
         guard loadedRevision != revision || text.isEmpty else { return }
         let target = revision
-        let loaded = await Self.readText(PageTextStore(paths: paths), pageID: pageID, section: section)
+        let store = PageTextStore(paths: paths)
+        var loaded = await Self.readText(store, pageID: pageID, section: section)
+        // Файл мог ещё качаться из iCloud: пробуем снова, пока страница открыта.
+        var attempts = 0
+        while loaded == nil, info != nil, attempts < 40, !Task.isCancelled {
+            readFailed = true
+            attempts += 1
+            try? await Task.sleep(for: .seconds(3))
+            loaded = await Self.readText(store, pageID: pageID, section: section)
+        }
         guard !Task.isCancelled else { return }
+        readFailed = loaded == nil && info != nil
+        guard !readFailed else { return }
         loadedRevision = target
-        text = loaded
+        text = loaded ?? ""
     }
 
     @concurrent
-    private static func readText(_ store: PageTextStore, pageID: String, section: SourceSection) async -> String {
-        store.read(pageID, in: section) ?? ""
+    private static func readText(_ store: PageTextStore, pageID: String, section: SourceSection) async -> String? {
+        store.read(pageID, in: section)
     }
 
     private func scheduleSave() {
+        guard !readFailed else { return }
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(800))

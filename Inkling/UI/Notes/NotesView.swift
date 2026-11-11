@@ -10,6 +10,9 @@ struct NotesView: View {
     let lecture: LectureRecord
 
     @State private var editing = false
+    /// `konspekt.md` есть по описанию, но не прочитался (выгружен в iCloud без сети, нет доступа): правка отключена,
+    /// иначе набранный в пустом поле текст записался бы поверх настоящего конспекта.
+    @State private var readFailed = false
     @State private var text = ""
     @State private var loadedRevision: Int?
     @State private var saveTask: Task<Void, Never>?
@@ -63,6 +66,11 @@ struct NotesView: View {
                     Divider()
                 }
             }
+            if readFailed {
+                InlineNotice(.error, "Не удалось прочитать файл конспекта. Правка отключена, чтобы не затереть его; "
+                             + "если файл загружается из iCloud, подождите.", systemImage: "exclamationmark.triangle.fill")
+                Divider()
+            }
             if info == nil && text.isEmpty {
                 emptyState(readiness)
             } else {
@@ -71,7 +79,8 @@ struct NotesView: View {
                 // Просмотр и правка сменяют друг друга растворением, а не скачком.
                 ZStack {
                     if editing {
-                        PageTextEditor(text: Binding(get: { text }, set: { text = $0; scheduleSave() }))
+                        PageTextEditor(text: Binding(get: { text }, set: { text = $0; scheduleSave() }),
+                                       isEditable: !readFailed && !assembly.isRunning(lecture.id))
                             .transition(.opacity)
                     } else {
                         NotesWebView(markdown: text, neighbors: library.neighbors(of: lecture.id),
@@ -286,19 +295,30 @@ struct NotesView: View {
     private func load() async {
         guard loadedRevision != revision || text.isEmpty || !editing else { return }
         let target = revision
-        let loaded = await Self.read(store)
+        var loaded = await Self.read(store)
+        // Файл мог ещё качаться из iCloud: пробуем снова, пока вкладка открыта (задача отменяется при уходе).
+        var attempts = 0
+        while loaded == nil, lecture.meta.konspekt != nil, attempts < 40, !Task.isCancelled {
+            readFailed = true
+            attempts += 1
+            try? await Task.sleep(for: .seconds(3))
+            loaded = await Self.read(store)
+        }
         guard !Task.isCancelled, loadedRevision != target || text.isEmpty || !editing else { return }
+        readFailed = loaded == nil && lecture.meta.konspekt != nil
+        guard !readFailed else { return }
         loadedRevision = target
-        text = loaded
+        text = loaded ?? ""
         loadedFor = lecture.id
     }
 
     @concurrent
-    private static func read(_ store: KonspektStore) async -> String {
-        store.read()?.trimmingCharacters(in: .newlines) ?? ""
+    private static func read(_ store: KonspektStore) async -> String? {
+        store.read()?.trimmingCharacters(in: .newlines)
     }
 
     private func scheduleSave() {
+        guard !readFailed else { return }
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(800))
