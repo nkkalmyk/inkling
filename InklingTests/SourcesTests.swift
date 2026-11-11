@@ -577,3 +577,24 @@ struct MoveLectureTests {
         #expect(!library.moveLecture(id, toSubject: "Математический анализ"))
     }
 }
+
+/// C16 (аудит 2026-11): перестановку страниц можно отменить и повторить.
+@Suite("Отмена перестановки страниц")
+@MainActor
+struct PageOrderUndoTests {
+    @Test func undoAndRedoRestoreOrder() throws {
+        let env = try RecognitionCenterTests.Env(photos: 3)
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        let original = env.lecture.meta.pageOrder(in: .notes)
+        undo.beginUndoGrouping()
+        env.library.movePages([original[2]], before: original[0], in: .notes, lectureID: env.lectureID, undoManager: undo)
+        undo.endUndoGrouping()
+        let moved = [original[2], original[0], original[1]]
+        #expect(env.lecture.meta.pageOrder(in: .notes) == moved)
+        undo.undo()
+        #expect(env.lecture.meta.pageOrder(in: .notes) == original)
+        undo.redo()
+        #expect(env.lecture.meta.pageOrder(in: .notes) == moved)
+    }
+}

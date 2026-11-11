@@ -187,8 +187,23 @@ extension Library {
 
     // MARK: Страницы
 
-    func movePages(_ ids: [String], before target: String?, in section: SourceSection, lectureID: UUID) {
+    /// Перестановка страниц. С `undoManager` её можно отменить (⌘Z) и повторить (C16, аудит 2026-11).
+    func movePages(_ ids: [String], before target: String?, in section: SourceSection, lectureID: UUID,
+                   undoManager: UndoManager? = nil) {
+        guard let previous = lecture(id: lectureID)?.meta.pageOrder(in: section) else { return }
         mutate(lectureID) { $0.movePages(ids, before: target, in: section) }
+        registerOrderUndo(previous, in: section, lectureID: lectureID, undoManager: undoManager)
+    }
+
+    private func registerOrderUndo(_ order: [String], in section: SourceSection, lectureID: UUID, undoManager: UndoManager?) {
+        guard let undoManager, let current = lecture(id: lectureID)?.meta.pageOrder(in: section), current != order else { return }
+        undoManager.registerUndo(withTarget: self) { library in
+            MainActor.assumeIsolated {
+                library.mutate(lectureID) { $0.restoreOrder(order, in: section) }
+                library.registerOrderUndo(current, in: section, lectureID: lectureID, undoManager: undoManager)
+            }
+        }
+        undoManager.setActionName("Перестановка страниц")
     }
 
     /// Удаляет страницы обоих разделов.

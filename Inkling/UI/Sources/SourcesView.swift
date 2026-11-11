@@ -93,6 +93,7 @@ struct SourcesView: View {
 
 private struct ThumbnailStrip: View {
     @Environment(Library.self) private var library
+    @Environment(\.undoManager) private var undoManager
     let lecture: LectureRecord
     @Binding var selection: Set<String>
     @Binding var activeSection: SourceSection
@@ -171,7 +172,7 @@ private struct ThumbnailStrip: View {
         let order = pageIDs(section)
         let moved = offsets.map { order[$0] }
         let before = order[destination...].first { !moved.contains($0) }
-        library.movePages(moved, before: before, in: section, lectureID: lecture.id)
+        library.movePages(moved, before: before, in: section, lectureID: lecture.id, undoManager: undoManager)
     }
 
     /// Файлы из Finder добавляются в конец раздела, как при «Добавить файлы…».
