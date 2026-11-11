@@ -255,6 +255,9 @@ final class RecognitionCenter {
                 states[other.pageID] = .failed(error)
                 batches[other.lectureID]?.failed += 1
             }
+            // Задачи других лекций уже не пройдут через `workLoop`, где закрывается прогресс: закрываем здесь,
+            // иначе лекция навсегда остаётся «распознаётся», а «Собрать» выключена.
+            for lectureID in Set(stopped.map(\.lectureID)) where lectureID != job.lectureID { settle(lectureID) }
         case .processFailed where error.isModelUnavailable:
             blockingError = error
         default:
