@@ -195,8 +195,7 @@ struct ClaudeCodeEngine: AIEngine {
         }
 
         do {
-            let response = try await run(AIRequest(prompt: "Ответь одним словом: готово.",
-                                                   systemPrompt: "Отвечай очень кратко.", timeout: 90))
+            let response = try await run(.connectionProbe(timeout: 90))
             report.model = response.model
             report.duration = response.duration
         } catch {

@@ -247,8 +247,7 @@ struct OllamaEngine: AIEngine {
             guard installed.contains(wanted) || installed.contains(config.model) else {
                 throw AIError.modelNotInstalled(model: config.model)
             }
-            let response = try await run(AIRequest(prompt: "Ответь одним словом: готово.",
-                                                   systemPrompt: "Отвечай очень кратко.", timeout: 60))
+            let response = try await run(.connectionProbe(timeout: 60))
             report.model = response.model
             report.duration = response.duration
         } catch let error as AIError {

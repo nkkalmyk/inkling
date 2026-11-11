@@ -46,6 +46,13 @@ struct AIRequest: Sendable {
     var cloudOnly = false
 }
 
+extension AIRequest {
+    /// Короткий запрос «Проверить подключение» в настройках — один для всех движков.
+    static func connectionProbe(timeout: TimeInterval) -> AIRequest {
+        AIRequest(prompt: "Ответь одним словом: готово.", systemPrompt: "Отвечай очень кратко.", timeout: timeout)
+    }
+}
+
 struct AIResponse: Sendable, Equatable {
     var text: String
     /// JSON-ответ (для `.json`).
