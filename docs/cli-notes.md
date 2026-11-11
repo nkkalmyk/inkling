@@ -76,6 +76,7 @@ claude -p "<промпт>" \
 - `rate_limit_error`, `rate limited`, `api_error_status: 429`
 - время сброса: `resets at <время>` или `resets <время>` (например `resets 3pm`, `resets at 15:00`); формат времени разбирать мягко, при неудаче `resetAt = nil`.
 Список держим в одном месте (массив шаблонов) и покрываем тестами; при первом реальном лимите сохранить пример в `docs/cli-experiments/raw/`.
+Голые `429` и `limit reached` не считаются лимитом (2026-11-11): они ловили число в пути к файлу и лимит контекста или ходов. `429` — только рядом с `status`/`error`/`code`/`http` или с `Too Many Requests`/`RESOURCE_EXHAUSTED`, `limit reached` — только после `usage`, `rate`, `request`, `session`, `weekly`, `daily`, `hourly`.
 
 ### Модели
 `--model` принимает алиасы (`sonnet`, `opus`, `fable`) и полные имена. С `sonnet` фактически отвечает `claude-sonnet-5-5` (видно в `modelUsage`). По умолчанию для распознавания берём `sonnet`.

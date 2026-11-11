@@ -176,6 +176,8 @@ struct RateLimitTests {
         "Error: 429 Too Many Requests",
         "RESOURCE_EXHAUSTED: Quota exceeded for quota metric",
         "Rate limited, please slow down",
+        "api_error_status: 429",
+        "Weekly limit reached · resets Oct 15, 3pm",
     ])
     func detects(_ text: String) {
         #expect(RateLimitDetector.isRateLimited(text))
@@ -186,6 +188,10 @@ struct RateLimitTests {
         "There's an issue with the selected model",
         "Ответ модели: лимит функции равен 1",
         "error 4290 in module",
+        // Регресс A22 (аудит 2026-11): не лимит подписки.
+        "Context limit reached, please start a new conversation",
+        "Max turns limit reached",
+        "cannot open /tmp/429/photo.jpg",
     ])
     func ignores(_ text: String) {
         #expect(!RateLimitDetector.isRateLimited(text))
