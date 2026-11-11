@@ -211,10 +211,11 @@ struct RecognitionCenterTests {
 
         let requests = await engine.requests
         #expect(requests.count == 2)
-        #expect(requests[0].prompt.contains("Правила для химии"))
-        #expect(requests[0].prompt.hasSuffix("Изображение: ./\(env.pages[0]).jpg"))
-        #expect(requests[0].images.map(\.lastPathComponent) == ["\(env.pages[0]).jpg"])
-        #expect(requests[0].timeout == 30)
+        // Страницы распознаются параллельно: порядок запросов не задан, ищем запрос первой страницы.
+        let first = try #require(requests.first { $0.images.map(\.lastPathComponent) == ["\(env.pages[0]).jpg"] })
+        #expect(first.prompt.contains("Правила для химии"))
+        #expect(first.prompt.hasSuffix("Изображение: ./\(env.pages[0]).jpg"))
+        #expect(first.timeout == 30)
 
         for page in env.lecture.meta.notes {
             let text = try #require(page.text)
