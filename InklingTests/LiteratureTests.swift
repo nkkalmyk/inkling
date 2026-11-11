@@ -278,6 +278,18 @@ struct LiteratureIntegrityTests {
         #expect(try await store.search(terms: ["энтроп"], subject: nil, limit: 3).isEmpty)
     }
 
+    /// Повторная запись страницы заменяет её и в полнотекстовом индексе, без дублей (D5.1: удаление только для
+    /// страниц, которые уже были).
+    @Test func rewritingPageReplacesFullTextRow() async throws {
+        let store = try LiteratureStore.inMemory()
+        let id = try await store.upsertBook(path: "/b.pdf", title: "Б", subject: "С", size: 1, mtime: 1, pages: 1)
+        try await store.add(pages: [(1, "энтальпия реакции", "ocr")], book: id)
+        try await store.add(pages: [(1, "энтропия системы", "layer")], book: id)
+        #expect(try await store.totalPages() == 1)
+        #expect(try await store.documentFrequency("энтальп") == 0)
+        #expect(try await store.search(terms: ["энтроп"], subject: nil, limit: 5).count == 1)
+    }
+
     @Test func clearEmptiesFullTextIndex() async throws {
         let store = try LiteratureStore.inMemory()
         let id = try await store.upsertBook(path: "/b.pdf", title: "Б", subject: "С", size: 1, mtime: 1, pages: 1)

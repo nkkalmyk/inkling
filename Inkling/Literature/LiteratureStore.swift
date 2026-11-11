@@ -159,9 +159,16 @@ actor LiteratureStore {
             try database.run("SELECT 1 FROM books WHERE id = ?", [.int(book)]) { _ in exists = true }
             guard exists else { return }
             for page in pages {
+                // `book` и `page` в FTS не индексированы: удаление по ним — полный просмотр таблицы, и запись индекса
+                // становилась квадратичной. Почти всегда страницы ещё нет — тогда и удалять нечего (аудит 2026-11).
+                var existed = false
+                try database.run("SELECT 1 FROM pages WHERE book = ? AND page = ?",
+                                 [.int(book), .int(Int64(page.number))]) { _ in existed = true }
                 try database.run("INSERT OR REPLACE INTO pages(book, page, text, method) VALUES(?, ?, ?, ?)",
                                  [.int(book), .int(Int64(page.number)), .text(page.text), .text(page.method)])
-                try database.run("DELETE FROM fts WHERE book = ? AND page = ?", [.int(book), .int(Int64(page.number))])
+                if existed {
+                    try database.run("DELETE FROM fts WHERE book = ? AND page = ?", [.int(book), .int(Int64(page.number))])
+                }
                 try database.run("INSERT INTO fts(norm, book, page) VALUES(?, ?, ?)",
                                  [.text(RussianNormalizer.indexText(page.text)), .int(book), .int(Int64(page.number))])
             }
