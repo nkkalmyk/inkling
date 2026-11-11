@@ -113,7 +113,9 @@ struct ArtifactInfo: Codable, Equatable, Sendable {
     var literature: [String]?
 }
 
-/// Как был дополнен конспект (`Enrichment`): сколько блоков осталось и сколько убрал проверяющий проход.
+/// Как был дополнен конспект прежней функцией «Дополнить» (`Enrichment`): сколько блоков осталось и сколько убрал
+/// проверяющий проход. Новые записи не появляются; поля остаются, чтобы читать и не терять их в старых `meta.json`
+/// (`engine`, `model`, `verified` приложение уже не показывает).
 struct EnrichmentInfo: Codable, Equatable, Sendable {
     var createdAt: Date
     var engine: EngineID?
