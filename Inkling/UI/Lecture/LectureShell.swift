@@ -58,6 +58,8 @@ struct LectureRequests: Equatable {
     var assemble = false
     var prepareStudy = false
     var reviewCards = false
+    /// «Файл → Добавить файлы…»: панель выбора открывает «Источники».
+    var addFiles = false
 }
 
 extension EnvironmentValues {
@@ -186,6 +188,10 @@ struct LectureCommands {
     var nextLecture: (() -> Void)?
     var edit: () -> Void
     var reveal: () -> Void
+    var addFiles: () -> Void
+    var delete: () -> Void
+    /// Остановить распознавание, сборку и подготовку материалов лекции; `nil`, если ничего не идёт.
+    var cancelWork: (() -> Void)?
 }
 
 /// Какая кнопка тулбара лекции яркая: следующий шаг или «PDF» (SPEC, раздел 13). Яркая всегда одна.
@@ -276,6 +282,23 @@ struct LectureMenuCommands: View {
             .disabled(commands == nil)
         Button("Показать в Finder") { commands?.reveal() }
             .keyboardShortcut("r", modifiers: [.command, .shift])
+            .disabled(commands == nil)
+        Divider()
+        Button("Отменить работу") { commands?.cancelWork?() }
+            .keyboardShortcut(".", modifiers: .command)
+            .disabled(commands?.cancelWork == nil)
+        Button("Удалить лекцию…") { commands?.delete() }
+            .disabled(commands == nil)
+    }
+}
+
+/// «Файл → Добавить файлы…» (⌘O): фото и PDF в открытый раздел «Источников» лекции.
+struct AddFilesCommand: View {
+    @FocusedValue(\.lectureCommands) private var commands
+
+    var body: some View {
+        Button("Добавить файлы…") { commands?.addFiles() }
+            .keyboardShortcut("o", modifiers: .command)
             .disabled(commands == nil)
     }
 }

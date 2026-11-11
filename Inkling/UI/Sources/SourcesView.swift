@@ -9,6 +9,7 @@ struct SourcesView: View {
     let lecture: LectureRecord
 
     @Environment(\.isActiveTab) private var isActive
+    @Environment(\.lectureRequests) private var requests
     @State private var selection: Set<String> = []
     @State private var activeSection: SourceSection = .notes
     /// Ширина ленты миниатюр, общая для всех лекций.
@@ -35,6 +36,11 @@ struct SourcesView: View {
             library.importProviders(providers, into: activeSection, lectureID: lecture.id)
         }
         .onChange(of: isActive, initial: true) { isActive ? updateTarget() : clearTarget() }
+        .task(id: requests.wrappedValue.addFiles && isActive) {
+            guard requests.wrappedValue.addFiles, isActive else { return }
+            requests.wrappedValue.addFiles = false
+            addFiles(to: activeSection)
+        }
         .onChange(of: activeSection) { if isActive { updateTarget() } }
         .onDisappear(perform: clearTarget)
         .onChange(of: selection) {

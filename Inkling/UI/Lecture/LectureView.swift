@@ -260,6 +260,14 @@ struct LectureView: View {
             previousLecture: neighbors.previous.map { link in { library.openLecture(link.id, tab: tab) } },
             nextLecture: neighbors.next.map { link in { library.openLecture(link.id, tab: tab) } },
             edit: { library.sheet = .editLecture(lecture.id) },
-            reveal: { library.revealInFinder(lecture.folder) })
+            reveal: { library.revealInFinder(lecture.folder) },
+            addFiles: { tab = .sources; requests.addFiles = true },
+            delete: { library.requestDeleteLecture(lecture.id) },
+            cancelWork: recognition.isBusy(lecture.id) || assembly.isRunning(lecture.id) || study.isRunning(lecture.id)
+                ? { [id = lecture.id] in
+                    recognition.cancel(lectureID: id)
+                    assembly.cancel(id)
+                    study.cancel(id)
+                } : nil)
     }
 }

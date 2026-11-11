@@ -380,6 +380,7 @@ private struct LiteratureSettings: View {
     @Environment(Library.self) private var library
     @Environment(LiteratureCenter.self) private var literature
     @State private var newCollection = ""
+    @State private var confirmClear = false
 
     var body: some View {
         @Bindable var settings = settings
@@ -429,8 +430,15 @@ private struct LiteratureSettings: View {
                     Button(literature.isIndexing ? "Остановить" : "Обновить индекс") {
                         literature.isIndexing ? literature.cancel() : literature.startIndexing()
                     }
-                    Button("Очистить индекс", role: .destructive) { Task { await literature.clearIndex() } }
+                    Button("Очистить индекс…", role: .destructive) { confirmClear = true }
                         .disabled(literature.isIndexing)
+                        .help(literature.isIndexing ? "Сначала остановите индексацию" : "Удалить индекс; книги останутся на диске")
+                        .confirmationDialog("Очистить индекс учебников?", isPresented: $confirmClear, titleVisibility: .visible) {
+                            Button("Очистить", role: .destructive) { Task { await literature.clearIndex() } }
+                            Button("Отмена", role: .cancel) {}
+                        } message: {
+                            Text("Книги останутся на диске и в коллекциях, но распознанный текст пропадёт: индекс придётся строить заново, сканы распознаются несколько минут.")
+                        }
                 }
                 if let progress = literature.progress {
                     VStack(alignment: .leading, spacing: Spacing.xxs) {
@@ -459,12 +467,10 @@ private struct LiteratureSettings: View {
                 Text(status(info)).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Button {
+            IconButton("Убрать книгу", systemImage: "minus.circle", help: "Убрать книгу из коллекции и индекса") {
                 settings.literatureCollections[collection]?.removeAll { $0 == path }
                 literature.removeFromIndex(path: path)
-            } label: { Image(systemName: "minus.circle") }
-                .buttonStyle(.borderless)
-                .help("Убрать книгу из коллекции и индекса")
+            }
         }
     }
 

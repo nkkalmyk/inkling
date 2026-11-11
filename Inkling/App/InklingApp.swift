@@ -87,6 +87,8 @@ struct InklingApp: App {
                     .keyboardShortcut("t")
                 Button("Новый предмет…") { library.sheet = .newSubject }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
+                Divider()
+                AddFilesCommand()
             }
             // «Файл» → «Импорт с iPhone»: снимок получает экран с .importsItemProviders («Источники»).
             ImportFromDevicesCommands()
