@@ -131,7 +131,8 @@ extension Library {
         }
         let previous = importChains[lectureID]
         let task = Task {
-            await previous?.value
+            // Отмена последнего импорта доходит и до тех, что стоят перед ним в очереди.
+            await withTaskCancellationHandler { await previous?.value } onCancel: { previous?.cancel() }
             await performImport(groups, lectureID: lectureID, staging: staging)
         }
         importChains[lectureID] = task
@@ -151,13 +152,11 @@ extension Library {
         importProgress = ImportProgress(lectureID: lectureID, done: 0, total: 0)
         var combined = ImportResult()
         for (section, urls) in groups {
-            let result = await Task.detached(priority: .userInitiated) {
-                importer.importFiles(urls, into: section) { done, total in
-                    Task { @MainActor in
-                        self.importProgress = ImportProgress(lectureID: lectureID, done: done, total: total)
-                    }
+            let result = await Self.importInBackground(importer, urls: urls, section: section) { done, total in
+                Task { @MainActor in
+                    self.importProgress = ImportProgress(lectureID: lectureID, done: done, total: total)
                 }
-            }.value
+            }
             combined.notes += result.notes
             combined.slides += result.slides
             combined.skipped += result.skipped
@@ -172,6 +171,18 @@ extension Library {
             errorMessage = "Не всё удалось импортировать:\n"
                 + combined.skipped.map { "• \($0.name): \($0.reason)" }.joined(separator: "\n")
         }
+    }
+
+    /// Импорт вне главного потока, но в той же задаче: «Отменить» (`cancelImport`) до него доходит.
+    @concurrent
+    private static func importInBackground(_ importer: SourceImporter, urls: [URL], section: SourceSection,
+                                           progress: @escaping @Sendable (Int, Int) -> Void) async -> ImportResult {
+        importer.importFiles(urls, into: section, progress: progress)
+    }
+
+    /// Останавливает импорт лекции: идущий и ждущие в очереди. Уже импортированные страницы остаются.
+    func cancelImport(lectureID: UUID) {
+        importChains[lectureID]?.cancel()
     }
 
     // MARK: Страницы

@@ -534,3 +534,25 @@ struct ConsecutiveImportTests {
         #expect(subjectFolders == [lecture.folder.lastPathComponent])
     }
 }
+
+/// C23 (аудит 2026-11): импорт можно отменить; уже импортированные страницы не теряются и не остаются сиротами.
+@Suite("Импорт: отмена")
+struct ImportCancellationTests {
+    @Test func cancelledImportStopsAndKeepsWhatIsDone() async throws {
+        let dir = try TempDir()
+        let photos = (0..<30).map { i in
+            Fixtures.write(Fixtures.halfRed(), to: dir.url.appendingPathComponent("p\(i).jpg"),
+                           dateTimeOriginal: String(format: "2026:10:14 09:%02d:00", i))
+        }
+        let paths = LecturePaths(folder: dir.url.appendingPathComponent("lecture"))
+        let importer = SourceImporter(paths: paths)
+        let task = Task.detached { importer.importFiles(photos, into: .notes) }
+        task.cancel()
+        let result = await task.value
+        #expect(result.notes.count < 30)
+        #expect(result.skipped.isEmpty)
+        // Каждая импортированная страница — с картинкой, лишних картинок нет.
+        let images = (try? FileManager.default.contentsOfDirectory(atPath: paths.notePhoto("x").deletingLastPathComponent().path)) ?? []
+        #expect(images.count == result.notes.count)
+    }
+}

@@ -136,7 +136,8 @@ struct LectureActivityIndicator: View {
         if let progress = library.importProgress, progress.lectureID == id {
             result.append(Activity(id: "import", title: "Импорт",
                                    detail: progress.total > 0 ? "\(progress.done) из \(progress.total)" : "Подготовка",
-                                   fraction: progress.total > 0 ? Double(progress.done) / Double(progress.total) : nil))
+                                   fraction: progress.total > 0 ? Double(progress.done) / Double(progress.total) : nil,
+                                   cancel: { library.cancelImport(lectureID: id) }))
         }
         if let batch = recognition.batches[id] {
             let processed = batch.done + batch.failed

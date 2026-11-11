@@ -36,6 +36,8 @@ struct SourceImporter: Sendable {
         }
 
         for url in urls {
+            // «Отменить» в индикаторе: уже импортированное остаётся (его добавят в `meta.json`), остальное не трогаем.
+            if Task.isCancelled { break }
             do {
                 switch (Self.kind(of: url), section) {
                 case (.image, .notes):
@@ -52,6 +54,8 @@ struct SourceImporter: Sendable {
                     result.skipped.append((url.lastPathComponent, "формат не поддерживается"))
                     step()
                 }
+            } catch is CancellationError {
+                break
             } catch {
                 result.skipped.append((url.lastPathComponent, error.localizedDescription))
                 step()
@@ -104,6 +108,7 @@ struct SourceImporter: Sendable {
         var pages: [NotePage] = []
         do {
             for index in 0..<count {
+                try Task.checkCancellation()
                 // Скан уже плоский: автообрезка по умолчанию выключена, её можно включить вручную.
                 var page = NotePage(id: PageID.make(), source: .pdfPage(file: source, index: index), captureDate: nil,
                                     crop: .original, addedAt: now())
@@ -158,6 +163,7 @@ struct SourceImporter: Sendable {
         var pages: [SlidePage] = []
         do {
             for (index, text) in texts.enumerated() {
+                try Task.checkCancellation()
                 let verdict = SlideTextHeuristic.analyze(text)
                 var page = SlidePage(id: PageID.make(), source: .pdfPage(file: file, index: index),
                                      heuristicNeedsImage: verdict.needsImage, heuristicReason: verdict.reason,
