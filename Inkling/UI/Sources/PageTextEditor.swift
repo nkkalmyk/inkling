@@ -9,6 +9,8 @@ struct PageTextEditor: NSViewRepresentable {
     /// отложенное сохранение правки иначе легло бы поверх свежего результата или затёрло бы непрочитанный файл.
     var isEditable = true
     var onIllegibleClick: (Double) -> Void = { _ in }
+    /// Размер текста для чтения («Вид → Крупнее / Мельче», ⌘+ ⌘−) действует и на редактор (аудит 2026-11, C32).
+    @Environment(\.readingScale) private var readingScale
 
     static let illegible = "[неразборчиво]"
     private static let linkScheme = "inkling-illegible"
@@ -25,7 +27,7 @@ struct PageTextEditor: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.font = Self.font
+        textView.font = font
         textView.textContainerInset = NSSize(width: 8, height: 10)
         textView.linkTextAttributes = [.cursor: NSCursor.pointingHand]
         textView.string = text
@@ -37,12 +39,14 @@ struct PageTextEditor: NSViewRepresentable {
         context.coordinator.parent = self
         guard let textView = scroll.documentView as? NSTextView else { return }
         if textView.isEditable != isEditable { textView.isEditable = isEditable }
-        guard textView.string != text else { return }
-        textView.string = text
+        let fontChanged = textView.font != font
+        guard textView.string != text || fontChanged else { return }
+        if textView.string != text { textView.string = text }
+        textView.font = font
         context.coordinator.highlight(textView)
     }
 
-    private static let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+    var font: NSFont { NSFont.monospacedSystemFont(ofSize: 13 * readingScale, weight: .regular) }
 
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -71,7 +75,7 @@ struct PageTextEditor: NSViewRepresentable {
             guard let storage = textView.textStorage else { return }
             let full = NSRange(location: 0, length: storage.length)
             storage.beginEditing()
-            storage.setAttributes([.font: PageTextEditor.font, .foregroundColor: NSColor.textColor], range: full)
+            storage.setAttributes([.font: parent.font, .foregroundColor: NSColor.textColor], range: full)
             let string = storage.string as NSString
             var search = full
             while true {
@@ -96,7 +100,7 @@ struct PageTextEditor: NSViewRepresentable {
                 }
             }
             storage.endEditing()
-            textView.typingAttributes = [.font: PageTextEditor.font, .foregroundColor: NSColor.textColor]
+            textView.typingAttributes = [.font: parent.font, .foregroundColor: NSColor.textColor]
         }
     }
 }
