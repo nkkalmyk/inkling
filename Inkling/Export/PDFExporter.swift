@@ -1,4 +1,5 @@
 import AppKit
+import Synchronization
 import WebKit
 
 enum PDFExportError: LocalizedError {
@@ -130,16 +131,15 @@ final class PDFExporter: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
     }
 
     /// Продолжение, которое можно безопасно возобновить из любого потока, ровно один раз.
-    private final class OneShot: @unchecked Sendable {
-        private let lock = NSLock()
-        private var continuation: CheckedContinuation<Bool, Never>?
+    private final class OneShot: Sendable {
+        private let continuation = Mutex<CheckedContinuation<Bool, Never>?>(nil)
 
-        func set(_ continuation: CheckedContinuation<Bool, Never>) { lock.withLock { self.continuation = continuation } }
+        func set(_ continuation: CheckedContinuation<Bool, Never>) { self.continuation.withLock { $0 = continuation } }
 
         func resume(_ value: Bool) {
-            let pending = lock.withLock { () -> CheckedContinuation<Bool, Never>? in
-                defer { continuation = nil }
-                return continuation
+            let pending = continuation.withLock { stored -> CheckedContinuation<Bool, Never>? in
+                defer { stored = nil }
+                return stored
             }
             pending?.resume(returning: value)
         }

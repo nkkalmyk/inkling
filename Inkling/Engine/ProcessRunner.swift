@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Synchronization
 
 /// Запуск внешнего процесса в собственной группе процессов (SPEC, раздел 2.5).
 /// При таймауте или отмене вся группа получает SIGTERM, через `killGrace` секунд — SIGKILL:
@@ -99,14 +100,13 @@ enum ProcessRunner {
 }
 
 /// Лидеры групп процессов, запущенных `ProcessRunner` и ещё не завершённых.
-private final class LiveGroups: @unchecked Sendable {
+private final class LiveGroups: Sendable {
     static let shared = LiveGroups()
-    private let lock = NSLock()
-    private var pids: Set<pid_t> = []
+    private let pids = Mutex<Set<pid_t>>([])
 
-    func insert(_ pid: pid_t) { lock.withLock { _ = pids.insert(pid) } }
-    func remove(_ pid: pid_t) { lock.withLock { _ = pids.remove(pid) } }
-    var all: [pid_t] { lock.withLock { Array(pids) } }
+    func insert(_ pid: pid_t) { pids.withLock { _ = $0.insert(pid) } }
+    func remove(_ pid: pid_t) { pids.withLock { _ = $0.remove(pid) } }
+    var all: [pid_t] { pids.withLock { Array($0) } }
 }
 
 // MARK: Запуск
@@ -115,7 +115,7 @@ private struct SpawnError: Error {
     let message: String
 }
 
-private final class SpawnedChild: @unchecked Sendable {
+private final class SpawnedChild: Sendable {
     let pid: pid_t
     private let stdinFD: Int32
     private let stdoutFD: Int32
@@ -211,7 +211,7 @@ private final class SpawnedChild: @unchecked Sendable {
     }
 }
 
-private final class Readers: @unchecked Sendable {
+private final class Readers: Sendable {
     let stdout = LockedBuffer()
     let stderr = LockedBuffer()
     private let group = DispatchGroup()
@@ -238,55 +238,55 @@ private final class Readers: @unchecked Sendable {
     }
 }
 
-private final class LockedBuffer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage = Data()
+private final class LockedBuffer: Sendable {
+    private let storage = Mutex(Data())
 
     /// Потолок объёма: лишнее отбрасывается, но канал читается дальше, чтобы процесс не завис на записи.
     static let limit = 32 * 1024 * 1024
 
     func append(_ bytes: ArraySlice<UInt8>) {
-        lock.withLock {
-            let room = max(Self.limit - storage.count, 0)
-            storage.append(contentsOf: bytes.prefix(room))
+        storage.withLock { data in
+            let room = max(Self.limit - data.count, 0)
+            data.append(contentsOf: bytes.prefix(room))
         }
     }
-    var data: Data { lock.withLock { storage } }
+    var data: Data { storage.withLock { $0 } }
 }
 
 // MARK: Остановка группы
 
-private final class KillControl: @unchecked Sendable {
+private final class KillControl: Sendable {
     enum Reason { case timeout, cancelled }
+
+    private struct State {
+        var exited = false
+        var reason: Reason?
+    }
 
     private let pid: pid_t
     private let grace: TimeInterval
-    private let lock = NSLock()
-    private var exited = false
-    private(set) var reason: Reason? {
-        get { lock.withLock { _reason } }
-        set { lock.withLock { _reason = newValue } }
-    }
-    private var _reason: Reason?
+    private let state = Mutex(State())
+
+    var reason: Reason? { state.withLock { $0.reason } }
 
     init(pid: pid_t, grace: TimeInterval) {
         self.pid = pid
         self.grace = grace
     }
 
-    func markExited() { lock.withLock { exited = true } }
+    func markExited() { state.withLock { $0.exited = true } }
 
     /// SIGTERM всей группе, через `grace` секунд SIGKILL, если процесс ещё жив.
     func kill(_ why: Reason) {
-        let first: Bool = lock.withLock {
-            guard _reason == nil, !exited else { return false }
-            _reason = why
+        let first = state.withLock { state -> Bool in
+            guard state.reason == nil, !state.exited else { return false }
+            state.reason = why
             return true
         }
         guard first else { return }
         Darwin.kill(-pid, SIGTERM)
         DispatchQueue.global().asyncAfter(deadline: .now() + grace) { [self] in
-            if !lock.withLock({ exited }) { Darwin.kill(-pid, SIGKILL) }
+            if !state.withLock({ $0.exited }) { Darwin.kill(-pid, SIGKILL) }
         }
     }
 
