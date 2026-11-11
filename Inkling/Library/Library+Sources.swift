@@ -96,9 +96,7 @@ extension Library {
         }
         // Открытие PDF для оценки текстового слоя может быть долгим: делаем это вне главного потока.
         Task {
-            let guesses = await Task.detached(priority: .userInitiated) {
-                pdfs.compactMap { try? PDFTools.guessSection($0) }
-            }.value
+            let guesses = await Self.guessSections(pdfs)
             if let mismatch = guesses.first(where: { $0 != section }) {
                 pdfQuestion = PDFSectionQuestion(lectureID: lectureID, requested: section, guess: mismatch,
                                                  pdfs: pdfs, others: others, staging: staging)
@@ -250,9 +248,7 @@ extension Library {
         let importer = SourceImporter(paths: LecturePaths(folder: record.folder))
         busyPages.insert(id)
         Task {
-            let outcome = await Task.detached(priority: .userInitiated) {
-                Result { try importer.syncSlideFiles(page) }
-            }.value
+            let outcome = await Self.offMain { try importer.syncSlideFiles(page) }
             if case .success(let text) = outcome, text != page.text {
                 mutate(lectureID) { $0.setPageText(text, for: id) }
             }
@@ -280,9 +276,7 @@ extension Library {
         let importer = SourceImporter(paths: LecturePaths(folder: folder))
         busyPages.insert(page.id)
         Task {
-            let outcome = await Task.detached(priority: .userInitiated) {
-                Result { try importer.renderNotePhoto(page) }
-            }.value
+            let outcome = await Self.offMain { try importer.renderNotePhoto(page) }
             if case .success(let crop) = outcome {
                 let hash = FileHash.sha256(LecturePaths(folder: folder).notePhoto(page.id))
                 mutate(lectureID) { meta in
@@ -292,6 +286,17 @@ extension Library {
             }
             finishBusy(page.id, outcome.error)
         }
+    }
+
+    @concurrent
+    private static func guessSections(_ pdfs: [URL]) async -> [SourceSection] {
+        pdfs.compactMap { try? PDFTools.guessSection($0) }
+    }
+
+    /// Тяжёлая обработка картинки или PDF вне главного потока, в той же задаче (отмена доходит).
+    @concurrent
+    private static func offMain<T: Sendable>(_ work: @Sendable () throws -> T) async -> Result<T, any Error> {
+        Result { try work() }
     }
 
     private func finishBusy(_ id: String, _ error: Error?) {

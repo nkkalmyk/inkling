@@ -41,7 +41,7 @@ enum ProcessRunner {
         let readers = child.startReaders()
 
         let outcome: (status: Int32, reason: KillControl.Reason?) = await withTaskCancellationHandler {
-            let timer = Task.detached {
+            let timer = Task {
                 try? await Task.sleep(for: .seconds(timeout))
                 if !Task.isCancelled { control.kill(.timeout) }
             }

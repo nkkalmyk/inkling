@@ -200,23 +200,22 @@ final class RecognitionCenter {
     private static func hash(_ url: URL) async -> String? { FileHash.sha256(url) }
 
     /// Нарезает оригинал страницы на фрагменты для режима «Подробно» (вне главного потока) и пишет их во временную папку.
+    @concurrent
     nonisolated private static func writeBands(of page: NotePage, original: URL,
                                                layout: ImageProcessor.DetailedLayout) async throws -> URL {
-        try await Task.detached(priority: .userInitiated) {
-            let image: CIImage
-            switch page.source {
-            case .image: image = try ImageProcessor.loadOriented(original)
-            case .pdfPage(_, let index): image = try PDFTools.renderPage(original, index: index)
-            }
-            let bands = try ImageProcessor.detailedBands(image, crop: page.crop, rotation: page.rotation, layout: layout)
-            let folder = FileManager.default.temporaryDirectory
-                .appendingPathComponent("Inkling-bands-\(UUID().uuidString)", isDirectory: true)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            for (index, data) in bands.enumerated() {
-                try data.write(to: folder.appendingPathComponent("part\(index + 1).jpg"))
-            }
-            return folder
-        }.value
+        let image: CIImage
+        switch page.source {
+        case .image: image = try ImageProcessor.loadOriented(original)
+        case .pdfPage(_, let index): image = try PDFTools.renderPage(original, index: index)
+        }
+        let bands = try ImageProcessor.detailedBands(image, crop: page.crop, rotation: page.rotation, layout: layout)
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Inkling-bands-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for (index, data) in bands.enumerated() {
+            try data.write(to: folder.appendingPathComponent("part\(index + 1).jpg"))
+        }
+        return folder
     }
 
     /// Записывает текст страницы (прежний — в историю) и описание в `meta.json`. Папка ищется заново:

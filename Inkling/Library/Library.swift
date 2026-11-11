@@ -139,11 +139,16 @@ final class Library {
 
     /// Перечитывание по событию файловой системы: чтение и разбор всех `meta.json` идут вне главного потока.
     /// Результат отбрасывается, если за это время состояние уже обновили синхронным `reload()` или сменили папку.
+    @concurrent
+    private static func loadInBackground(_ store: LibraryStore) async -> [SubjectRecord]? {
+        try? store.loadSubjects()
+    }
+
     private func reloadInBackground() {
         let generation = reloadGeneration
         let store = store
         Task {
-            let loaded = await Task.detached(priority: .utility) { try? store.loadSubjects() }.value
+            let loaded = await Self.loadInBackground(store)
             guard generation == reloadGeneration, let loaded else { return }
             // Без изменений не трогаем наблюдаемое свойство: иначе каждое событие FSEvents перерисовывало бы
             // сайдбар, список лекций и вкладки.
