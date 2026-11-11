@@ -24,7 +24,7 @@ actor EngineRouter {
     private let now: @Sendable () -> Date
     private(set) var limitedUntil: [EngineID: Date] = [:]
     private var running = 0
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] = []
 
     init(primary: any AIEngine, fallback: (any AIEngine)?, settings: Settings,
          now: @escaping @Sendable () -> Date = { Date() }) {
@@ -42,7 +42,7 @@ actor EngineRouter {
     }
 
     func run(_ request: AIRequest, onEvent: @Sendable (Event) -> Void = { _ in }) async throws(AIError) -> AIResponse {
-        await acquire()
+        guard await acquire() else { throw .cancelled }
         defer { release() }
         if Task.isCancelled { throw .cancelled }
 
@@ -108,19 +108,33 @@ actor EngineRouter {
 
     // MARK: Не больше `maxParallel` вызовов одновременно
 
-    private func acquire() async {
+    /// `true` — слот получен; `false` — задачу отменили, пока она ждала слот (слот не занят, освобождать нечего).
+    /// Без этого отменённая сборка висела в очереди до конца чужого вызова и выглядела идущей.
+    private func acquire() async -> Bool {
         if running < max(settings.maxParallel, 1) {
             running += 1
-            return
+            return true
         }
-        await withCheckedContinuation { waiters.append($0) }
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled { continuation.resume(returning: false) } else { waiters.append((id, continuation)) }
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(id) }
+        }
+    }
+
+    private func cancelWaiter(_ id: UUID) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume(returning: false)
     }
 
     private func release() {
         if waiters.isEmpty {
             running -= 1
         } else {
-            waiters.removeFirst().resume()
+            waiters.removeFirst().continuation.resume(returning: true)
         }
     }
 }

@@ -297,6 +297,25 @@ struct EngineRouterTests {
         #expect(await primary.maxConcurrent == 2)
     }
 
+    /// Регресс A12 (аудит 2026-11): отменённый вызов ждал свободный слот до конца чужого вызова.
+    @Test func cancelWhileWaitingForSlotReturnsAtOnce() async throws {
+        let primary = FakeEngine([], delay: .seconds(3))
+        let router = EngineRouter(primary: primary, fallback: nil, settings: .init(maxParallel: 1))
+        let busy = Task { try await router.run(request) }
+        try await Task.sleep(for: .milliseconds(50))
+        let waiting = Task { try await router.run(request) }
+        try await Task.sleep(for: .milliseconds(50))
+        let started = ContinuousClock.now
+        waiting.cancel()
+        #expect(await Self.error(of: waiting) == .cancelled)
+        #expect(ContinuousClock.now - started < .seconds(1))
+        #expect(await primary.calls == 1)
+        busy.cancel()
+        // Слот, освобождённый первым вызовом, достаётся следующему: счётчик не сломан.
+        _ = await busy.result
+        #expect(try await router.run(request).text == "ok")
+    }
+
     @Test func cancelledBeforeStart() async {
         let router = EngineRouter(primary: FakeEngine([]), fallback: nil, settings: .init())
         let task = Task { () async throws -> AIResponse in
