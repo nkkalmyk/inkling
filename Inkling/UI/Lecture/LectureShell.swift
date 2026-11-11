@@ -326,9 +326,11 @@ struct SubjectExportCommands: View {
 
     var body: some View {
         let subject = library.currentSubject.flatMap { name in library.subjects.first { $0.name == name } }
-        Button("Экспорт предмета в PDF") { if let subject { export.export(subject, as: .pdf) } }
+        // В названии — какой предмет уйдёт: при «Все лекции» это предмет открытой лекции.
+        let name = subject.map { " «\($0.name)»" } ?? ""
+        Button("Экспорт предмета\(name) в PDF") { if let subject { export.export(subject, as: .pdf) } }
             .disabled(subject == nil || export.run != nil)
-        Button("Экспорт предмета в HTML") { if let subject { export.export(subject, as: .html) } }
+        Button("Экспорт предмета\(name) в HTML") { if let subject { export.export(subject, as: .html) } }
             .disabled(subject == nil || export.run != nil)
     }
 }

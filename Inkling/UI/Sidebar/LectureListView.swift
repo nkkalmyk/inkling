@@ -54,8 +54,8 @@ struct LectureListView: View {
                 Button("Новая лекция", systemImage: "square.and.pencil") {
                     library.sheet = .newLecture(subject: library.currentSubject)
                 }
+                // Без предметов кнопка тоже работает, как «Файл → Новая лекция…»: лист сам создаёт предмет.
                 .help("Новая лекция (⌘T)")
-                .disabled(library.subjects.isEmpty)
             }
         }
     }
