@@ -51,6 +51,4 @@ enum SheetWidth {
 enum ReadingWidth {
     /// Вопрос теста, флеш-карточка.
     static let focused: CGFloat = 720
-    /// Список или лента карточек.
-    static let column: CGFloat = 820
 }

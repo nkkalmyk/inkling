@@ -12,17 +12,6 @@ import Foundation
 enum Enrichment {
     enum Kind: String, Equatable, Sendable {
         case summary, explanation, example, link, plot, svg
-
-        var title: String {
-            switch self {
-            case .summary: "Главное"
-            case .explanation: "Пояснение"
-            case .example: "Пример"
-            case .link: "Связи"
-            case .plot: "График"
-            case .svg: "Схема"
-            }
-        }
     }
 
     struct Addition: Equatable, Sendable {
@@ -33,8 +22,6 @@ enum Enrichment {
     }
 
     // MARK: Поиск добавлений
-
-    static let summaryHeading = "## 🧭 Главное"
 
     static func additions(in markdown: String) -> [Addition] {
         let lines = markdown.components(separatedBy: "\n")
