@@ -6,15 +6,23 @@ struct SidebarView: View {
     @AppStorage(ClassicInterface.key) private var classicInterface = false
     @Environment(SubjectExportCenter.self) private var subjectExport
 
+    static func lecturesCount(_ n: Int) -> String { UIFormat.count(n, "лекция", "лекции", "лекций") }
+
     var body: some View {
         List(selection: Binding<LibraryScope?>(get: { library.scope }, set: { if let scope = $0 { library.scope = scope } })) {
+            let total = library.subjects.reduce(0) { $0 + $1.lectures.count }
             Label("Все лекции", systemImage: "tray.full")
-                .badge(library.subjects.reduce(0) { $0 + $1.lectures.count })
+                .badge(total)
+                // Без явной подписи AppKit называет строку с бейджем числом: VoiceOver читал «6» вместо предмета.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Все лекции, \(Self.lecturesCount(total))")
                 .tag(LibraryScope.all)
             Section("Предметы") {
                 ForEach(library.subjects) { subject in
                     Label(subject.name, systemImage: "book.closed")
                         .badge(subject.lectures.count)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(subject.name), \(Self.lecturesCount(subject.lectures.count))")
                         .tag(LibraryScope.subject(subject.name))
                         .contextMenu { subjectMenu(subject) }
                         .dropDestination(for: String.self) { items, _ in

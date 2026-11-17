@@ -23,13 +23,12 @@ struct MathText: View {
             || text.contains("|") || text.contains("```") || text.contains("\n- ") || text.contains("\n1. ")
     }
 
-    /// Однострочное превью для списков, где формулы не рисуются: простые формулы без `$`
-    /// («$AB$» → «AB»), сложные (с командами `\…`) — многоточием.
+    /// Однострочное превью для списков, где формулы не рисуются: формула записывается
+    /// знаками Unicode (`$M_n(P)$` → «Mₙ(P)», см. `PlainMath`), а то, что одной строкой
+    /// не записать (матрицы), — многоточием.
     static func preview(_ text: String) -> AttributedString {
         let plain = text.replacing(/\$\$?([^$]+)\$\$?/) { match in
-            let formula = String(match.output.1)
-            if formula.contains("\\") { return "…" }
-            return formula.filter { !"{}^_".contains($0) }
+            PlainMath.text(String(match.output.1)) ?? "…"
         }
         return attributed(plain.replacingOccurrences(of: "\n", with: " "))
     }
